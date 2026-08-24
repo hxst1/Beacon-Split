@@ -1,4 +1,4 @@
-import { pickFolder } from '@/ipc'
+import { ipc, pickFolder } from '@/ipc'
 import { useEditor } from '@/features/editor/openFiles'
 import { shortcutLabel } from '@/lib/platform'
 import type { LayoutPreset, PanelId } from '@/types/beacon'
@@ -31,7 +31,22 @@ export function buildCommands(): Command[] {
   const activeProjectId = workspace ? snapshot?.activeProject[workspace.id] : undefined
   const project = projects.find((p) => p.id === activeProjectId) ?? projects[0]
 
-  const commands: Command[] = []
+  const commands: Command[] = [
+    {
+      id: 'app.settings',
+      title: 'Open settings',
+      group: 'Beacon',
+      run: () => store.setOverlay('settings'),
+    },
+    {
+      id: 'app.stopDaemon',
+      title: 'Stop all sessions and the session daemon',
+      group: 'Beacon',
+      run: async () => {
+        await ipc.stopDaemon()
+      },
+    },
+  ]
 
   // ---- projects ----
 

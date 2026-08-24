@@ -220,7 +220,10 @@ pub trait SessionEvents: Send + Sync + 'static {
 }
 
 /// A session as the UI sees it.
-#[derive(Debug, Clone, Serialize)]
+///
+/// Deserializable because it crosses the daemon socket in both directions, not
+/// only from the backend to the webview.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub id: SessionId,
@@ -459,6 +462,29 @@ impl SessionManager {
             .get(id)
             .ok_or_else(|| CoreError::SessionNotFound(id.to_string()))?;
         Ok(session.scrollback.lock_or_recover().snapshot())
+    }
+
+    /// How many sessions are alive, for deciding whether the daemon has work.
+    pub fn count(&self) -> usize {
+        self.sessions.lock_or_recover().len()
+    }
+
+    /// Every live session, so a reattaching client can find its work again.
+    pub fn list(&self) -> Vec<SessionInfo> {
+        let mut sessions = self.sessions.lock_or_recover();
+        let ids: Vec<SessionId> = sessions.keys().cloned().collect();
+        ids.iter()
+            .filter_map(|id| {
+                let session = sessions.get_mut(id)?;
+                Some(SessionInfo {
+                    id: id.clone(),
+                    project: session.project.clone(),
+                    kind: session.kind,
+                    cwd: session.cwd.to_string_lossy().into_owned(),
+                    running: session.child.try_wait().ok().flatten().is_none(),
+                })
+            })
+            .collect()
     }
 
     pub fn info(&self, id: &SessionId) -> Result<SessionInfo> {

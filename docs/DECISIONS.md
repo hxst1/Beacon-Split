@@ -462,3 +462,45 @@ read "Hide Files" or "Show Files" depending on which is true right now.
 **Consequence.** Making bindings user-editable is a settings surface over the
 same registry rather than a rework, which is why it could be deferred without
 painting us into a corner.
+
+## ADR-027: Sessions live in a daemon, not in the window
+
+**Context.** Closing Beacon killed every session it was showing. The whole
+arrangement since Milestone 0 — `beacon-core` with no dependency on Tauri — was
+for this.
+
+**Decision.** `beacon-daemon` is a separate process that owns `SessionManager`.
+The Tauri app holds a `DaemonClient` where it used to hold the manager, with the
+same method shapes. The daemon starts on demand, detached with `setsid` so it is
+not a child that dies with the app.
+
+**Why.** Nothing else makes a session outlive the window. Keeping the client's
+surface identical to the manager's is what kept the change to one layer: the
+commands, the UI and the protocol for reattaching were already right.
+
+**Consequence.** A second process to package, and a socket to keep compatible.
+The daemon stops itself after five minutes idle so it does not accumulate, and
+can be stopped from the palette. A packaged build still needs the binary added
+to the bundle.
+
+## ADR-028: The protocol is newline-delimited JSON, and versioned
+
+**Context.** The window and the daemon have to agree on messages, across
+versions that may be built weeks apart.
+
+**Decision.** One JSON object per line over a unix socket. A `Hello` carries a
+protocol version; a client meeting a daemon that speaks a different one asks it
+to stop and starts one it understands.
+
+**Why.** The traffic is small and the contents are worth being able to read with
+`nc` when something is wrong. Version checking matters more than it looks: a
+daemon left running from an older build answers in shapes the client
+half-understands, and a half-understood session is worse than a new one.
+
+**Consequence.** Two serde shapes bit us and both are now covered by tests over
+every variant. A unit enum variant serialises without its content field and
+`#[serde(flatten)]` cannot read it back — so requests carry bodies they do not
+need. An internally tagged enum cannot hold a bare sequence, and serde only
+finds that out at runtime — so the session list is a struct variant. Neither
+failure was visible until a request timed out, which is why the daemon now
+answers what it cannot parse and never drops a reply it cannot encode.

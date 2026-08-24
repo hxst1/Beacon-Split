@@ -16,4 +16,5 @@ portable-pty = "0.9"
 trash = "5"
 
 [dev-dependencies]
+base64 = "0.22"
 tempfile = "3"

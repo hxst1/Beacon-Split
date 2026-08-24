@@ -142,11 +142,51 @@ is buffered in the backend, and any view can attach to it and replay losslessly.
 A detached window is another attachment, not another session — so this is window
 management, not a change to how sessions work.
 
-## Milestone 7 — Session daemon
+## Milestone 7 — Session daemon ✅
 
-- Move `SessionManager` into a background process
-- The UI attaches and detaches; closing the window leaves sessions alive
-- Reattach on relaunch; investigate resuming Claude across a machine restart
+- `beacon-daemon` owns every PTY. The window is a client: it attaches, renders
+  what the daemon has, and detaches. Closing it ends nothing
+- Newline-delimited JSON over a unix socket in the per-user temporary directory,
+  with the directory's permissions as the access control
+- The client starts a daemon if none is listening, and replaces one speaking a
+  different protocol rather than guessing at its replies
+- Reattaching replays the scrollback and joins the live stream losslessly, using
+  the offsets from Milestone 2
+- The daemon stops itself after five minutes with no sessions and nobody
+  attached, and can be stopped deliberately from the palette
+
+Still to do: packaging. `daemon_binary_path` looks beside the executable, which
+is right in development and needs the daemon added to the bundle for a release
+build. A missing daemon is reported clearly rather than failing silently, and
+the rest of Beacon works without it.
+
+Resuming Claude across a machine restart is a separate question — a process
+cannot survive a shutdown, so it means using Claude's own resume, and that
+belongs with whatever comes next.
+
+## Later — not scheduled
+
+Both of these were on the original "do not build" list. They are here because
+the list was ours to change, and they are worth doing eventually; neither is
+small, and both are their own milestone.
+
+### Docker
+
+Connect to the Docker the user already runs — its unix socket speaks an HTTP
+API — and show containers for the current project: what is up, logs, and
+starting or stopping them. Beacon would not manage Docker, only give the
+containers a place beside the work. Hidden by default, like the editor.
+
+### A small database viewer
+
+Read-first, PostgreSQL only to begin with, because that is what gets used.
+Browse tables, look at rows, run a query. Connection details picked up from the
+project where they already exist — a `.env`, a Prisma schema, a Supabase config
+— rather than configured twice. Adding another engine later is a driver, not a
+redesign, provided the first one does not assume Postgres everywhere.
+
+The line to hold: neither of these becomes the point of the application. If
+either starts wanting its own window, it was the wrong feature.
 
 ## Explicitly out of scope
 

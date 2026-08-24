@@ -7,8 +7,9 @@ use crate::state::AppState;
 
 /// Returns the project's session of this kind, starting one if needed.
 ///
-/// Called every time a terminal view mounts, which is what makes switching
-/// projects cheap: the process is already there.
+/// Called every time a terminal view mounts. Because sessions live in the
+/// daemon, this is also what reattaches to work that was running before the
+/// window was last closed.
 #[tauri::command]
 pub fn open_session(
     state: State<'_, AppState>,
@@ -21,19 +22,15 @@ pub fn open_session(
     let cwd = state
         .beacon()
         .resolve_project_path(&workspace_id, &project_id)?;
-    let id = state
-        .sessions
-        .ensure(&project_id, kind, &cwd, (cols.max(2), rows.max(2)))?;
-    Ok(state.sessions.info(&id)?)
+    Ok(state
+        .daemon()?
+        .ensure(&project_id, kind, &cwd, (cols.max(2), rows.max(2)))?)
 }
 
-/// Sends keystrokes to a session.
-///
-/// Nothing about the payload is logged — it is whatever the user typed.
+/// Sends keystrokes to a session. Nothing about the payload is logged.
 #[tauri::command]
 pub fn write_session(state: State<'_, AppState>, id: SessionId, data: String) -> CommandResult<()> {
-    state.sessions.write(&id, data.as_bytes())?;
-    Ok(())
+    Ok(state.daemon()?.write(&id, &data)?)
 }
 
 #[tauri::command]
@@ -43,16 +40,11 @@ pub fn resize_session(
     cols: u16,
     rows: u16,
 ) -> CommandResult<()> {
-    state.sessions.resize(&id, cols.max(2), rows.max(2))?;
-    Ok(())
+    Ok(state.daemon()?.resize(&id, cols.max(2), rows.max(2))?)
 }
 
 /// Everything the session has printed so far, base64-encoded, plus the stream
 /// offset just past it.
-///
-/// A terminal view replays this on mount and then ignores any live chunk that
-/// ends at or before `end_offset`, so a rebuilt panel looks exactly like the one
-/// you left — no gap, no repeated block.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScrollbackSnapshot {
@@ -65,18 +57,13 @@ pub fn session_scrollback(
     state: State<'_, AppState>,
     id: SessionId,
 ) -> CommandResult<ScrollbackSnapshot> {
-    use base64::Engine as _;
-    let (bytes, end_offset) = state.sessions.scrollback(&id)?;
-    Ok(ScrollbackSnapshot {
-        data: base64::engine::general_purpose::STANDARD.encode(bytes),
-        end_offset,
-    })
+    let (data, end_offset) = state.daemon()?.scrollback(&id)?;
+    Ok(ScrollbackSnapshot { data, end_offset })
 }
 
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, id: SessionId) -> CommandResult<()> {
-    state.sessions.close(&id)?;
-    Ok(())
+    Ok(state.daemon()?.close(&id)?)
 }
 
 /// Gives a project a fresh session of this kind, replacing any it had.
@@ -92,16 +79,28 @@ pub fn restart_session(
     let cwd = state
         .beacon()
         .resolve_project_path(&workspace_id, &project_id)?;
-    let id = state
-        .sessions
-        .restart_for(&project_id, kind, &cwd, (cols.max(2), rows.max(2)))?;
-    Ok(state.sessions.info(&id)?)
+    Ok(state
+        .daemon()?
+        .restart(&project_id, kind, &cwd, (cols.max(2), rows.max(2)))?)
 }
 
 /// Stops every process belonging to a project, leaving the project itself in
 /// the workspace.
 #[tauri::command]
 pub fn stop_project(state: State<'_, AppState>, project_id: ProjectId) -> CommandResult<()> {
-    state.sessions.close_project(&project_id)?;
-    Ok(())
+    Ok(state.daemon()?.close_project(&project_id)?)
+}
+
+/// Which sessions are running, including any started before this window opened.
+#[tauri::command]
+pub fn list_sessions(state: State<'_, AppState>) -> CommandResult<Vec<SessionInfo>> {
+    Ok(state.daemon()?.list()?)
+}
+
+/// Stops the daemon, and with it every session.
+///
+/// The one way to deliberately end work that is meant to outlive the window.
+#[tauri::command]
+pub fn stop_daemon(state: State<'_, AppState>) -> CommandResult<()> {
+    Ok(state.daemon()?.shutdown()?)
 }

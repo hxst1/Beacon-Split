@@ -6,6 +6,7 @@
 //! not kill live Claude sessions, and everything here is meant to move there
 //! unchanged.
 
+pub mod client;
 pub mod detect;
 pub mod domain;
 pub mod dotenv;
@@ -14,6 +15,7 @@ pub mod files;
 pub mod git;
 pub mod layout;
 pub mod paths;
+pub mod protocol;
 pub mod scrollback;
 pub mod session;
 pub mod settings;

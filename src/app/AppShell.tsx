@@ -1,5 +1,6 @@
 import { CommandPalette } from '@/features/palette/CommandPalette'
 import { QuickOpen } from '@/features/palette/QuickOpen'
+import { SettingsScreen } from '@/features/settings/SettingsScreen'
 import { AccentFrame } from './AccentFrame'
 import { StatusBar } from './StatusBar'
 import { TitleBar } from './TitleBar'
@@ -24,6 +25,7 @@ export function AppShell(): React.ReactElement {
 
       {overlay === 'palette' ? <CommandPalette onClose={close} /> : null}
       {overlay === 'quickOpen' ? <QuickOpen onClose={close} /> : null}
+      {overlay === 'settings' ? <SettingsScreen onClose={close} /> : null}
     </div>
   )
 }

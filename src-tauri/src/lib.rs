@@ -71,6 +71,8 @@ pub fn run() {
             commands::close_session,
             commands::restart_session,
             commands::stop_project,
+            commands::list_sessions,
+            commands::stop_daemon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Beacon");

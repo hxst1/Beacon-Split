@@ -22,8 +22,10 @@ accent, a file tree with an editor and a `.env` view, git status, diff, stage
 and commit, and — per project — a real shell and a real `claude` session, each
 in its own PTY.
 
-What is left is the session daemon: closing the window still ends the sessions
-it was showing.
+Sessions outlive the window: closing Beacon leaves them running, and opening it
+again reattaches to them.
+
+What is left is packaging, and making keyboard bindings editable.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 
@@ -53,7 +55,8 @@ pnpm app:build    # production bundle
 ## Where things live
 
 ```
-crates/beacon-core/   Domain model, config, persistence. No Tauri, no UI.
+crates/beacon-core/   Domain model, config, persistence, sessions, git.
+crates/beacon-daemon/ Owns the PTYs, so sessions outlive the window.
 src-tauri/            Desktop shell: window setup and the IPC surface.
 src/                  React frontend.
   ipc/                The only module that talks to Tauri.
@@ -63,9 +66,14 @@ src/                  React frontend.
 docs/                 Architecture, roadmap, decisions.
 ```
 
-`beacon-core` deliberately has no dependency on Tauri. Session and process
-management will eventually run in a background daemon so that closing the
-window does not kill live Claude sessions, and that crate is what moves there.
+`beacon-core` has no dependency on Tauri, which is what let session management
+move into `beacon-daemon` without touching the UI. The window is a client: it
+attaches to the daemon, renders what it has, and detaches. Closing it ends
+nothing.
+
+The daemon listens on a unix socket in the per-user temporary directory, starts
+on demand, and stops itself after five minutes with no sessions and nobody
+attached.
 
 ## Configuration
 

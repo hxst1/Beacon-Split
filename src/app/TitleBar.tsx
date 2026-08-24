@@ -1,7 +1,6 @@
 import { useState } from 'react'
 
 import { ProjectTabs } from '@/features/projects/ProjectTabs'
-import { Settings } from '@/features/settings/Settings'
 import { WorkspaceMenu } from '@/features/workspaces/WorkspaceMenu'
 import { selectActiveWorkspace, useBeacon } from './store'
 import { Popover } from './ui/Popover'
@@ -14,7 +13,7 @@ import styles from './TitleBar.module.css'
 export function TitleBar(): React.ReactElement {
   const workspace = useBeacon(selectActiveWorkspace)
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null)
-  const [settingsAnchor, setSettingsAnchor] = useState<DOMRect | null>(null)
+  const setOverlay = useBeacon((s) => s.setOverlay)
 
   return (
     <header className={styles['bar']} data-tauri-drag-region>
@@ -38,10 +37,8 @@ export function TitleBar(): React.ReactElement {
       <button
         type="button"
         className={styles['gear']}
-        data-open={settingsAnchor !== null}
         title="Settings"
-        aria-haspopup="menu"
-        onClick={(event) => setSettingsAnchor(event.currentTarget.getBoundingClientRect())}
+        onClick={() => setOverlay('settings')}
       >
         <GearIcon />
       </button>
@@ -52,24 +49,33 @@ export function TitleBar(): React.ReactElement {
         </Popover>
       ) : null}
 
-      {settingsAnchor ? (
-        <Popover anchor={settingsAnchor} align="end" onClose={() => setSettingsAnchor(null)}>
-          <Settings onDone={() => setSettingsAnchor(null)} />
-        </Popover>
-      ) : null}
     </header>
   )
 }
 
-/** Drawn inline: one icon does not justify an icon dependency. */
+/**
+ * Drawn inline: one icon does not justify an icon dependency.
+ *
+ * A ring with eight teeth around it, and the hub punched out with `evenodd` so
+ * the hole shows the background rather than a painted circle — which would be
+ * visible the moment the button is hovered.
+ */
 const GearIcon = (): React.ReactElement => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <circle cx="8" cy="8" r="2.4" stroke="currentColor" strokeWidth="1.2" />
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
+      <rect
+        key={angle}
+        x="10.4"
+        y="1.4"
+        width="3.2"
+        height="5"
+        rx="1"
+        transform={`rotate(${angle} 12 12)`}
+      />
+    ))}
     <path
-      d="M8 1.5v1.6M8 12.9v1.6M14.5 8h-1.6M3.1 8H1.5M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1M12.6 12.6l-1.1-1.1M4.5 4.5L3.4 3.4"
-      stroke="currentColor"
-      strokeWidth="1.2"
-      strokeLinecap="round"
+      fillRule="evenodd"
+      d="M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm0 4.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2Z"
     />
   </svg>
 )

@@ -1,0 +1,18 @@
+[package]
+name = "beacon-daemon"
+description = "Hosts Beacon's sessions so they outlive the window showing them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "beacon-daemon"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+beacon-core = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

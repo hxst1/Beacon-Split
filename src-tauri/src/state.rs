@@ -1,25 +1,34 @@
 use std::sync::{Arc, Mutex};
 
-use beacon_core::domain::ProjectId;
-use beacon_core::{Beacon, SessionEvents, SessionId, SessionManager};
+use beacon_core::client::{DaemonClient, DaemonEvents, daemon_binary_path};
+use beacon_core::protocol::Event;
+use beacon_core::{Beacon, CoreError};
 use tauri::{AppHandle, Emitter};
 
 /// Beacon's persisted state is single-owner and synchronous; Tauri commands
 /// arrive on a thread pool, so the lock lives here rather than inside the core.
 ///
-/// The session manager does its own locking — it is shared with PTY reader
-/// threads — so it is not behind this mutex.
+/// Sessions are not here at all any more: they belong to the daemon, and this
+/// holds a connection to it.
 pub struct AppState {
     beacon: Mutex<Beacon>,
-    pub sessions: Arc<SessionManager>,
+    /// `Err` when the daemon could not be reached. Beacon still runs — files,
+    /// git and workspaces do not need it — and the reason is reported by the
+    /// commands that do.
+    daemon: Result<DaemonClient, String>,
 }
 
 impl AppState {
     pub fn new(beacon: Beacon, app: AppHandle) -> Self {
-        let events: Arc<dyn SessionEvents> = Arc::new(WebviewEvents { app });
+        let events: Arc<dyn DaemonEvents> = Arc::new(WebviewEvents { app });
+        let daemon = DaemonClient::connect(&daemon_binary_path(), events).map_err(|err| {
+            tracing::error!(error = %err, "could not reach the session daemon");
+            err.to_string()
+        });
+
         Self {
             beacon: Mutex::new(beacon),
-            sessions: Arc::new(SessionManager::new(events)),
+            daemon,
         }
     }
 
@@ -29,68 +38,42 @@ impl AppState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+
+    pub fn daemon(&self) -> Result<&DaemonClient, CoreError> {
+        self.daemon
+            .as_ref()
+            .map_err(|reason| CoreError::invalid(reason.clone()))
+    }
 }
 
-/// Forwards session activity to the webview.
+/// Forwards what the daemon reports to the webview.
 ///
-/// This is the only place that knows sessions are rendered in a window at all.
-/// The daemon will provide a different implementation over its transport, and
-/// `beacon-core` will not be able to tell.
+/// The only place that knows sessions are rendered in a window at all.
 struct WebviewEvents {
     app: AppHandle,
 }
 
-/// Payload for [`EVENT_OUTPUT`].
-///
-/// PTY output is arbitrary bytes — an escape sequence can be split mid-way
-/// across reads — so it is base64-encoded rather than coerced into a string,
-/// and decoded back to bytes before reaching xterm.js.
-#[derive(Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct OutputPayload {
-    id: SessionId,
-    /// Travels with the event so the UI can show which project is busy without
-    /// tracking sessions itself.
-    project: ProjectId,
-    /// Where this chunk starts in the session's lifetime stream.
-    offset: u64,
-    data: String,
-}
-
-#[derive(Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ExitPayload {
-    id: SessionId,
-    project: ProjectId,
-    code: Option<i32>,
-}
-
 pub const EVENT_OUTPUT: &str = "session:output";
 pub const EVENT_EXIT: &str = "session:exit";
+/// Raised when the connection drops. Sessions keep running; this window is no
+/// longer watching them.
+pub const EVENT_DETACHED: &str = "session:detached";
 
-impl SessionEvents for WebviewEvents {
-    fn output(&self, id: &SessionId, project: &ProjectId, offset: u64, bytes: &[u8]) {
-        use base64::Engine as _;
-        let payload = OutputPayload {
-            id: id.clone(),
-            project: project.clone(),
-            offset,
-            data: base64::engine::general_purpose::STANDARD.encode(bytes),
+impl DaemonEvents for WebviewEvents {
+    fn event(&self, event: Event) {
+        // Never log the payload: it carries whatever is on the user's screen.
+        let delivered = match event {
+            Event::Output { .. } => self.app.emit(EVENT_OUTPUT, event),
+            Event::Exit { .. } => self.app.emit(EVENT_EXIT, event),
         };
-        // Never log the payload: this carries whatever is on the user's screen.
-        if let Err(err) = self.app.emit(EVENT_OUTPUT, payload) {
-            tracing::warn!(session = %id, error = %err, "could not deliver session output");
+
+        if let Err(err) = delivered {
+            tracing::warn!(error = %err, "could not deliver a session event");
         }
     }
 
-    fn exited(&self, id: &SessionId, project: &ProjectId, code: Option<i32>) {
-        let payload = ExitPayload {
-            id: id.clone(),
-            project: project.clone(),
-            code,
-        };
-        if let Err(err) = self.app.emit(EVENT_EXIT, payload) {
-            tracing::warn!(session = %id, error = %err, "could not deliver session exit");
-        }
+    fn disconnected(&self) {
+        tracing::warn!("the session daemon connection dropped");
+        let _ = self.app.emit(EVENT_DETACHED, ());
     }
 }

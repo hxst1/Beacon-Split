@@ -44,7 +44,7 @@ pub fn remove_project(
     workspace_id: WorkspaceId,
     project_id: ProjectId,
 ) -> CommandResult<Snapshot> {
-    state.sessions.close_project(&project_id)?;
+    state.daemon()?.close_project(&project_id)?;
     let mut beacon = state.beacon();
     beacon.remove_project(&workspace_id, &project_id)?;
     Ok(beacon.snapshot())

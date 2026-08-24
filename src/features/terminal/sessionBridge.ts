@@ -34,6 +34,8 @@ let listening: Promise<void> | null = null
 export interface ActivityWatcher {
   onOutput: (project: string) => void
   onExit: (project: string, sessionId: string) => void
+  /** The daemon connection dropped. Sessions are still running. */
+  onDetached?: () => void
 }
 
 const watchers = new Set<ActivityWatcher>()
@@ -91,6 +93,9 @@ function ensureListening(): Promise<void> {
     listen<SessionExit>('session:exit', ({ payload }) => {
       for (const watcher of watchers) watcher.onExit(payload.project, payload.id)
       attachments.get(payload.id)?.sink.onExit?.(payload.code)
+    }),
+    listen('session:detached', () => {
+      for (const watcher of watchers) watcher.onDetached?.()
     }),
   ]).then(() => undefined)
 

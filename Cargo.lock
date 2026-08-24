@@ -229,6 +229,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 name = "beacon-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "portable-pty",
  "serde",
  "serde_json",
@@ -237,6 +238,17 @@ dependencies = [
  "tracing",
  "trash",
  "uuid",
+]
+
+[[package]]
+name = "beacon-daemon"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "beacon-core",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

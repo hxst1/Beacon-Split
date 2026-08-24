@@ -101,6 +101,12 @@ export const ipc = {
 
   stopProject: (projectId: string) => invoke<void>('stop_project', { projectId }),
 
+  /** Sessions running right now, including any started before this window. */
+  listSessions: () => invoke<SessionInfo[]>('list_sessions'),
+
+  /** Stops the daemon, and with it every session in every project. */
+  stopDaemon: () => invoke<void>('stop_daemon'),
+
   // ---- files ----
   // Every path is relative to the project; the backend refuses anything that
   // would resolve outside it.
