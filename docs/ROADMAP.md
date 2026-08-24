@@ -186,6 +186,15 @@ belongs with whatever comes next.
 - Installed explicitly from settings, which shows the exact command first, and
   removable without leaving anything behind
 
+The title bar shows how much of the five-hour allowance is left and how full the
+current project's context is, from Claude Code's status line — the only place it
+reports either. Beacon takes that slot and runs whatever was there, so what
+Claude Code shows does not change.
+
+Reports expire. If Claude Code stops reporting — signed out mid-session,
+crashed, hooks removed — a stale "working" falls back to inference and stale
+numbers are dimmed and labelled rather than left standing as current.
+
 Still to do: notifying the system when a project starts waiting, so it reaches
 you when Beacon is not the window you are looking at.
 

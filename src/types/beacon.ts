@@ -146,7 +146,33 @@ export interface SessionActivity {
 }
 
 /** Whether Beacon's hooks are registered with Claude Code. */
-export type HookStatus = 'installed' | 'stale' | 'notInstalled' 
+export type HookStatus = 'installed' | 'stale' | 'notInstalled'
+
+export interface Integration {
+  hooks: HookStatus
+  hookCommand: string
+  statusLine: boolean
+  statusLineCommand: string
+}
+
+/**
+ * What a Claude session is costing, as Claude Code reports it.
+ *
+ * Every field is optional because Claude Code fills in what it knows. A missing
+ * number is shown as missing, never as zero — zero would read as "none used".
+ */
+export interface UsageReport {
+  project: string
+  model?: string
+  contextUsedPercentage?: number
+  contextUsedTokens?: number
+  contextSize?: number
+  fiveHourUsedPercentage?: number
+  /** Unix seconds. */
+  fiveHourResetsAt?: number
+  sevenDayUsedPercentage?: number
+  sevenDayResetsAt?: number
+}
 
 // ---- files ------------------------------------------------------------------
 

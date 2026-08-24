@@ -225,6 +225,14 @@ impl DaemonClient {
         }
     }
 
+    /// What each project's Claude session last reported it was costing.
+    pub fn usage(&self) -> Result<Vec<crate::protocol::UsageReport>> {
+        match self.request(Request::Usage {})? {
+            Reply::Usage { reports } => Ok(reports),
+            _ => Err(unexpected()),
+        }
+    }
+
     pub fn shutdown(&self) -> Result<()> {
         self.request(Request::Shutdown {}).map(|_| ())
     }

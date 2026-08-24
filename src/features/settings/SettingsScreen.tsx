@@ -6,7 +6,7 @@ import { ACCENT_PRESETS } from '@/lib/accent'
 import { PANEL_LABELS } from '@/lib/layout'
 import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
 import { modifierLabel } from '@/lib/platform'
-import type { HookStatus, LayoutNode, LayoutPreset, PanelId } from '@/types/beacon'
+import type { Integration, LayoutNode, LayoutPreset, PanelId } from '@/types/beacon'
 import { LayoutThumb } from './LayoutThumb'
 import styles from './SettingsScreen.module.css'
 
@@ -333,22 +333,24 @@ function KeyboardSection(): React.ReactElement {
 /**
  * The Claude Code integration.
  *
- * Opt-in, and it says exactly what it will add before adding it. This writes
- * into a file belonging to another application; doing that unprompted is not
- * Beacon's to decide, however useful the result.
+ * Two halves, installed separately because they cost different things. Hooks
+ * are additive — Beacon adds entries and removes them again. The status line is
+ * a single slot, so taking it means displacing whatever was there; Beacon runs
+ * the previous one rather than replacing it, and says so.
+ *
+ * Both opt-in. These write into a file belonging to another application, and
+ * doing that unprompted is not Beacon's to decide however useful the result.
  */
 function ClaudeSection(): React.ReactElement {
-  const [status, setStatus] = useState<HookStatus | null>(null)
-  const [command, setCommand] = useState('')
+  const [integration, setIntegration] = useState<Integration | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([ipc.claudeHookStatus(), ipc.claudeHookCommand()])
-      .then(([found, hookCommand]) => {
-        if (cancelled) return
-        setStatus(found)
-        setCommand(hookCommand)
+    ipc
+      .claudeIntegration()
+      .then((found) => {
+        if (!cancelled) setIntegration(found)
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(errorMessage(err))
@@ -358,70 +360,124 @@ function ClaudeSection(): React.ReactElement {
     }
   }, [])
 
-  const act = (run: () => Promise<HookStatus>): void => {
+  const act = (run: () => Promise<Integration>): void => {
     run()
-      .then(setStatus)
+      .then(setIntegration)
       .catch((err: unknown) => setError(errorMessage(err)))
   }
 
-  const label =
-    status === 'installed'
+  const hooks = integration?.hooks ?? null
+  const hooksLabel =
+    hooks === 'installed'
       ? 'Installed'
-      : status === 'stale'
+      : hooks === 'stale'
         ? 'Installed, but pointing at another copy of Beacon'
         : 'Not installed'
 
   return (
-    <section className={styles['section']}>
-      <h2 className={styles['sectionTitle']}>Activity from Claude Code</h2>
-      <p className={styles['sectionNote']}>
-        Tabs can say what Claude is doing — working, finished, or stopped and waiting for you to
-        answer it. That last one is the point: with several projects open, the expensive thing is
-        not switching tabs, it is not knowing which one needs you.
-      </p>
-      <p className={styles['sectionNote']}>
-        This works by registering hooks in your own <code>~/.claude/settings.json</code>. Beacon
-        adds one entry per event and touches nothing else, and removing it puts the file back. The
-        hook does nothing outside Beacon: a Claude started anywhere else has no socket to report
-        to, so it exits immediately.
-      </p>
+    <>
+      <section className={styles['section']}>
+        <h2 className={styles['sectionTitle']}>What Claude is doing</h2>
+        <p className={styles['sectionNote']}>
+          Tabs can say whether Claude is working, has finished, or has stopped and is waiting for
+          you to answer it. That last one is the point: with several projects open, the expensive
+          thing is not switching tabs, it is not knowing which one needs you.
+        </p>
+        <p className={styles['sectionNote']}>
+          Beacon adds one hook per event to your <code>~/.claude/settings.json</code> and touches
+          nothing else. The hook does nothing outside Beacon — a Claude started anywhere else has
+          no socket to report to, so it exits immediately.
+        </p>
 
-      <div className={styles['command']}>{command || '…'}</div>
+        <div className={styles['command']}>{integration?.hookCommand ?? '…'}</div>
 
-      <div className={styles['buttons']}>
-        <span className={styles['state']}>
-          <span className={styles['stateDot']} data-state={status ?? 'notInstalled'} />
-          {status === null ? 'Checking…' : label}
-        </span>
-        <span style={{ flex: 1 }} />
+        <div className={styles['buttons']}>
+          <span className={styles['state']}>
+            <span className={styles['stateDot']} data-state={hooks ?? 'notInstalled'} />
+            {hooks === null ? 'Checking…' : hooksLabel}
+          </span>
+          <span style={{ flex: 1 }} />
 
-        {status === 'installed' ? (
-          <button
-            type="button"
-            className={styles['resetAll']}
-            style={{ marginTop: 0 }}
-            onClick={() => act(() => ipc.removeClaudeHooks())}
-          >
-            Remove
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={styles['primary']}
-            onClick={() => act(() => ipc.installClaudeHooks())}
-          >
-            {status === 'stale' ? 'Update' : 'Install'}
-          </button>
-        )}
-      </div>
+          {hooks === 'installed' ? (
+            <button
+              type="button"
+              className={styles['resetAll']}
+              style={{ marginTop: 0 }}
+              onClick={() => act(() => ipc.removeClaudeHooks().then(() => ipc.claudeIntegration()))}
+            >
+              Remove
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles['primary']}
+              onClick={() => act(() => ipc.installClaudeHooks().then(() => ipc.claudeIntegration()))}
+            >
+              {hooks === 'stale' ? 'Update' : 'Install'}
+            </button>
+          )}
+        </div>
+      </section>
 
-      {error ? <p className={styles['conflict']}>{error}</p> : null}
+      <section className={styles['section']}>
+        <h2 className={styles['sectionTitle']}>What Claude is costing</h2>
+        <p className={styles['sectionNote']}>
+          Shows how much of the five-hour allowance is left in the title bar, and how full each
+          project's context is — enough to decide which project to spend the rest of it on, and
+          when a session is worth clearing.
+        </p>
+        <p className={styles['sectionNote']}>
+          Claude Code only reports these through its status line, and a status line is one slot
+          rather than a list. Beacon takes the slot and runs whatever was there, so what Claude
+          Code shows does not change. Removing this puts your own line back exactly.
+        </p>
 
-      <p className={styles['sectionNote']} style={{ marginTop: 14 }}>
-        A Claude session already running will not pick this up — restart it, or the session daemon,
-        once the hooks are installed.
-      </p>
-    </section>
+        <div className={styles['command']}>{integration?.statusLineCommand ?? '…'}</div>
+
+        <div className={styles['buttons']}>
+          <span className={styles['state']}>
+            <span
+              className={styles['stateDot']}
+              data-state={integration?.statusLine ? 'installed' : 'notInstalled'}
+            />
+            {integration === null
+              ? 'Checking…'
+              : integration.statusLine
+                ? 'Installed'
+                : 'Not installed'}
+          </span>
+          <span style={{ flex: 1 }} />
+
+          {integration?.statusLine ? (
+            <button
+              type="button"
+              className={styles['resetAll']}
+              style={{ marginTop: 0 }}
+              onClick={() => act(() => ipc.removeClaudeStatusLine())}
+            >
+              Remove
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles['primary']}
+              onClick={() => act(() => ipc.installClaudeStatusLine())}
+            >
+              Install
+            </button>
+          )}
+        </div>
+
+        {error ? <p className={styles['conflict']}>{error}</p> : null}
+
+        <p className={styles['sectionNote']} style={{ marginTop: 14 }}>
+          A Claude session already running will not pick either of these up — restart it once they
+          are installed. And if Claude Code signs you out mid-session, it stops reporting: Beacon
+          then stops claiming to know, rather than leaving the last numbers on screen as though
+          they were still true.
+        </p>
+      </section>
+    </>
   )
 }
 

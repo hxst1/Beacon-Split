@@ -1,6 +1,11 @@
 import { listen } from '@tauri-apps/api/event'
 
-import type { SessionActivity, SessionExit, SessionOutput } from '@/types/beacon'
+import type {
+  SessionActivity,
+  SessionExit,
+  SessionOutput,
+  UsageReport,
+} from '@/types/beacon'
 
 /** Something that can receive PTY bytes — in practice, an xterm instance. */
 export interface OutputSink {
@@ -40,6 +45,8 @@ export interface ActivityWatcher {
   onReattached?: () => void
   /** Claude Code said what a project's session is doing. */
   onClaudeActivity?: (report: SessionActivity) => void
+  /** Claude Code said what a project's session is costing. */
+  onUsage?: (report: UsageReport) => void
 }
 
 const watchers = new Set<ActivityWatcher>()
@@ -106,6 +113,9 @@ function ensureListening(): Promise<void> {
     }),
     listen<SessionActivity>('session:activity', ({ payload }) => {
       for (const watcher of watchers) watcher.onClaudeActivity?.(payload)
+    }),
+    listen<UsageReport>('session:usage', ({ payload }) => {
+      for (const watcher of watchers) watcher.onUsage?.(payload)
     }),
   ]).then(() => undefined)
 

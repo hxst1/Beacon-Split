@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { ProjectTabs } from '@/features/projects/ProjectTabs'
+import { UsageMeter } from '@/features/usage/UsageMeter'
 import { WorkspaceMenu } from '@/features/workspaces/WorkspaceMenu'
 import { selectActiveWorkspace, useBeacon } from './store'
 import { Popover } from './ui/Popover'
@@ -33,6 +34,8 @@ export function TitleBar(): React.ReactElement {
       <ProjectTabs />
 
       <div className={styles['dragZone']} data-tauri-drag-region aria-hidden="true" />
+
+      <UsageMeter />
 
       <button
         type="button"

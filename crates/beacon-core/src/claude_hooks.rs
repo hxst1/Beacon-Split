@@ -191,6 +191,107 @@ fn remove_ours(groups: &mut Vec<Value>) {
     });
 }
 
+/// Takes over Claude Code's status line, keeping whatever was there.
+///
+/// The status line is one slot, not a list: configuring one replaces what came
+/// before. So Beacon's is given the previous command as an argument and runs
+/// it, and what Claude Code shows is still the user's own line. Replacing it
+/// outright would be taking something away in exchange for a feature they asked
+/// to add.
+pub fn install_status_line_at(path: &Path, command: &Path) -> Result<()> {
+    let mut settings = read(path)?;
+    let object = settings
+        .as_object_mut()
+        .ok_or_else(|| CoreError::invalid("~/.claude/settings.json is not an object"))?;
+
+    let existing = object
+        .get("statusLine")
+        .and_then(|line| line.get("command"))
+        .and_then(Value::as_str)
+        .filter(|previous| !previous.contains(MARKER))
+        .map(str::to_string);
+
+    let ours = match &existing {
+        Some(previous) => format!("{} {}", command.display(), shell_quote(previous)),
+        None => command.display().to_string(),
+    };
+
+    if let Some(previous) = &existing {
+        // Recorded so uninstalling can put it back exactly.
+        object.insert(
+            format!("{MARKER}PreviousStatusLine"),
+            Value::String(previous.clone()),
+        );
+    }
+
+    object.insert(
+        "statusLine".into(),
+        json!({ "type": "command", "command": ours }),
+    );
+    write(path, &settings)
+}
+
+/// Gives the status line back, restoring whatever Beacon displaced.
+pub fn remove_status_line_at(path: &Path) -> Result<()> {
+    let mut settings = read(path)?;
+    let Some(object) = settings.as_object_mut() else {
+        return Ok(());
+    };
+
+    let is_ours = object
+        .get("statusLine")
+        .and_then(|line| line.get("command"))
+        .and_then(Value::as_str)
+        .is_some_and(|command| command.contains(MARKER));
+
+    if !is_ours {
+        return Ok(());
+    }
+
+    let key = format!("{MARKER}PreviousStatusLine");
+    match object
+        .remove(&key)
+        .and_then(|v| v.as_str().map(str::to_string))
+    {
+        Some(previous) => {
+            object.insert(
+                "statusLine".into(),
+                json!({ "type": "command", "command": previous }),
+            );
+        }
+        None => {
+            object.remove("statusLine");
+        }
+    }
+
+    write(path, &settings)
+}
+
+pub fn status_line_installed_at(path: &Path) -> Result<bool> {
+    Ok(read(path)?
+        .get("statusLine")
+        .and_then(|line| line.get("command"))
+        .and_then(Value::as_str)
+        .is_some_and(|command| command.contains(MARKER)))
+}
+
+pub fn install_status_line(command: &Path) -> Result<()> {
+    install_status_line_at(&settings_path(), command)
+}
+
+pub fn remove_status_line() -> Result<()> {
+    remove_status_line_at(&settings_path())
+}
+
+pub fn status_line_installed() -> Result<bool> {
+    status_line_installed_at(&settings_path())
+}
+
+/// Wraps a command so it survives being passed as one argument.
+fn shell_quote(command: &str) -> String {
+    format!("'{}'", command.replace('\'', r"'\''"))
+}
+
 fn read(path: &Path) -> Result<Value> {
     match std::fs::read(path) {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(|source| CoreError::Parse {
@@ -332,6 +433,77 @@ mod tests {
         let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert!(settings.get("hooks").is_none(), "got {settings}");
         assert_eq!(settings["model"], "opus");
+    }
+
+    #[test]
+    fn taking_the_status_line_keeps_the_one_that_was_there() {
+        let (_guard, path) = scratch();
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&json!({
+                "statusLine": { "type": "command", "command": "~/.claude/my-statusline.sh" }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        install_status_line_at(&path, &beacon()).unwrap();
+
+        let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let command = settings["statusLine"]["command"].as_str().unwrap();
+        assert!(command.contains("beacon-split"), "got {command}");
+        assert!(
+            command.contains("my-statusline.sh"),
+            "the user's line should still run: {command}"
+        );
+
+        // And giving it back restores exactly what was there.
+        remove_status_line_at(&path).unwrap();
+        let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            settings["statusLine"]["command"],
+            "~/.claude/my-statusline.sh"
+        );
+        assert!(settings.get("beacon-splitPreviousStatusLine").is_none());
+    }
+
+    #[test]
+    fn taking_a_status_line_nobody_had_leaves_none_behind() {
+        let (_guard, path) = scratch();
+        install_status_line_at(&path, &beacon()).unwrap();
+        assert!(status_line_installed_at(&path).unwrap());
+
+        remove_status_line_at(&path).unwrap();
+        let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(settings.get("statusLine").is_none(), "got {settings}");
+    }
+
+    #[test]
+    fn installing_twice_does_not_wrap_ourselves() {
+        let (_guard, path) = scratch();
+        install_status_line_at(&path, &beacon()).unwrap();
+        install_status_line_at(&path, &beacon()).unwrap();
+
+        let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let command = settings["statusLine"]["command"].as_str().unwrap();
+        assert_eq!(command.matches("beacon-split").count(), 1, "got {command}");
+    }
+
+    #[test]
+    fn a_status_line_belonging_to_someone_else_is_left_alone() {
+        let (_guard, path) = scratch();
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&json!({
+                "statusLine": { "type": "command", "command": "/usr/local/bin/theirs" }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        remove_status_line_at(&path).unwrap();
+        let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(settings["statusLine"]["command"], "/usr/local/bin/theirs");
     }
 
     #[test]

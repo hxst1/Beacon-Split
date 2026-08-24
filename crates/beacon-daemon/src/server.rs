@@ -74,6 +74,11 @@ impl SessionEvents for Broadcaster {
 
 struct Daemon {
     socket: std::path::PathBuf,
+    /// The last usage reported per project.
+    ///
+    /// Retained, unlike activity: a window that has just attached should see
+    /// what a session costs immediately rather than waiting for its next turn.
+    usage: Mutex<std::collections::BTreeMap<ProjectId, beacon_core::protocol::UsageReport>>,
     sessions: Arc<SessionManager>,
     clients: Clients,
     attached: AtomicUsize,
@@ -94,6 +99,7 @@ pub fn serve(listener: UnixListener, socket: std::path::PathBuf) {
 
     let daemon = Arc::new(Daemon {
         socket: socket.clone(),
+        usage: Mutex::new(std::collections::BTreeMap::new()),
         sessions,
         clients,
         attached: AtomicUsize::new(0),
@@ -346,6 +352,19 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             });
             Ok(Reply::Done)
         }
+
+        Request::ReportUsage { usage } => {
+            daemon
+                .usage
+                .lock_or_recover()
+                .insert(usage.project.clone(), usage.clone());
+            daemon.broadcast(&Event::Usage(usage));
+            Ok(Reply::Done)
+        }
+
+        Request::Usage {} => Ok(Reply::Usage {
+            reports: daemon.usage.lock_or_recover().values().cloned().collect(),
+        }),
 
         Request::List {} => Ok(Reply::Sessions {
             sessions: sessions.list(),

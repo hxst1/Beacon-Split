@@ -36,6 +36,37 @@ pub enum ClaudeActivity {
     Ended,
 }
 
+/// What a Claude session is costing, as Claude Code itself reports it.
+///
+/// Every field is optional because Claude Code fills in what it knows: rate
+/// limits are absent on plans without them, and the context window is unknown
+/// until the first turn. A missing number is shown as missing rather than as
+/// zero, which would read as "you have used none of it".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageReport {
+    pub project: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// How much of the context window this session is using, 0..100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_used_percentage: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_used_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_size: Option<u64>,
+    /// How much of the five-hour allowance is gone, 0..100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub five_hour_used_percentage: Option<f32>,
+    /// Unix seconds when that window resets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub five_hour_resets_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seven_day_used_percentage: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seven_day_resets_at: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params", rename_all = "camelCase")]
 pub enum Request {
@@ -81,6 +112,14 @@ pub enum Request {
         /// just started, for instance.
         detail: Option<String>,
     },
+    /// Reported by Claude Code's status line, running inside a session.
+    #[serde(rename_all = "camelCase")]
+    ReportUsage { usage: UsageReport },
+    /// The last usage reported for each project.
+    ///
+    /// Unlike activity, this is worth keeping: a window that has just attached
+    /// should show what it costs now, not wait for the next turn to find out.
+    Usage {},
     /// Which sessions are alive, so a reattaching client can find its work.
     ///
     /// Carries a body it does not need: a unit variant serialises without a
@@ -129,6 +168,11 @@ pub enum Reply {
     Sessions {
         sessions: Vec<SessionInfo>,
     },
+    /// A struct variant for the same reason as `Sessions`.
+    #[serde(rename_all = "camelCase")]
+    Usage {
+        reports: Vec<UsageReport>,
+    },
     Done,
 }
 
@@ -166,6 +210,8 @@ pub enum Event {
         project: ProjectId,
         code: Option<i32>,
     },
+    /// A project's Claude session reported what it is costing.
+    Usage(UsageReport),
     /// A project's Claude session said what it is doing.
     #[serde(rename_all = "camelCase")]
     Activity {
@@ -267,6 +313,10 @@ mod tests {
                 activity: ClaudeActivity::Waiting,
                 detail: Some("Bash".into()),
             },
+            Request::ReportUsage {
+                usage: sample_usage(),
+            },
+            Request::Usage {},
         ];
 
         for (index, request) in requests.into_iter().enumerate() {
@@ -332,6 +382,9 @@ mod tests {
             Reply::Sessions {
                 sessions: vec![info],
             },
+            Reply::Usage {
+                reports: vec![sample_usage()],
+            },
             Reply::Done,
         ];
 
@@ -361,6 +414,34 @@ mod tests {
             Outcome::Err(message) => assert_eq!(message, "no such session"),
             Outcome::Ok(_) => panic!("expected an error"),
         }
+    }
+
+    fn sample_usage() -> UsageReport {
+        UsageReport {
+            project: ProjectId("pj_x".into()),
+            model: Some("claude-sonnet-4-6".into()),
+            context_used_percentage: Some(37.5),
+            context_used_tokens: Some(75_000),
+            context_size: Some(200_000),
+            five_hour_used_percentage: Some(12.0),
+            five_hour_resets_at: Some(1_800_000_000),
+            seven_day_used_percentage: None,
+            seven_day_resets_at: None,
+        }
+    }
+
+    #[test]
+    fn a_usage_report_keeps_the_difference_between_none_and_zero() {
+        // Absent means "not known", which is not the same as "none used" — and
+        // showing the second when you mean the first is a lie about how much
+        // room is left.
+        let report = sample_usage();
+        let line = serde_json::to_string(&report).unwrap();
+        assert!(!line.contains("sevenDay"), "got {line}");
+
+        let back: UsageReport = serde_json::from_str(&line).unwrap();
+        assert_eq!(back.seven_day_used_percentage, None);
+        assert_eq!(back.five_hour_used_percentage, Some(12.0));
     }
 
     #[test]

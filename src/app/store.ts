@@ -4,6 +4,7 @@ import { useEditor } from '@/features/editor/openFiles'
 import { useTree } from '@/features/files/treeStore'
 import { useActivity } from '@/features/terminal/activity'
 import { watchActivity } from '@/features/terminal/sessionBridge'
+import { forgetUsage, loadUsage } from '@/features/usage/usage'
 import {
   disposeAll,
   disposeFor,
@@ -91,24 +92,6 @@ interface BeaconState {
 }
 
 export const useBeacon = create<BeaconState>((set, get) => {
-  /**
-   * Watches the daemon connection for the lifetime of the window.
-   *
-   * Subscribed here rather than in a component so that losing the connection is
-   * noticed even if nothing is currently rendering a terminal.
-   */
-  watchActivity({
-    onOutput: () => {},
-    onExit: () => {},
-    onDetached: () => set({ detached: true }),
-    onReattached: () => {
-      // The daemon on the other end may not be the one that issued the session
-      // ids these terminals hold, so none of them can be trusted.
-      disposeAll()
-      set((state) => ({ detached: false, attachEpoch: state.attachEpoch + 1 }))
-    },
-  })
-
   /** Applies a snapshot returned by any command and keeps the accent in sync. */
   const accept = (snapshot: Snapshot): void => {
     const active = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspace)
@@ -149,6 +132,8 @@ export const useBeacon = create<BeaconState>((set, get) => {
       try {
         setPlatform(await ipc.hostPlatform())
         accept(await ipc.getSnapshot())
+        // Whatever sessions were already running have already reported.
+        loadUsage()
       } catch (error) {
         set({ status: 'error', fatal: errorMessage(error) })
       }
@@ -181,6 +166,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
       await run(() => ipc.removeProject(workspaceId, projectId))
       disposeProject(projectId)
       useActivity.getState().projectStopped(projectId)
+      forgetUsage(projectId)
       useEditor.getState().forget(projectId)
       useTree.getState().forget(projectId)
     },
@@ -190,6 +176,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
         await ipc.stopProject(projectId)
         disposeProject(projectId)
         useActivity.getState().projectStopped(projectId)
+        forgetUsage(projectId)
       } catch (error) {
         set({ notice: errorMessage(error) })
       }
@@ -284,6 +271,26 @@ export function selectActiveWorkspace(state: BeaconState): Workspace | null {
 
 export function selectProjects(state: BeaconState): Project[] {
   return selectActiveWorkspace(state)?.projects ?? []
+}
+
+/**
+ * Starts watching the daemon connection. Called once by the application.
+ *
+ * Not on import: a store that subscribes to a transport as a side effect of
+ * existing cannot be used anywhere that transport is absent.
+ */
+export function startConnectionTracking(): () => void {
+  return watchActivity({
+    onOutput: () => {},
+    onExit: () => {},
+    onDetached: () => useBeacon.setState({ detached: true }),
+    onReattached: () => {
+      // The daemon on the other end may not be the one that issued the session
+      // ids these terminals hold, so none of them can be trusted.
+      disposeAll()
+      useBeacon.setState((state) => ({ detached: false, attachEpoch: state.attachEpoch + 1 }))
+    },
+  })
 }
 
 export function selectLayout(state: BeaconState): LayoutNode | null {

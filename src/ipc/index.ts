@@ -12,6 +12,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import type {
   DirEntry,
   HookStatus,
+  Integration,
+  UsageReport,
   GitStatus,
   EnvEntry,
   FileContents,
@@ -117,6 +119,15 @@ export const ipc = {
   // ---- Claude Code integration ----
 
   claudeHookStatus: () => invoke<HookStatus>('claude_hook_status'),
+
+  claudeIntegration: () => invoke<Integration>('claude_integration'),
+
+  installClaudeStatusLine: () => invoke<Integration>('install_claude_status_line'),
+
+  removeClaudeStatusLine: () => invoke<Integration>('remove_claude_status_line'),
+
+  /** What each project last reported. Fetched on attach; events follow. */
+  sessionUsage: () => invoke<UsageReport[]>('session_usage'),
 
   /** The exact command that would be registered, to show before agreeing. */
   claudeHookCommand: () => invoke<string>('claude_hook_command'),

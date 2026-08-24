@@ -26,8 +26,11 @@ Sessions outlive the window: closing Beacon leaves them running, and opening it
 again reattaches to them.
 
 Tabs can also say what Claude is doing — working, finished, or stopped and
-waiting for you — by registering hooks with Claude Code from Settings → Claude
-Code. It is opt-in, shows what it will add first, and removes cleanly.
+waiting for you — and the title bar can show how much of the five-hour allowance
+is left and how full each project's context is. Both are opt-in from
+Settings → Claude Code, show what they will add first, and remove cleanly.
+Neither invents a number: when Claude Code stops reporting, Beacon stops
+claiming to know.
 
 What is left is a few smaller things listed in the roadmap.
 

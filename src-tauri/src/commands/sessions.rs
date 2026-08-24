@@ -97,6 +97,14 @@ pub fn list_sessions(state: State<'_, AppState>) -> CommandResult<Vec<SessionInf
     Ok(state.daemon()?.list()?)
 }
 
+/// What each project's Claude session last reported it was costing.
+#[tauri::command]
+pub fn session_usage(
+    state: State<'_, AppState>,
+) -> CommandResult<Vec<beacon_core::protocol::UsageReport>> {
+    Ok(state.daemon()?.usage()?)
+}
+
 /// Stops the daemon, and with it every session.
 ///
 /// The one way to deliberately end work that is meant to outlive the window.

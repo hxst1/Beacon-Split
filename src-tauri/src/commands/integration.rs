@@ -11,6 +11,47 @@ fn hook_command() -> String {
     format!("{} hook", daemon_binary_path().display())
 }
 
+fn status_line_command() -> String {
+    format!("{} statusline", daemon_binary_path().display())
+}
+
+/// Everything the Claude Code section needs to describe itself.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Integration {
+    hooks: HookStatus,
+    hook_command: String,
+    status_line: bool,
+    status_line_command: String,
+}
+
+#[tauri::command]
+pub fn claude_integration() -> CommandResult<Integration> {
+    Ok(Integration {
+        hooks: claude_hooks::status(std::path::Path::new(&hook_command()))?,
+        hook_command: hook_command(),
+        status_line: claude_hooks::status_line_installed()?,
+        status_line_command: status_line_command(),
+    })
+}
+
+/// Takes over Claude Code's status line, which is the only place it reports the
+/// five-hour allowance and how full the context is. Whatever was there still
+/// runs and is still what Claude Code shows.
+#[tauri::command]
+pub fn install_claude_status_line() -> CommandResult<Integration> {
+    claude_hooks::install_status_line(std::path::Path::new(&status_line_command()))?;
+    tracing::info!("took over Claude Code's status line");
+    claude_integration()
+}
+
+#[tauri::command]
+pub fn remove_claude_status_line() -> CommandResult<Integration> {
+    claude_hooks::remove_status_line()?;
+    tracing::info!("gave Claude Code's status line back");
+    claude_integration()
+}
+
 /// Whether Beacon's hooks are registered with Claude Code, and whether they
 /// still point at this build.
 #[tauri::command]

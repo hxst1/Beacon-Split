@@ -6,6 +6,21 @@ import type { Activity, ClaudeActivity } from '@/types/beacon'
 /** How long after its last output a project stops looking busy. */
 const SETTLE_MS = 700
 
+/**
+ * How long a "working" report is believed without anything backing it up.
+ *
+ * A report is a fact about a moment, not a standing claim. If Claude Code stops
+ * reporting — it was logged out mid-turn, it crashed, the hooks were removed —
+ * the last thing it said would otherwise stand forever, and a tab claiming to
+ * be working on something for the rest of the afternoon is worse than one that
+ * admits it does not know.
+ *
+ * `waiting` and `done` are deliberately not expired: both are states a session
+ * can legitimately sit in for hours, and both are still true if Claude stopped
+ * because it needs you.
+ */
+const WORKING_EXPIRY_MS = 2 * 60 * 1000
+
 interface ActivityState {
   /**
    * Which project each live session belongs to.
@@ -24,7 +39,7 @@ interface ActivityState {
    * Takes precedence over the output heuristic: a report is a fact, and
    * "something printed recently" is an inference from it at best.
    */
-  reported: Record<string, { activity: ClaudeActivity; detail: string | null }>
+  reported: Record<string, { activity: ClaudeActivity; detail: string | null; at: number }>
 
   sessionOpened: (sessionId: string, project: string) => void
   sessionClosed: (sessionId: string) => void
@@ -95,32 +110,42 @@ function markBusy(project: string): void {
   )
 }
 
-/** Subscribes for the lifetime of the window. */
-watchActivity({
-  onOutput: markBusy,
-  onExit: (_project, sessionId) => {
-    useActivity.getState().sessionClosed(sessionId)
-  },
-  onClaudeActivity: ({ project, activity, detail }) => {
-    useActivity.setState((state) => {
-      const reported = { ...state.reported }
-      if (activity === 'ended') delete reported[project]
-      else reported[project] = { activity, detail }
-      return { reported }
-    })
-  },
-})
+/** Starts listening. Called once by the application, not on import. */
+export function startActivityTracking(): () => void {
+  return watchActivity({
+    onOutput: markBusy,
+    onExit: (_project, sessionId) => {
+      useActivity.getState().sessionClosed(sessionId)
+    },
+    onClaudeActivity: ({ project, activity, detail }) => {
+      useActivity.setState((state) => {
+        const reported = { ...state.reported }
+        if (activity === 'ended') delete reported[project]
+        else reported[project] = { activity, detail, at: Date.now() }
+        return { reported }
+      })
+    },
+  })
+}
 
 function derive(state: ActivityState, project: string): Activity {
   const running = Object.values(state.sessions).includes(project)
   if (!running) return 'stopped'
 
-  // What Claude said beats what we inferred from bytes arriving.
+  // What Claude said beats what we inferred from bytes arriving — while it is
+  // still plausibly true.
   const reported = state.reported[project]
   if (reported) {
     if (reported.activity === 'waiting') return 'waiting'
-    if (reported.activity === 'working') return 'working'
     if (reported.activity === 'done') return state.busy[project] ? 'working' : 'done'
+
+    if (reported.activity === 'working') {
+      // Output means it really is working, whatever the age of the report.
+      if (state.busy[project]) return 'working'
+      if (Date.now() - reported.at < WORKING_EXPIRY_MS) return 'working'
+      // Nothing said, nothing printed: fall back to inferring rather than
+      // repeating a claim that has gone unsupported.
+    }
   }
 
   return state.busy[project] ? 'working' : 'idle'

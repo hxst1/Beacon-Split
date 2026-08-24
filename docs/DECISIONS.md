@@ -663,3 +663,61 @@ break Claude Code everywhere on the machine, not only here.
 visible rather than something that happened. Hooks pointing at a Beacon that
 moved are reported as stale rather than as missing, since one needs installing
 and the other needs replacing.
+
+## ADR-037: Usage comes from the status line, and Beacon lends the slot back
+
+**Context.** How much of the five-hour allowance is left, and how full a
+context is, are the two numbers that decide what to work on next. Neither is
+written to disk anywhere: Claude Code reports them only through its status line.
+
+**Decision.** Beacon registers as the status line and runs whatever was already
+configured, passing the payload through and printing that command's output. What
+Claude Code shows does not change. Removing the integration restores the
+previous command exactly.
+
+**Why.** A status line is one slot, not a list like hooks. Taking it outright
+would mean removing something the user had in exchange for a feature they asked
+to add. Delegating costs one subprocess per render and keeps the trade honest.
+
+**Consequence.** Both halves of the integration are installed separately,
+because they cost different things — hooks are additive, the status line is
+displacement. A user with no status line gets a plain default line rather than
+an empty one.
+
+## ADR-038: A report is a fact with a date on it
+
+**Context.** Hooks and the status line only speak while a session is healthy.
+Claude Code signing someone out mid-session, or crashing, means the reports
+simply stop — and the last thing said would otherwise stand indefinitely.
+
+**Decision.** Reports carry when they were heard. A `working` state with no
+output and no report behind it for two minutes falls back to inference. Usage
+older than fifteen minutes is dimmed, labelled with its age, and its countdown
+is dropped. `waiting` and `done` do not expire, because both are states a
+session legitimately sits in for hours.
+
+**Why.** A stale number is worse than no number: "62% of your allowance left" is
+exactly what somebody would plan an afternoon around, and a tab claiming to be
+working on something it abandoned an hour ago is a lie the interface is telling
+confidently.
+
+**Consequence.** The interface says less when it knows less, which is the
+intended trade. Old numbers are shown greyed rather than hidden — what they said
+is still worth something, as long as it does not claim to be current.
+
+## ADR-039: Modules do not subscribe on import
+
+**Context.** The usage store called `watchActivity` at module scope, so
+importing it opened a Tauri event subscription. A test that only wanted the
+arithmetic could not load the file.
+
+**Decision.** Each module exports a `start…` function returning its
+unsubscribe, and the application calls them once, in one place.
+
+**Why.** A module that reaches for a transport as a side effect of existing
+cannot be used anywhere that transport is absent — a test, a different frontend,
+a future headless build. It was a test that surfaced this, which is the argument
+for having written it.
+
+**Consequence.** One more line at startup, and subscriptions that can be torn
+down rather than lasting as long as the module system does.

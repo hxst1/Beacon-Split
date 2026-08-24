@@ -6,6 +6,7 @@
 
 mod hook;
 mod server;
+mod statusline;
 
 use std::io::ErrorKind;
 use std::os::unix::net::UnixListener;
@@ -27,8 +28,12 @@ fn requested_dir() -> std::path::PathBuf {
 fn main() {
     // Running as a Claude Code hook rather than as the daemon. Checked before
     // anything else, including logging: a hook must be silent and quick.
-    if std::env::args().nth(1).as_deref() == Some("hook") {
-        hook::run();
+    match std::env::args().nth(1).as_deref() {
+        Some("hook") => hook::run(),
+        // A second argument is the status line Beacon took the slot from; it
+        // still runs, and its output is still what Claude Code shows.
+        Some("statusline") => statusline::run(std::env::args().nth(2)),
+        _ => {}
     }
 
     init_tracing();
