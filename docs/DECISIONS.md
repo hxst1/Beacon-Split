@@ -314,3 +314,76 @@ be wrong often enough to be worse than showing nothing.
 **Consequence.** Sessions are keyed by id in the activity store rather than
 counted per project: opening a session is idempotent on the backend, so a
 counter would drift every time a panel remounted.
+
+## ADR-019: Deleting means the trash
+
+**Context.** The file tree needs a delete, and Beacon's whole promise about a
+user's files is that it does not destroy them.
+
+**Decision.** Delete moves the entry to the system trash. There is no operation
+that removes a file outright. The menu item is separated from the rest, asks
+first, and says "Recoverable".
+
+**Why.** The cost of being wrong is unbounded, and a trash that the user can
+open in their own file manager turns an irreversible mistake into an annoying
+one. This is the same reasoning as ADR-006, applied to the one place Beacon does
+touch the disk.
+
+**Consequence.** A dependency on the platform trash, which behaves differently
+on macOS and Linux and can fail on some volumes. A failure surfaces as an error
+rather than silently falling back to a real delete.
+
+## ADR-020: Every file path is confined to its project
+
+**Context.** File commands take a path from the frontend. A bug, or a crafted
+value, must not be able to reach outside the project.
+
+**Decision.** Commands take a project and a path relative to it; absolute paths
+and `..` are refused outright, and the resolved path is then checked against the
+canonical project root. Resolution walks up to the deepest existing ancestor, so
+creating a file still works.
+
+**Why.** Checking the string is not enough: `a/../../b` and a symlink pointing
+elsewhere both look innocent as text. Canonicalising first is what makes the
+rule mean what it says — a test covers the symlink case specifically.
+
+**Consequence.** A project that is itself a symlink resolves to its target, and
+paths are compared against that. Every file operation pays one `canonicalize`,
+which is not measurable next to the I/O it guards.
+
+## ADR-021: Adding a panel repairs stored layouts instead of invalidating them
+
+**Context.** The editor is a fifth panel. Layouts stored by earlier versions
+place four, and the original rule required a layout to place every panel.
+
+**Decision.** Validation requires only that no panel is placed twice and that
+Claude is placed at all. A layout missing a panel is repaired on load: the panel
+is attached beside Claude and starts hidden, and the repaired document is
+written back.
+
+**Why.** Refusing an arrangement somebody made because a new version added a
+panel is the same failure as discarding their settings on a format change —
+ADR-015 again. Hidden on arrival means nothing moves until they ask for it, and
+an empty editor pane never takes up room.
+
+**Consequence.** "Starts hidden" applies at the moment a panel is introduced and
+not afterwards; once repaired, the layout is the user's. Adding a panel in
+future needs only an entry in `PanelId::ALL`.
+
+## ADR-022: `.env` values are read for one render and kept nowhere
+
+**Context.** The `.env` view exists to get a secret onto the clipboard. That
+means the value crosses the IPC boundary and is held in the UI.
+
+**Decision.** The file is read fresh on every open, parsed in the backend, and
+the entries live in the view's own state for as long as it is mounted — never in
+the persisted store, never in a log line, never anywhere else. Values are masked
+until asked for, one at a time. The commands that carry file contents are marked
+so nobody adds logging to them later.
+
+**Why.** The file is the only place these belong. Anything that caches them
+turns one secret into two.
+
+**Consequence.** Reopening the view re-reads the file, which also means it never
+shows a stale value. Nothing derived from a value is stored, so there is no
+search or filter over them.

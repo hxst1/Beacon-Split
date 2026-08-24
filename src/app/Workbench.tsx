@@ -5,6 +5,7 @@ import { prune, withFraction } from '@/lib/layout'
 import type { Path } from '@/lib/layout'
 import type { PanelId, Project } from '@/types/beacon'
 import { ClaudePanel } from './panels/ClaudePanel'
+import { EditorPanel } from './panels/EditorPanel'
 import { FilesPanel } from './panels/FilesPanel'
 import { GitPanel } from './panels/GitPanel'
 import { TerminalPanel } from './panels/TerminalPanel'
@@ -77,7 +78,9 @@ function renderPanel(
     case 'claude':
       return <ClaudePanel workspaceId={workspaceId} project={project} focused={focused} />
     case 'files':
-      return <FilesPanel project={project} />
+      return <FilesPanel workspaceId={workspaceId} project={project} />
+    case 'editor':
+      return <EditorPanel workspaceId={workspaceId} project={project} focused={focused} />
     case 'git':
       return <GitPanel />
     case 'terminal':

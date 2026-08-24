@@ -82,12 +82,22 @@ impl UiState {
             hidden.clear();
         }
 
+        // A layout stored before a panel existed gains it here rather than
+        // being refused; a panel added this way starts hidden.
+        let layout = self.layout.repaired();
+        for panel in PanelId::ALL {
+            let is_new = !self.layout.panels().contains(&panel);
+            if is_new && PanelId::HIDDEN_BY_DEFAULT.contains(&panel) && !hidden.contains(&panel) {
+                hidden.push(panel);
+            }
+        }
+
         Self {
             schema_version: Self::SCHEMA_VERSION,
             active_workspace: self.active_workspace.clone(),
             active_project: self.active_project.clone(),
             preset: self.preset,
-            layout: self.layout.clamped(),
+            layout: layout.clamped(),
             hidden,
         }
     }
@@ -101,7 +111,7 @@ impl Default for UiState {
             active_project: BTreeMap::new(),
             preset: LayoutPreset::default(),
             layout: default_layout(),
-            hidden: Vec::new(),
+            hidden: PanelId::HIDDEN_BY_DEFAULT.to_vec(),
         }
     }
 }

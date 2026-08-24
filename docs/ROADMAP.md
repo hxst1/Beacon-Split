@@ -86,12 +86,23 @@ Still to do here: `dev server` and `error` states, which need understanding what
 a session printed rather than that it printed. Detecting them by pattern is
 guesswork, so they wait for something better.
 
-## Milestone 4 — Files
+## Milestone 4 — Files ✅
 
-- File tree: expand, open, create, rename, duplicate, copy, paste, delete
-- Copy path, copy relative path, copy contents, reveal, show hidden files
-- CodeMirror 6: highlighting, edit, save, search and replace, go to line
-- A dedicated `.env` view — values masked by default, copy key, copy `KEY=value`
+- A conventional file tree, loading a level at a time on expand
+- New file, new folder, rename, duplicate, copy, paste, copy path, copy
+  contents, reveal in Finder / file manager, show or hide dotfiles
+- Delete moves to the system trash, is separated from everything else, and asks
+  first. Beacon has no operation that removes a file outright
+- Every path is confined to its project: absolute paths and `..` refused, and
+  the resolved path checked against the canonical root, so a symlink pointing
+  outside is refused too
+- The editor is a fifth panel, hidden until a file is opened. CodeMirror 6 with
+  a theme built from Beacon's own tokens, syntax highlighting loaded on demand,
+  history, search and replace, line numbers, `⌘S`
+- A `.env` view: values masked, show or copy one at a time, copy `KEY=value`.
+  Read fresh each time and kept nowhere else
+
+Still to do here: go-to-line, and following file changes made outside Beacon.
 
 ## Milestone 5 — Git
 

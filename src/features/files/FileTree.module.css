@@ -1,0 +1,123 @@
+.root {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid var(--line-1);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.tool {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  flex: none;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.tool:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
+.tool[data-on='true'] {
+  color: var(--accent-text);
+  background: var(--accent-wash);
+}
+
+.list {
+  overflow: auto;
+  padding: 4px 0 10px;
+  min-height: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 8px 2px 0;
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.row:hover {
+  background: var(--surface-1);
+  color: var(--fg-1);
+}
+
+.row[data-selected='true'] {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
+.row[data-hidden='true'] {
+  color: var(--fg-4);
+}
+
+.row[data-hidden='true']:hover {
+  color: var(--fg-2);
+}
+
+/* The twisty doubles as the indent guide. */
+.twisty {
+  width: 12px;
+  flex: none;
+  color: var(--fg-4);
+  font-size: 8px;
+  text-align: center;
+  transition: transform var(--dur-1) var(--ease);
+}
+
+.twisty[data-open='true'] {
+  transform: rotate(90deg);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dirName {
+  color: inherit;
+}
+
+.status {
+  padding: 10px 12px;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+}
+
+.error {
+  color: var(--danger);
+  user-select: text;
+}
+
+.rename {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+  border: 1px solid var(--accent-line);
+  border-radius: 3px;
+  background: rgb(0 0 0 / 0.35);
+  color: var(--fg-1);
+  font: inherit;
+  outline: none;
+  user-select: text;
+}

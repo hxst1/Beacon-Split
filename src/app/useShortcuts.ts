@@ -43,6 +43,10 @@ export function useShortcuts(): void {
           event.preventDefault()
           void store.togglePanel('terminal')
           break
+        case 'o':
+          event.preventDefault()
+          void store.togglePanel('editor')
+          break
         case 'enter':
           event.preventDefault()
           store.toggleFullscreen(store.fullscreenPanel ?? 'claude')

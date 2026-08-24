@@ -18,6 +18,7 @@ const PRESET_LABELS: Record<LayoutPreset, string> = {
 }
 
 const TOGGLEABLE: Array<{ panel: PanelId; key: string }> = [
+  { panel: 'editor', key: 'O' },
   { panel: 'files', key: 'E' },
   { panel: 'git', key: 'G' },
   { panel: 'terminal', key: 'J' },

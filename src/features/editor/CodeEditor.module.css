@@ -1,0 +1,15 @@
+.root {
+  height: 100%;
+  min-height: 0;
+  user-select: text;
+}
+
+.notice {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  color: var(--fg-4);
+  font-size: var(--text-sm);
+  text-align: center;
+}

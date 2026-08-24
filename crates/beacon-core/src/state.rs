@@ -96,14 +96,22 @@ impl Beacon {
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(UiState::SCHEMA_VERSION as u64) as u32;
 
-        let ui = match raw {
+        let loaded = match raw {
             Some(value) => UiState::from_json(ui_store.path(), value)?,
             None => UiState::default(),
         };
 
-        // Write a migrated document back immediately. Otherwise the upgrade is
-        // redone on every launch until something else happens to save.
-        if stored_version < UiState::SCHEMA_VERSION {
+        // Normalising here is what repairs a layout stored before a panel
+        // existed, so a new version never refuses an arrangement somebody made.
+        let ui = loaded.normalized();
+        let repaired = ui.layout.panels().len() != loaded.layout.panels().len();
+        if repaired {
+            tracing::info!("added newly introduced panels to the stored layout");
+        }
+
+        // Write back immediately. Otherwise the upgrade is redone on every
+        // launch until something else happens to save.
+        if stored_version < UiState::SCHEMA_VERSION || repaired {
             ui_store.write(&ui)?;
         }
 

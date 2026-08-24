@@ -16,11 +16,11 @@ click or two.
 
 ## Status
 
-Milestones 0, 2, 2.5 and 3 are complete and Milestone 1 is nearly there. Today
-Beacon gives you workspaces, projects, tabs, layout presets, the workspace
-accent, and — per project — a real shell and a real `claude` session, each in
-its own PTY. Files and git are placeholders that name the milestone they arrive
-in.
+Milestones 0, 2, 2.5, 3 and 4 are complete and Milestone 1 is nearly there.
+Today Beacon gives you workspaces, projects, tabs, layout presets, the workspace
+accent, a file tree with an editor and a `.env` view, and — per project — a real
+shell and a real `claude` session, each in its own PTY. Git is a placeholder
+that names the milestone it arrives in.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 
@@ -88,7 +88,9 @@ the same configuration works on macOS and Linux.
 | Shortcut | Action |
 | --- | --- |
 | `⌘1` … `⌘9` | Switch to project tab |
-| `⌘E` | Toggle the Files / Git column |
+| `⌘E` | Toggle Files |
+| `⌘G` | Toggle Git |
+| `⌘O` | Toggle the editor |
 | `⌘J` | Toggle the terminal |
 | `⌘↩` | Fullscreen the focused panel |
 
@@ -100,6 +102,10 @@ with user-configurable bindings.
 Removing a project from Beacon removes it from Beacon. It never deletes a
 repository, and it never touches the folder on disk. Anything that genuinely
 destroys data will be visibly separated from everything that does not.
+
+Deleting a file moves it to the system trash, and every file path is confined to
+its project — absolute paths, `..`, and symlinks pointing outside are all
+refused.
 
 `.env` values are never logged, never cached outside the file they came from,
 and never sent anywhere.

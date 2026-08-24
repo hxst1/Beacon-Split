@@ -152,22 +152,43 @@ fn a_hidden_panel_survives_a_reload() {
     }
 
     let snapshot = Beacon::load(&config).unwrap().snapshot();
-    assert_eq!(snapshot.hidden, vec![PanelId::Git]);
+    assert!(snapshot.hidden.contains(&PanelId::Git));
     // Hiding does not remove it from the tree, so showing it again puts it back.
     assert!(snapshot.layout.panels().contains(&PanelId::Git));
 }
 
 #[test]
-fn a_layout_that_loses_a_panel_is_refused() {
+fn a_layout_without_claude_is_refused() {
+    let (_guard, config) = scratch();
+    let mut beacon = Beacon::load(&config).unwrap();
+    let broken = LayoutNode::split(
+        SplitDirection::Row,
+        0.5,
+        LayoutNode::panel(PanelId::Files),
+        LayoutNode::panel(PanelId::Terminal),
+    );
+    assert!(beacon.set_layout(broken).is_err());
+}
+
+#[test]
+fn a_layout_that_repeats_a_panel_is_refused() {
     let (_guard, config) = scratch();
     let mut beacon = Beacon::load(&config).unwrap();
     let broken = LayoutNode::split(
         SplitDirection::Row,
         0.5,
         LayoutNode::panel(PanelId::Claude),
-        LayoutNode::panel(PanelId::Terminal),
+        LayoutNode::panel(PanelId::Claude),
     );
     assert!(beacon.set_layout(broken).is_err());
+}
+
+#[test]
+fn the_editor_starts_hidden_so_nothing_empty_is_shown() {
+    let (_guard, config) = scratch();
+    let snapshot = Beacon::load(&config).unwrap().snapshot();
+    assert!(snapshot.hidden.contains(&PanelId::Editor));
+    assert!(snapshot.layout.panels().contains(&PanelId::Editor));
 }
 
 #[test]
@@ -210,4 +231,43 @@ fn a_v1_ui_state_is_upgraded_on_disk_once() {
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     assert_eq!(upgraded["schemaVersion"], 2);
     assert!(upgraded.get("panels").is_none());
+}
+
+#[test]
+fn a_layout_stored_before_the_editor_existed_gains_it_hidden() {
+    // The exact document a build without an editor panel would have written.
+    let (_guard, config) = scratch();
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("ui-state.json"),
+        r#"{
+            "schemaVersion": 2,
+            "preset": "claude-left",
+            "hidden": [],
+            "layout": {
+                "type": "split", "direction": "column", "fraction": 0.72,
+                "first": {
+                    "type": "split", "direction": "row", "fraction": 0.74,
+                    "first": { "type": "panel", "panel": "claude" },
+                    "second": {
+                        "type": "split", "direction": "column", "fraction": 0.6,
+                        "first": { "type": "panel", "panel": "files" },
+                        "second": { "type": "panel", "panel": "git" }
+                    }
+                },
+                "second": { "type": "panel", "panel": "terminal" }
+            }
+        }"#,
+    )
+    .unwrap();
+
+    let snapshot = Beacon::load(&config).unwrap().snapshot();
+    assert!(
+        snapshot.layout.panels().contains(&PanelId::Editor),
+        "the editor should have been added to the layout"
+    );
+    assert!(
+        snapshot.hidden.contains(&PanelId::Editor),
+        "a panel introduced by a repair must start hidden, not show an empty pane"
+    );
 }

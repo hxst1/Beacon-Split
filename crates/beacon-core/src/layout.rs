@@ -8,18 +8,23 @@ use crate::error::{CoreError, Result};
 #[serde(rename_all = "camelCase")]
 pub enum PanelId {
     Claude,
+    Editor,
     Files,
     Git,
     Terminal,
 }
 
 impl PanelId {
-    pub const ALL: [PanelId; 4] = [
+    pub const ALL: [PanelId; 5] = [
         PanelId::Claude,
+        PanelId::Editor,
         PanelId::Files,
         PanelId::Git,
         PanelId::Terminal,
     ];
+
+    /// Panels that start out of the way rather than showing something empty.
+    pub const HIDDEN_BY_DEFAULT: [PanelId; 1] = [PanelId::Editor];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,10 +82,10 @@ impl LayoutNode {
         }
     }
 
-    /// Rejects trees that would leave a panel unreachable or duplicated.
+    /// Rejects trees that place a panel twice.
     ///
-    /// A custom layout is user input, and a layout missing Claude is not a
-    /// layout Beacon can show anything in.
+    /// Completeness is deliberately not required here: a stored layout written
+    /// before a panel existed is repaired rather than refused. See [`repaired`].
     pub fn validate(&self) -> Result<()> {
         let panels = self.panels();
         let mut seen = panels.clone();
@@ -90,12 +95,51 @@ impl LayoutNode {
         if seen.len() != panels.len() {
             return Err(CoreError::invalid("a layout cannot place a panel twice"));
         }
-        if seen.len() != PanelId::ALL.len() {
-            return Err(CoreError::invalid(
-                "a layout must place every panel; hide the ones you do not want",
-            ));
+        if !panels.contains(&PanelId::Claude) {
+            return Err(CoreError::invalid("a layout must place the Claude panel"));
         }
         Ok(())
+    }
+
+    /// Adds any panel the tree does not place yet.
+    ///
+    /// Adding a panel in a new version must not invalidate a layout somebody
+    /// arranged. A missing panel is attached beside Claude, which is where new
+    /// content belongs and is somewhere the user can find it — and it arrives
+    /// hidden, so nothing moves until they ask for it.
+    pub fn repaired(&self) -> Self {
+        let placed = self.panels();
+        let mut tree = self.clone();
+
+        for panel in PanelId::ALL {
+            if !placed.contains(&panel) {
+                tree = tree.attach_beside(PanelId::Claude, panel);
+            }
+        }
+        tree
+    }
+
+    fn attach_beside(&self, anchor: PanelId, panel: PanelId) -> Self {
+        match self {
+            Self::Panel { panel: existing } if *existing == anchor => Self::split(
+                SplitDirection::Row,
+                0.58,
+                Self::panel(anchor),
+                Self::panel(panel),
+            ),
+            Self::Panel { panel } => Self::Panel { panel: *panel },
+            Self::Split {
+                direction,
+                fraction,
+                first,
+                second,
+            } => Self::Split {
+                direction: *direction,
+                fraction: *fraction,
+                first: Box::new(first.attach_beside(anchor, panel)),
+                second: Box::new(second.attach_beside(anchor, panel)),
+            },
+        }
     }
 
     /// Pulls every split fraction back into a usable range.
@@ -158,30 +202,40 @@ impl LayoutPreset {
                 LayoutNode::panel(Git),
             )
         };
+        // The editor sits beside Claude, and starts hidden, so a preset looks
+        // exactly the same until a file is actually opened.
+        let main = || {
+            LayoutNode::split(
+                Row,
+                0.58,
+                LayoutNode::panel(Claude),
+                LayoutNode::panel(Editor),
+            )
+        };
 
         Some(match self {
             Self::ClaudeLeft => LayoutNode::split(
                 Column,
                 0.72,
-                LayoutNode::split(Row, 0.74, LayoutNode::panel(Claude), sidebar()),
+                LayoutNode::split(Row, 0.74, main(), sidebar()),
                 LayoutNode::panel(Terminal),
             ),
             Self::ClaudeRight => LayoutNode::split(
                 Column,
                 0.72,
-                LayoutNode::split(Row, 0.26, sidebar(), LayoutNode::panel(Claude)),
+                LayoutNode::split(Row, 0.26, sidebar(), main()),
                 LayoutNode::panel(Terminal),
             ),
             Self::ClaudeRightTall => LayoutNode::split(
                 Row,
                 0.32,
                 LayoutNode::split(Column, 0.62, sidebar(), LayoutNode::panel(Terminal)),
-                LayoutNode::panel(Claude),
+                main(),
             ),
             Self::ClaudeLeftTall => LayoutNode::split(
                 Row,
                 0.68,
-                LayoutNode::panel(Claude),
+                main(),
                 LayoutNode::split(Column, 0.62, sidebar(), LayoutNode::panel(Terminal)),
             ),
             Self::Custom => return None,
@@ -225,14 +279,52 @@ mod tests {
     }
 
     #[test]
-    fn a_layout_missing_a_panel_is_rejected() {
+    fn a_layout_without_claude_is_rejected() {
         let tree = LayoutNode::split(
             SplitDirection::Row,
             0.5,
-            LayoutNode::panel(PanelId::Claude),
+            LayoutNode::panel(PanelId::Files),
             LayoutNode::panel(PanelId::Terminal),
         );
         assert!(tree.validate().is_err());
+    }
+
+    #[test]
+    fn a_layout_from_before_a_panel_existed_is_repaired_rather_than_refused() {
+        // Exactly the shape stored by a build that had no editor panel.
+        let older = LayoutNode::split(
+            SplitDirection::Column,
+            0.72,
+            LayoutNode::split(
+                SplitDirection::Row,
+                0.74,
+                LayoutNode::panel(PanelId::Claude),
+                LayoutNode::split(
+                    SplitDirection::Column,
+                    0.6,
+                    LayoutNode::panel(PanelId::Files),
+                    LayoutNode::panel(PanelId::Git),
+                ),
+            ),
+            LayoutNode::panel(PanelId::Terminal),
+        );
+
+        assert!(older.validate().is_ok(), "an older layout is still usable");
+
+        let repaired = older.repaired();
+        for panel in PanelId::ALL {
+            assert!(
+                repaired.panels().contains(&panel),
+                "{panel:?} was not added"
+            );
+        }
+        repaired.validate().unwrap();
+    }
+
+    #[test]
+    fn repairing_a_complete_layout_changes_nothing() {
+        let tree = LayoutPreset::ClaudeLeft.tree().unwrap();
+        assert_eq!(tree.repaired(), tree);
     }
 
     #[test]

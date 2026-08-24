@@ -10,6 +10,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
+  DirEntry,
+  EnvEntry,
+  FileContents,
   HostPlatform,
   LayoutNode,
   LayoutPreset,
@@ -96,6 +99,45 @@ export const ipc = {
   ) => invoke<SessionInfo>('restart_session', { workspaceId, projectId, kind, cols, rows }),
 
   stopProject: (projectId: string) => invoke<void>('stop_project', { projectId }),
+
+  // ---- files ----
+  // Every path is relative to the project; the backend refuses anything that
+  // would resolve outside it.
+
+  listDir: (workspaceId: string, projectId: string, path: string) =>
+    invoke<DirEntry[]>('list_dir', { workspaceId, projectId, path }),
+
+  readFile: (workspaceId: string, projectId: string, path: string) =>
+    invoke<FileContents>('read_file', { workspaceId, projectId, path }),
+
+  writeFile: (workspaceId: string, projectId: string, path: string, text: string) =>
+    invoke<void>('write_file', { workspaceId, projectId, path, text }),
+
+  createFile: (workspaceId: string, projectId: string, path: string) =>
+    invoke<void>('create_file', { workspaceId, projectId, path }),
+
+  createDir: (workspaceId: string, projectId: string, path: string) =>
+    invoke<void>('create_dir', { workspaceId, projectId, path }),
+
+  renamePath: (workspaceId: string, projectId: string, from: string, to: string) =>
+    invoke<void>('rename_path', { workspaceId, projectId, from, to }),
+
+  duplicatePath: (workspaceId: string, projectId: string, path: string) =>
+    invoke<string>('duplicate_path', { workspaceId, projectId, path }),
+
+  copyInto: (workspaceId: string, projectId: string, source: string, targetDir: string) =>
+    invoke<string>('copy_into', { workspaceId, projectId, source, targetDir }),
+
+  /** Moves to the system trash. Beacon never deletes outright. */
+  trashPath: (workspaceId: string, projectId: string, path: string) =>
+    invoke<void>('trash_path', { workspaceId, projectId, path }),
+
+  revealPath: (workspaceId: string, projectId: string, path: string) =>
+    invoke<void>('reveal_path', { workspaceId, projectId, path }),
+
+  /** Read fresh every time; values are never cached on this side either. */
+  readEnvFile: (workspaceId: string, projectId: string, path: string) =>
+    invoke<EnvEntry[]>('read_env_file', { workspaceId, projectId, path }),
 }
 
 /** Native folder picker. Resolves to `null` when the user cancels. */

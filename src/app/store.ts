@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+import { useEditor } from '@/features/editor/openFiles'
+import { useTree } from '@/features/files/treeStore'
 import { useActivity } from '@/features/terminal/activity'
 import { disposeFor, disposeProject, refreshAccent } from '@/features/terminal/terminalHost'
 import { errorMessage, ipc } from '@/ipc'
@@ -54,6 +56,8 @@ interface BeaconState {
   setLayout: (layout: LayoutNode) => Promise<void>
   setPreset: (preset: LayoutPreset) => Promise<void>
   togglePanel: (panel: PanelId) => Promise<void>
+  /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
+  showPanel: (panel: PanelId) => Promise<void>
   toggleFullscreen: (panel: PanelId) => void
   dismissNotice: () => void
 }
@@ -128,6 +132,8 @@ export const useBeacon = create<BeaconState>((set, get) => {
       await run(() => ipc.removeProject(workspaceId, projectId))
       disposeProject(projectId)
       useActivity.getState().projectStopped(projectId)
+      useEditor.getState().forget(projectId)
+      useTree.getState().forget(projectId)
     },
 
     stopProject: async (projectId) => {
@@ -191,6 +197,11 @@ export const useBeacon = create<BeaconState>((set, get) => {
     setPreset: (preset) => run(() => ipc.setLayoutPreset(preset)),
 
     togglePanel: (panel) => run(() => ipc.togglePanel(panel)),
+
+    showPanel: async (panel) => {
+      if (!get().snapshot?.hidden.includes(panel)) return
+      await run(() => ipc.togglePanel(panel))
+    },
 
     toggleFullscreen: (panel) =>
       set((state) => ({ fullscreenPanel: state.fullscreenPanel === panel ? null : panel })),

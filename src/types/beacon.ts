@@ -39,7 +39,7 @@ export interface Workspace {
 }
 
 /** The panels Beacon can place. */
-export type PanelId = 'claude' | 'files' | 'git' | 'terminal'
+export type PanelId = 'claude' | 'editor' | 'files' | 'git' | 'terminal'
 
 export type SplitDirection = 'row' | 'column'
 
@@ -122,3 +122,34 @@ export interface SessionExit {
  * inspection and are recorded in the roadmap rather than guessed at.
  */
 export type Activity = 'working' | 'idle' | 'stopped' 
+
+// ---- files ------------------------------------------------------------------
+
+export type EntryKind = 'file' | 'directory' | 'symlink'
+
+export interface DirEntry {
+  name: string
+  /** Relative to the project root, always with `/` separators. */
+  path: string
+  kind: EntryKind
+  hidden: boolean
+}
+
+/** What came back from opening a file. */
+export type FileContents =
+  | { kind: 'text'; text: string }
+  | { kind: 'binary'; size: number }
+  | { kind: 'tooLarge'; size: number }
+
+/**
+ * One assignment in a `.env` file.
+ *
+ * Held in component state for as long as the view is open and nowhere else:
+ * never in the persisted store, never logged, never sent anywhere.
+ */
+export interface EnvEntry {
+  key: string
+  value: string
+  /** 1-based, so the editor can jump to it. */
+  line: number
+}

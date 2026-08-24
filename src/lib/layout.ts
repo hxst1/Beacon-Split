@@ -48,6 +48,7 @@ export const clamp = (value: number, min: number, max: number): number =>
 
 export const PANEL_LABELS: Record<PanelId, string> = {
   claude: 'Claude',
+  editor: 'Editor',
   files: 'Files',
   git: 'Git',
   terminal: 'Terminal',

@@ -1,0 +1,112 @@
+.pane {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line-1);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 190px;
+  padding: 3px 7px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  flex: none;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.tab:hover {
+  background: var(--surface-1);
+  color: var(--fg-2);
+}
+
+.tab[data-active='true'] {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Unsaved changes read as a dot in place of the close control, the way an
+   editor tab usually does — one affordance, two meanings, no extra width. */
+.close {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 99px;
+  color: var(--fg-4);
+  font-size: 9px;
+  flex: none;
+}
+
+.close:hover {
+  background: var(--surface-3);
+  color: var(--fg-1);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--accent);
+  flex: none;
+}
+
+.tab:hover .dot {
+  display: none;
+}
+
+.tab:not(:hover) .closeWhenDirty {
+  display: none;
+}
+
+.body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  color: var(--fg-4);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.notice {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  color: var(--fg-4);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.error {
+  color: var(--danger);
+  user-select: text;
+}
