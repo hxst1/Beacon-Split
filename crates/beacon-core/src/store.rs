@@ -38,6 +38,24 @@ impl JsonStore {
         })
     }
 
+    /// The document as untyped JSON, or `None` if it does not exist.
+    ///
+    /// Used where the shape depends on the stored `schemaVersion`.
+    pub fn read_raw(&self) -> Result<Option<serde_json::Value>> {
+        let bytes = match fs::read(&self.path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(CoreError::io(&self.path, err)),
+        };
+
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|source| CoreError::Parse {
+                path: self.path.clone(),
+                source,
+            })
+    }
+
     pub fn write<T: Serialize>(&self, value: &T) -> Result<()> {
         let json = serde_json::to_vec_pretty(value).map_err(|source| CoreError::Serialize {
             path: self.path.clone(),

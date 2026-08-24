@@ -89,6 +89,30 @@ is free. Stored paths always use `/` separators.
 Resolution happens on every read, in `Beacon::snapshot`. The frontend receives
 absolute paths and never reconstructs them itself.
 
+## Layout
+
+The window is described by a tree, not a grid:
+
+```jsonc
+{ "type": "split", "direction": "column", "fraction": 0.72,
+  "first":  { "type": "split", "direction": "row", "fraction": 0.74,
+              "first":  { "type": "panel", "panel": "claude" },
+              "second": { "type": "split", "direction": "column", "fraction": 0.6,
+                          "first":  { "type": "panel", "panel": "files" },
+                          "second": { "type": "panel", "panel": "git" } } },
+  "second": { "type": "panel", "panel": "terminal" } }
+```
+
+`LayoutView` recurses over it, rendering each split as a three-track grid —
+first child, splitter, rest — so a splitter is the border rather than sitting
+beside one. Presets are trees the backend serves, which is also what the
+settings previews are drawn from: a preview cannot describe an arrangement that
+would not actually be applied.
+
+Hidden panels stay in the tree and are pruned at render time, so showing one
+again returns it to its place. A tree that drops or repeats a panel is rejected
+by the backend.
+
 ## The accent system
 
 A workspace declares one colour. The frontend writes it to `--accent` on the

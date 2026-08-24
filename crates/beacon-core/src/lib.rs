@@ -9,6 +9,7 @@
 pub mod detect;
 pub mod domain;
 pub mod error;
+pub mod layout;
 pub mod paths;
 pub mod scrollback;
 pub mod session;
@@ -18,5 +19,6 @@ pub mod store;
 pub mod ui_state;
 
 pub use error::{CoreError, Result};
+pub use layout::{LayoutNode, LayoutPreset, PanelId, SplitDirection};
 pub use session::{SessionEvents, SessionId, SessionInfo, SessionKind, SessionManager};
 pub use state::{Beacon, ProjectView, Snapshot, WorkspaceView};

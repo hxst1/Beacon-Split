@@ -11,7 +11,9 @@ import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
   HostPlatform,
-  PanelLayout,
+  LayoutNode,
+  LayoutPreset,
+  PanelId,
   ScrollbackSnapshot,
   SessionInfo,
   SessionKind,
@@ -35,7 +37,14 @@ export const ipc = {
 
   setActiveWorkspace: (id: string) => invoke<Snapshot>('set_active_workspace', { id }),
 
-  setPanels: (panels: PanelLayout) => invoke<Snapshot>('set_panels', { panels }),
+  setLayout: (layout: LayoutNode) => invoke<Snapshot>('set_layout', { layout }),
+
+  setLayoutPreset: (preset: LayoutPreset) => invoke<Snapshot>('set_layout_preset', { preset }),
+
+  layoutPresets: () =>
+    invoke<Array<{ preset: LayoutPreset; layout: LayoutNode }>>('layout_presets'),
+
+  togglePanel: (panel: PanelId) => invoke<Snapshot>('toggle_panel', { panel }),
 
   addProject: (workspaceId: string, path: string) =>
     invoke<Snapshot>('add_project', { workspaceId, path }),

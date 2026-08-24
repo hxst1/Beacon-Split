@@ -1,122 +1,88 @@
 import { useEffect, useState } from 'react'
 
 import { EmptyProjects } from '@/features/projects/EmptyProjects'
+import { prune, withFraction } from '@/lib/layout'
+import type { Path } from '@/lib/layout'
+import type { PanelId, Project } from '@/types/beacon'
 import { ClaudePanel } from './panels/ClaudePanel'
 import { FilesPanel } from './panels/FilesPanel'
 import { GitPanel } from './panels/GitPanel'
 import { TerminalPanel } from './panels/TerminalPanel'
-import { Resizer } from './Resizer'
-import { selectActiveProject, useBeacon } from './store'
+import { LayoutView } from './LayoutView'
+import { selectActiveProject, selectHidden, selectLayout, useBeacon } from './store'
 import styles from './Workbench.module.css'
 
 /**
- * The panel layout.
+ * The panel area.
  *
- * Panel sizes live in the store (and on disk), but a drag in progress is local
- * state: we only push the final size through the backend on release.
+ * The arrangement comes entirely from the layout tree, so switching presets or
+ * hand-arranging panels needs nothing here. A drag in progress is local state:
+ * only the released size goes through the backend.
  */
 export function Workbench(): React.ReactElement {
-  const panels = useBeacon((s) => s.snapshot?.panels)
-  const setPanels = useBeacon((s) => s.setPanels)
+  const layout = useBeacon(selectLayout)
+  const hidden = useBeacon(selectHidden)
+  const setLayout = useBeacon((s) => s.setLayout)
   const project = useBeacon(selectActiveProject)
   const workspaceId = useBeacon((s) => s.snapshot?.activeWorkspace)
   const fullscreen = useBeacon((s) => s.fullscreenPanel)
 
-  const [draft, setDraft] = useState(panels)
-  useEffect(() => setDraft(panels), [panels])
+  const [draft, setDraft] = useState(layout)
+  useEffect(() => setDraft(layout), [layout])
 
   if (!draft) return <div className={styles['workbench']} />
 
-  const commit = (): void => {
-    void setPanels(draft)
-  }
-
-  const sideVisible = draft.sideVisible && !fullscreen
-  const terminalVisible = draft.terminalVisible && !fullscreen
-
-  const style = {
-    '--side-width': `${(sideVisible ? draft.sideFraction : 0) * 100}%`,
-    '--terminal-height': `${(terminalVisible ? draft.terminalFraction : 0) * 100}%`,
-    '--files-height': `${draft.filesFraction * 100}%`,
-  } as React.CSSProperties
-
   if (!project || !workspaceId) {
     return (
-      <div className={styles['workbench']} style={style}>
-        <div className={styles['empty']}>
-          <EmptyProjects />
-        </div>
+      <div className={`${styles['workbench']} ${styles['empty']}`}>
+        <EmptyProjects />
       </div>
     )
   }
 
+  const render = (panel: PanelId): React.ReactNode =>
+    renderPanel(panel, workspaceId, project, fullscreen)
+
+  // Fullscreen bypasses the tree entirely rather than rewriting it, so leaving
+  // fullscreen cannot lose the arrangement.
   if (fullscreen) {
-    return (
-      <div className={styles['workbench']} style={style}>
-        <div className={styles['fullscreen']}>
-          {fullscreen === 'claude' ? <ClaudePanel project={project} focused /> : null}
-          {fullscreen === 'terminal' ? (
-            <TerminalPanel workspaceId={workspaceId} project={project} focused />
-          ) : null}
-          {fullscreen === 'side' ? <FilesPanel project={project} /> : null}
-        </div>
-      </div>
-    )
+    return <div className={styles['workbench']}>{render(fullscreen)}</div>
   }
+
+  const visible = prune(draft, hidden)
+  if (!visible) return <div className={styles['workbench']} />
 
   return (
-    <div
-      className={styles['workbench']}
-      style={style}
-      data-side={sideVisible}
-      data-terminal={terminalVisible}
-    >
-      <div className={styles['main']}>
-        <ClaudePanel project={project} focused />
-      </div>
-
-      {sideVisible ? (
-        <Resizer
-          orientation="vertical"
-          area="vsplit"
-          onDrag={(fraction) => setDraft({ ...draft, sideFraction: clamp(fraction, 0.15, 0.45) })}
-          onCommit={commit}
-        />
-      ) : null}
-
-      {sideVisible ? (
-        <aside className={styles['side']}>
-          <FilesPanel project={project} />
-          <Resizer
-            orientation="horizontal"
-            from="start"
-            within="parent"
-            onDrag={(fraction) => setDraft({ ...draft, filesFraction: clamp(fraction, 0.2, 0.85) })}
-            onCommit={commit}
-          />
-          <GitPanel />
-        </aside>
-      ) : null}
-
-      {terminalVisible ? (
-        <Resizer
-          orientation="horizontal"
-          area="hsplit"
-          onDrag={(fraction) =>
-            setDraft({ ...draft, terminalFraction: clamp(fraction, 0.12, 0.6) })
-          }
-          onCommit={commit}
-        />
-      ) : null}
-
-      {terminalVisible ? (
-        <div className={styles['terminal']}>
-          <TerminalPanel workspaceId={workspaceId} project={project} focused={false} />
-        </div>
-      ) : null}
+    <div className={styles['workbench']}>
+      <LayoutView
+        node={visible}
+        render={render}
+        onResize={(path: Path, fraction: number) => setDraft(withFraction(draft, path, fraction))}
+        onCommit={() => void setLayout(draft)}
+      />
     </div>
   )
 }
 
-const clamp = (value: number, min: number, max: number): number =>
-  Math.min(max, Math.max(min, value))
+/** Maps a panel id to the component that draws it. */
+function renderPanel(
+  panel: PanelId,
+  workspaceId: string,
+  project: Project,
+  fullscreen: PanelId | null,
+): React.ReactNode {
+  const focused = fullscreen === panel || (fullscreen === null && panel === 'claude')
+
+  switch (panel) {
+    case 'claude':
+      return <ClaudePanel project={project} focused={focused} />
+    case 'files':
+      return <FilesPanel project={project} />
+    case 'git':
+      return <GitPanel />
+    case 'terminal':
+      return (
+        <TerminalPanel workspaceId={workspaceId} project={project} focused={focused} />
+      )
+  }
+}

@@ -64,6 +64,28 @@
   min-width: 0;
 }
 
+.gear {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--fg-4);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.gear:hover {
+  background: var(--surface-2);
+  color: var(--fg-2);
+}
+
+.gear[data-open='true'] {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
 /* Cross-platform drag is driven by `data-tauri-drag-region`, not by
    `-webkit-app-region`: the latter only works on macOS WebKit, and Beacon has
    to behave the same on WebKitGTK. Tauri also gives us double-click-to-zoom

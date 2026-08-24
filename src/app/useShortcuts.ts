@@ -30,13 +30,14 @@ export function useShortcuts(): void {
       }
 
       switch (event.key.toLowerCase()) {
+        // Files and Git are separate panels now, so they toggle separately.
         case 'e':
           event.preventDefault()
-          void store.togglePanel('side')
+          void store.togglePanel('files')
           break
         case 'g':
           event.preventDefault()
-          void store.togglePanel('side')
+          void store.togglePanel('git')
           break
         case 'j':
           event.preventDefault()

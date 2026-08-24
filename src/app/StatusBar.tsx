@@ -27,7 +27,8 @@ export function StatusBar(): React.ReactElement {
       ) : null}
 
       <span className={styles['hint']}>
-        {shortcutLabel('E')} files · {shortcutLabel('J')} terminal · {shortcutLabel('↩')} fullscreen
+        {shortcutLabel('E')} files · {shortcutLabel('G')} git · {shortcutLabel('J')} terminal ·{' '}
+        {shortcutLabel('↩')} fullscreen
       </span>
     </footer>
   )

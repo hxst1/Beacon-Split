@@ -38,21 +38,42 @@ export interface Workspace {
   projects: Project[]
 }
 
-export interface PanelLayout {
-  sideFraction: number
-  terminalFraction: number
-  /** Share of the side column given to Files, measured from the top. */
-  filesFraction: number
-  sideVisible: boolean
-  terminalVisible: boolean
-}
+/** The panels Beacon can place. */
+export type PanelId = 'claude' | 'files' | 'git' | 'terminal'
+
+export type SplitDirection = 'row' | 'column'
+
+/**
+ * How the window is divided. A binary split tree, so every preset and any
+ * custom arrangement are the same structure.
+ */
+export type LayoutNode =
+  | { type: 'panel'; panel: PanelId }
+  | {
+      type: 'split'
+      direction: SplitDirection
+      /** Share of the space given to `first`, 0..1. */
+      fraction: number
+      first: LayoutNode
+      second: LayoutNode
+    }
+
+export type LayoutPreset =
+  | 'claude-left'
+  | 'claude-right'
+  | 'claude-right-tall'
+  | 'claude-left-tall'
+  | 'custom' 
 
 /** One payload that fully describes the app. Every mutation returns a fresh one. */
 export interface Snapshot {
   workspaces: Workspace[]
   activeWorkspace: string | null
   activeProject: Record<string, string>
-  panels: PanelLayout
+  layout: LayoutNode
+  preset: LayoutPreset
+  /** Panels toggled off. They keep their place in the tree. */
+  hidden: PanelId[]
   projectsHome: string
 }
 

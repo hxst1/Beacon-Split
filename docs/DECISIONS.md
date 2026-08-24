@@ -191,3 +191,56 @@ Putting it behind the boundary makes an orphaned PTY unreachable by construction
 
 **Consequence.** Removal is no longer a pure configuration edit. That is the
 right trade: the alternative is a leaked process per removed project.
+
+## ADR-013: Layouts are a binary split tree
+
+**Context.** Beacon needs several arrangements of its panels — Claude left,
+Claude right, a tall column beside it — plus a custom one, without becoming a
+tiling window manager.
+
+**Decision.** A layout is a tree of splits and panels. Each split has a
+direction and a fraction. The presets are four such trees; a custom layout is a
+fifth. The renderer recurses over the tree and knows nothing about which panel
+is which.
+
+**Why.** The alternative — named regions with panels assigned to them — needs a
+new region set for every arrangement that is not a variation of the first one,
+and his fourth preset already is not. A tree costs about the same code and
+covers arrangements nobody has asked for yet.
+
+**Consequence.** Split fractions live in the tree, so there is one place a size
+is stored and one shape to migrate. A tree can express a layout that makes no
+sense, so `validate` rejects any that drops or repeats a panel, and the backend
+refuses to store one.
+
+## ADR-014: Panel visibility is separate from the layout
+
+**Context.** Toggling Files off and on again should put it back where it was,
+not somewhere reasonable.
+
+**Decision.** Hidden panels stay in the tree. The renderer prunes them just
+before drawing, collapsing any split left with one child.
+
+**Why.** Removing a panel from the tree loses the only record of where it
+belonged. Reconstructing that on the way back is guesswork.
+
+**Consequence.** The stored tree always contains all four panels, which is also
+what makes `validate` a simple rule. Hiding every panel is ignored rather than
+producing an empty window.
+
+## ADR-015: Stored documents migrate rather than reset
+
+**Context.** Moving to the layout tree changed the shape of `ui-state.json`.
+
+**Decision.** `UiState` is loaded through a version-aware reader that upgrades
+an older document — old panel fractions become the equivalent tree — and writes
+the result back immediately.
+
+**Why.** The layout is something the user arranged by hand. Discarding it
+because the format moved is the kind of thing that teaches people not to trust
+their settings. Writing back on load means the upgrade happens once rather than
+on every launch.
+
+**Consequence.** Each schema bump needs a migration path from the previous one.
+That is the cost of the promise, and it is small while the documents are this
+size.

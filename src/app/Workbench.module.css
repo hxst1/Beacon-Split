@@ -1,58 +1,10 @@
 .workbench {
   display: grid;
-  grid-template-columns: 1fr auto var(--side-width);
-  grid-template-rows: 1fr auto var(--terminal-height);
-  grid-template-areas:
-    'main   vsplit side'
-    'hsplit hsplit hsplit'
-    'term   term   term';
   min-height: 0;
   overflow: hidden;
 }
 
-.workbench[data-side='false'] {
-  grid-template-columns: 1fr 0 0;
-}
-
-.workbench[data-terminal='false'] {
-  grid-template-rows: 1fr 0 0;
-}
-
-.main {
-  grid-area: main;
-  min-width: 0;
-  min-height: 0;
-}
-
-.side {
-  grid-area: side;
-  display: grid;
-  grid-template-rows: var(--files-height) auto 1fr;
-  min-width: 0;
-  min-height: 0;
-  border-left: 1px solid var(--line-1);
-}
-
-.side > * {
-  min-height: 0;
-}
-
-.terminal {
-  grid-area: term;
-  min-height: 0;
-  border-top: 1px solid var(--line-1);
-}
-
-.fullscreen {
-  grid-column: 1 / -1;
-  grid-row: 1 / -1;
-  min-width: 0;
-  min-height: 0;
-}
-
 .empty {
-  grid-column: 1 / -1;
-  grid-row: 1 / -1;
   display: grid;
   place-items: center;
 }

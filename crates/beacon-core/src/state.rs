@@ -5,10 +5,11 @@ use serde::Serialize;
 use crate::detect::{ProjectKind, detect_kinds, suggest_name};
 use crate::domain::{Project, ProjectId, Workspace, WorkspaceId, WorkspacesFile, normalize_accent};
 use crate::error::{CoreError, Result};
+use crate::layout::{LayoutNode, LayoutPreset, PanelId};
 use crate::paths::{ProjectPath, default_config_dir};
 use crate::settings::Settings;
 use crate::store::{JsonStore, ensure_schema};
-use crate::ui_state::{PanelLayout, UiState};
+use crate::ui_state::UiState;
 
 /// A project flattened for the UI: identity plus the paths the frontend would
 /// otherwise have to reconstruct itself.
@@ -42,7 +43,9 @@ pub struct Snapshot {
     pub workspaces: Vec<WorkspaceView>,
     pub active_workspace: Option<WorkspaceId>,
     pub active_project: std::collections::BTreeMap<WorkspaceId, ProjectId>,
-    pub panels: PanelLayout,
+    pub layout: LayoutNode,
+    pub preset: LayoutPreset,
+    pub hidden: Vec<PanelId>,
     pub projects_home: String,
 }
 
@@ -83,8 +86,26 @@ impl Beacon {
             WorkspacesFile::SCHEMA_VERSION,
         )?;
 
-        let ui: UiState = ui_store.read()?;
-        ensure_schema(ui_store.path(), ui.schema_version, UiState::SCHEMA_VERSION)?;
+        // The UI document is read through its own loader: its shape depends on
+        // the stored schema version, and an old one is migrated rather than
+        // discarded.
+        let raw = ui_store.read_raw()?;
+        let stored_version = raw
+            .as_ref()
+            .and_then(|value| value.get("schemaVersion"))
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(UiState::SCHEMA_VERSION as u64) as u32;
+
+        let ui = match raw {
+            Some(value) => UiState::from_json(ui_store.path(), value)?,
+            None => UiState::default(),
+        };
+
+        // Write a migrated document back immediately. Otherwise the upgrade is
+        // redone on every launch until something else happens to save.
+        if stored_version < UiState::SCHEMA_VERSION {
+            ui_store.write(&ui)?;
+        }
 
         Ok(Self {
             settings_store,
@@ -117,7 +138,9 @@ impl Beacon {
                 .collect(),
             active_workspace: self.ui.active_workspace.clone(),
             active_project: self.ui.active_project.clone(),
-            panels: self.ui.panels.clamped(),
+            layout: self.ui.layout.clamped(),
+            preset: self.ui.preset,
+            hidden: self.ui.hidden.clone(),
             projects_home: home.to_string_lossy().into_owned(),
         }
     }
@@ -361,8 +384,32 @@ impl Beacon {
         self.save_ui()
     }
 
-    pub fn set_panels(&mut self, panels: PanelLayout) -> Result<()> {
-        self.ui.panels = panels.clamped();
+    /// Replaces the layout tree, e.g. after dragging a splitter.
+    ///
+    /// Resizing keeps the current preset; only a rearrangement makes the layout
+    /// custom, which is what `set_preset` and a future editor go through.
+    pub fn set_layout(&mut self, layout: LayoutNode) -> Result<()> {
+        layout.validate()?;
+        self.ui.layout = layout.clamped();
+        self.save_ui()
+    }
+
+    /// Switches to one of the built-in arrangements.
+    pub fn set_preset(&mut self, preset: LayoutPreset) -> Result<()> {
+        let Some(tree) = preset.tree() else {
+            return Err(CoreError::invalid(
+                "a custom layout is chosen by arranging panels, not by name",
+            ));
+        };
+        self.ui.preset = preset;
+        self.ui.layout = tree;
+        self.save_ui()
+    }
+
+    /// Shows or hides a panel, leaving its place in the tree intact.
+    pub fn toggle_panel(&mut self, panel: PanelId) -> Result<()> {
+        self.ui.toggle(panel);
+        self.ui = self.ui.normalized();
         self.save_ui()
     }
 

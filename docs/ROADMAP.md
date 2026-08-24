@@ -46,24 +46,24 @@ Remaining:
 Still to do here: coalescing very fast output into fewer IPC events, and
 multiple terminals per project.
 
-## Milestone 2.5 — Settings and layouts
+## Milestone 2.5 — Settings and layouts ✅
 
-Placed before Claude on purpose. Three of the four panels are still
-placeholders, so generalising the grid is cheap right now; every milestone after
-this one adds real content to a region and makes the change more expensive.
+Done before Claude on purpose: three of the four panels were still placeholders,
+so generalising the grid was cheap. Every milestone after this one puts real
+content in a region and would have made the change more expensive.
 
-- A settings surface, reached from a gear in the title bar
-- Layout presets, selectable per workspace or globally:
-  - Claude left (large), Files/Git right, Terminal bottom — today's layout
-  - Files/Git left, Claude right (large), Terminal bottom
-  - Terminal bottom-left, Files/Git above it, Claude right
-  - The mirror of that one
-- A custom layout: choose which panel occupies each region
-- `projectsHome`, and whatever else has accumulated by then
+- Settings behind a gear in the title bar
+- The hard-coded grid is gone. Layouts are a binary split tree, so a preset and
+  a hand-arranged layout take the same path through the renderer
+- Four presets, previewed from the very tree that would be applied:
+  Claude left · Claude right · Tall right · Tall left
+- Files, Git and Terminal toggle independently (`⌘E`, `⌘G`, `⌘J`). A hidden
+  panel keeps its place in the tree, so showing it puts it back where it was
+- Every split is resizable, including Files against Git
+- `ui-state.json` migrates from schema 1 and is rewritten once
 
-This turns the hard-coded grid in `Workbench` into a described layout — a set of
-regions and an assignment of panels to them — which is the piece the presets and
-the custom option both need.
+Remaining: rearranging panels by hand, which is what turns the preset into
+`custom`, and per-workspace layouts.
 
 ## Milestone 3 — Claude
 

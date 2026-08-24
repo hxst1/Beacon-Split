@@ -1,6 +1,6 @@
 use beacon_core::Snapshot;
 use beacon_core::domain::WorkspaceId;
-use beacon_core::ui_state::PanelLayout;
+use beacon_core::layout::{LayoutNode, LayoutPreset, PanelId};
 use tauri::State;
 
 use crate::error::CommandResult;
@@ -52,9 +52,53 @@ pub fn set_active_workspace(
     Ok(beacon.snapshot())
 }
 
+/// Stores a resized layout. Rejected if it would lose or duplicate a panel.
 #[tauri::command]
-pub fn set_panels(state: State<'_, AppState>, panels: PanelLayout) -> CommandResult<Snapshot> {
+pub fn set_layout(state: State<'_, AppState>, layout: LayoutNode) -> CommandResult<Snapshot> {
     let mut beacon = state.beacon();
-    beacon.set_panels(panels)?;
+    beacon.set_layout(layout)?;
+    Ok(beacon.snapshot())
+}
+
+/// Switches to one of the built-in arrangements.
+#[tauri::command]
+pub fn set_layout_preset(
+    state: State<'_, AppState>,
+    preset: LayoutPreset,
+) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_preset(preset)?;
+    Ok(beacon.snapshot())
+}
+
+/// The built-in arrangements and the tree behind each one.
+///
+/// Served from the backend so a settings preview is drawn from exactly the tree
+/// that would be applied, and cannot drift away from it.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetOption {
+    preset: LayoutPreset,
+    layout: LayoutNode,
+}
+
+#[tauri::command]
+pub fn layout_presets() -> Vec<PresetOption> {
+    LayoutPreset::CHOOSABLE
+        .iter()
+        .filter_map(|preset| {
+            preset.tree().map(|layout| PresetOption {
+                preset: *preset,
+                layout,
+            })
+        })
+        .collect()
+}
+
+/// Shows or hides a panel without moving it in the layout.
+#[tauri::command]
+pub fn toggle_panel(state: State<'_, AppState>, panel: PanelId) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.toggle_panel(panel)?;
     Ok(beacon.snapshot())
 }

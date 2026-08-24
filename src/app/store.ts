@@ -4,9 +4,14 @@ import { disposeProject, refreshAccent } from '@/features/terminal/terminalHost'
 import { errorMessage, ipc } from '@/ipc'
 import { applyAccent } from '@/lib/accent'
 import { setPlatform } from '@/lib/platform'
-import type { PanelLayout, Project, Snapshot, Workspace } from '@/types/beacon'
-
-export type PanelId = 'claude' | 'side' | 'terminal'
+import type {
+  LayoutNode,
+  LayoutPreset,
+  PanelId,
+  Project,
+  Snapshot,
+  Workspace,
+} from '@/types/beacon'
 
 type Status = 'loading' | 'ready' | 'error'
 
@@ -34,8 +39,10 @@ interface BeaconState {
   selectProject: (projectId: string) => Promise<void>
   selectProjectAt: (index: number) => Promise<void>
   revealProject: (projectId: string) => Promise<void>
-  setPanels: (panels: PanelLayout) => Promise<void>
-  togglePanel: (panel: Exclude<PanelId, 'claude'>) => Promise<void>
+  /** Stores a resized tree, e.g. after a splitter drag. */
+  setLayout: (layout: LayoutNode) => Promise<void>
+  setPreset: (preset: LayoutPreset) => Promise<void>
+  togglePanel: (panel: PanelId) => Promise<void>
   toggleFullscreen: (panel: PanelId) => void
   dismissNotice: () => void
 }
@@ -146,14 +153,11 @@ export const useBeacon = create<BeaconState>((set, get) => {
       }
     },
 
-    setPanels: (panels) => run(() => ipc.setPanels(panels)),
+    setLayout: (layout) => run(() => ipc.setLayout(layout)),
 
-    togglePanel: async (panel) => {
-      const panels = get().snapshot?.panels
-      if (!panels) return
-      const key = panel === 'side' ? 'sideVisible' : 'terminalVisible'
-      await get().setPanels({ ...panels, [key]: !panels[key] })
-    },
+    setPreset: (preset) => run(() => ipc.setLayoutPreset(preset)),
+
+    togglePanel: (panel) => run(() => ipc.togglePanel(panel)),
 
     toggleFullscreen: (panel) =>
       set((state) => ({ fullscreenPanel: state.fullscreenPanel === panel ? null : panel })),
@@ -175,6 +179,18 @@ export function selectActiveWorkspace(state: BeaconState): Workspace | null {
 export function selectProjects(state: BeaconState): Project[] {
   return selectActiveWorkspace(state)?.projects ?? []
 }
+
+export function selectLayout(state: BeaconState): LayoutNode | null {
+  return state.snapshot?.layout ?? null
+}
+
+export function selectHidden(state: BeaconState): PanelId[] {
+  return state.snapshot?.hidden ?? EMPTY_PANELS
+}
+
+/** Stable reference, so a component reading `hidden` does not re-render on
+ *  every snapshot that happens to have none. */
+const EMPTY_PANELS: PanelId[] = []
 
 export function selectActiveProject(state: BeaconState): Project | null {
   const workspace = selectActiveWorkspace(state)

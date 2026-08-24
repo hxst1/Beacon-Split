@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use beacon_core::Beacon;
-use beacon_core::ui_state::PanelLayout;
+use beacon_core::layout::{LayoutNode, LayoutPreset, PanelId, SplitDirection};
 
 fn scratch() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
@@ -96,26 +96,78 @@ fn a_project_can_move_between_workspaces() {
 }
 
 #[test]
-fn panel_layout_is_persisted_and_clamped() {
+fn a_resized_layout_is_persisted_and_clamped() {
     let (_guard, config) = scratch();
     {
         let mut beacon = Beacon::load(&config).unwrap();
-        beacon
-            .set_panels(PanelLayout {
-                side_fraction: 0.9,
-                terminal_fraction: 0.3,
-                files_fraction: 0.7,
-                side_visible: true,
-                terminal_visible: false,
-            })
-            .unwrap();
+        let stretched = LayoutNode::split(
+            SplitDirection::Row,
+            // Beyond what a splitter allows; the backend is the last word.
+            2.5,
+            LayoutNode::panel(PanelId::Claude),
+            LayoutNode::split(
+                SplitDirection::Column,
+                0.4,
+                LayoutNode::split(
+                    SplitDirection::Column,
+                    0.7,
+                    LayoutNode::panel(PanelId::Files),
+                    LayoutNode::panel(PanelId::Git),
+                ),
+                LayoutNode::panel(PanelId::Terminal),
+            ),
+        );
+        beacon.set_layout(stretched).unwrap();
     }
 
-    let panels = Beacon::load(&config).unwrap().snapshot().panels;
-    assert_eq!(panels.side_fraction, 0.45);
-    assert_eq!(panels.terminal_fraction, 0.3);
-    assert_eq!(panels.files_fraction, 0.7);
-    assert!(!panels.terminal_visible);
+    let layout = Beacon::load(&config).unwrap().snapshot().layout;
+    let LayoutNode::Split { fraction, .. } = layout else {
+        panic!("expected a split")
+    };
+    assert_eq!(fraction, 0.9);
+}
+
+#[test]
+fn choosing_a_preset_replaces_the_layout() {
+    let (_guard, config) = scratch();
+    {
+        let mut beacon = Beacon::load(&config).unwrap();
+        beacon.set_preset(LayoutPreset::ClaudeRightTall).unwrap();
+    }
+
+    let snapshot = Beacon::load(&config).unwrap().snapshot();
+    assert_eq!(snapshot.preset, LayoutPreset::ClaudeRightTall);
+    assert_eq!(
+        snapshot.layout,
+        LayoutPreset::ClaudeRightTall.tree().unwrap()
+    );
+}
+
+#[test]
+fn a_hidden_panel_survives_a_reload() {
+    let (_guard, config) = scratch();
+    {
+        let mut beacon = Beacon::load(&config).unwrap();
+        beacon.toggle_panel(PanelId::Git).unwrap();
+    }
+
+    let snapshot = Beacon::load(&config).unwrap().snapshot();
+    assert_eq!(snapshot.hidden, vec![PanelId::Git]);
+    // Hiding does not remove it from the tree, so showing it again puts it back.
+    assert!(snapshot.layout.panels().contains(&PanelId::Git));
+}
+
+#[test]
+fn a_layout_that_loses_a_panel_is_refused() {
+    let (_guard, config) = scratch();
+    let mut beacon = Beacon::load(&config).unwrap();
+    let broken = LayoutNode::split(
+        SplitDirection::Row,
+        0.5,
+        LayoutNode::panel(PanelId::Claude),
+        LayoutNode::panel(PanelId::Terminal),
+    );
+    assert!(beacon.set_layout(broken).is_err());
 }
 
 #[test]
@@ -129,4 +181,33 @@ fn deleting_a_workspace_moves_the_active_selection_elsewhere() {
     beacon.delete_workspace(&second).unwrap();
 
     assert_eq!(beacon.snapshot().active_workspace, Some(first));
+}
+
+#[test]
+fn a_v1_ui_state_is_upgraded_on_disk_once() {
+    let (_guard, config) = scratch();
+    std::fs::create_dir_all(&config).unwrap();
+    let path = config.join("ui-state.json");
+    std::fs::write(
+        &path,
+        r#"{
+            "schemaVersion": 1,
+            "panels": {
+                "sideFraction": 0.3,
+                "terminalFraction": 0.25,
+                "sideVisible": true,
+                "terminalVisible": true
+            }
+        }"#,
+    )
+    .unwrap();
+
+    // Loading migrates and writes back, so the upgrade is not redone next time.
+    let snapshot = Beacon::load(&config).unwrap().snapshot();
+    snapshot.layout.validate().unwrap();
+
+    let upgraded: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(upgraded["schemaVersion"], 2);
+    assert!(upgraded.get("panels").is_none());
 }
