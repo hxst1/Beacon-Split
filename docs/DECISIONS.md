@@ -244,3 +244,25 @@ on every launch.
 **Consequence.** Each schema bump needs a migration path from the previous one.
 That is the cost of the promise, and it is small while the documents are this
 size.
+
+## ADR-016: Sessions get a sanitised environment, not an inherited one
+
+**Context.** Beacon inherits the environment of whatever started it. Launched
+from a shell inside Terminal.app, that includes `TERM_PROGRAM=Apple_Terminal`
+and `TERM_SESSION_ID`. macOS's `/etc/zshrc` reads those, decides it is resuming
+a Terminal.app session, and sources `~/.zsh_sessions/$TERM_SESSION_ID.session` —
+a file belonging to a different terminal, which may not even exist.
+
+**Decision.** Spawned sessions have terminal-identity variables removed, and
+Beacon declares its own: `TERM_PROGRAM=Beacon`. Stale geometry (`COLUMNS`,
+`LINES`) and the `npm_*` group a package script injects are stripped too.
+
+**Why.** A terminal emulator that claims to be a different terminal will hit
+that terminal's integrations. The `npm_*` group is the same mistake in another
+direction: launching Beacon through `pnpm app:dev` would otherwise push that
+script's configuration into every project shell, so what a command does would
+depend on how Beacon happened to be started.
+
+**Consequence.** The strip list is a denylist, so a new leak from a new launcher
+would need adding to it. An allowlist would be stricter but would break the
+user's own configuration, which is the environment we are here to preserve.

@@ -43,6 +43,10 @@ Remaining:
   reparents rather than rebuilds
 - Stop a project's processes; removing a project or workspace stops them first
 
+Sessions get a sanitised environment: Beacon declares its own terminal identity
+rather than inheriting the launching terminal's, which otherwise triggers that
+terminal's shell integrations inside ours.
+
 Still to do here: coalescing very fast output into fewer IPC events, and
 multiple terminals per project.
 

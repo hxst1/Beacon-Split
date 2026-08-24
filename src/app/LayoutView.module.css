@@ -13,14 +13,16 @@
   grid-template-rows: var(--first) auto 1fr;
 }
 
+/*
+ * Each region is itself a grid.
+ *
+ * Not cosmetic: a nested split is a block inside its region, so it would take
+ * its height from its content and collapse. Making the region a grid stretches
+ * whatever it holds — another split or a panel — to fill it.
+ */
 .cell {
+  display: grid;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-
-/* Hairlines between regions, drawn by the splitter itself so a resize target
-   and a border are never two different things. */
-.column > .cell:last-child {
-  border-top: 1px solid transparent;
 }

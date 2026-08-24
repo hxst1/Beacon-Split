@@ -67,6 +67,52 @@ fn default_shell() -> &'static str {
     }
 }
 
+/// Environment variables a spawned session must not inherit from whatever
+/// launched Beacon.
+///
+/// The terminal identity ones matter most: with `TERM_PROGRAM=Apple_Terminal`
+/// still set, macOS's `/etc/zshrc` engages Terminal.app's session save and
+/// restore and sources `~/.zsh_sessions/$TERM_SESSION_ID.session`, a file that
+/// belongs to a different terminal and may not exist. Beacon is not that
+/// terminal and must not claim to be.
+///
+/// The `npm_*` group is a development-time leak: launching Beacon through a
+/// package script would otherwise push that script's configuration into every
+/// project shell.
+const STRIPPED_ENV: &[&str] = &[
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "TERM_SESSION_ID",
+    "SHELL_SESSION_FILE",
+    "SHELL_SESSION_DID_INIT",
+    "ITERM_PROFILE",
+    "ITERM_SESSION_ID",
+    // Stale geometry from the launching terminal; the PTY sets the real size.
+    "COLUMNS",
+    "LINES",
+    "INIT_CWD",
+    "NODE_ENV",
+];
+
+/// Gives the session a clean, honest environment.
+fn prepare_environment(command: &mut CommandBuilder) {
+    for key in STRIPPED_ENV {
+        command.env_remove(key);
+    }
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("npm_") {
+            command.env_remove(&key);
+        }
+    }
+
+    // Tell the program it is talking to a capable terminal; xterm.js is.
+    command.env("TERM", "xterm-256color");
+    command.env("COLORTERM", "truecolor");
+    // Identify ourselves, so anything that adapts to its terminal can.
+    command.env("TERM_PROGRAM", "Beacon");
+    command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+}
+
 /// How the host is told about things the session does on its own.
 ///
 /// Implemented by the Tauri layer today (which forwards to the webview) and by
@@ -170,9 +216,7 @@ impl SessionManager {
 
         let mut command = kind.command();
         command.cwd(cwd);
-        // Tell the program it is talking to a capable terminal; xterm.js is.
-        command.env("TERM", "xterm-256color");
-        command.env("COLORTERM", "truecolor");
+        prepare_environment(&mut command);
 
         let child = pair
             .slave
