@@ -1,0 +1,49 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  padding: 26px;
+  text-align: center;
+}
+
+.title {
+  color: var(--fg-2);
+  font-size: var(--text-md);
+}
+
+.body {
+  max-width: 46ch;
+  color: var(--fg-4);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.command {
+  padding: 6px 11px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-sm);
+  background: rgb(0 0 0 / 0.3);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.command:hover {
+  border-color: var(--accent-line);
+  color: var(--fg-1);
+}
+
+.more {
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+}
+
+.more:hover {
+  color: var(--fg-2);
+}

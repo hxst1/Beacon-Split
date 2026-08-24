@@ -12,6 +12,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import type {
   DirEntry,
   HookStatus,
+  Requirement,
   Integration,
   UsageReport,
   GitStatus,
@@ -121,6 +122,11 @@ export const ipc = {
   claudeHookStatus: () => invoke<HookStatus>('claude_hook_status'),
 
   claudeIntegration: () => invoke<Integration>('claude_integration'),
+
+  /** Checked on demand: someone who installs the missing thing looks again. */
+  checkRequirements: () => invoke<Requirement[]>('check_requirements'),
+
+  daemonAvailable: () => invoke<boolean>('daemon_available'),
 
   installClaudeStatusLine: () => invoke<Integration>('install_claude_status_line'),
 

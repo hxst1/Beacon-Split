@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { selectActiveWorkspace, selectHidden, useBeacon } from '@/app/store'
 import { errorMessage, ipc } from '@/ipc'
@@ -6,13 +6,27 @@ import { ACCENT_PRESETS } from '@/lib/accent'
 import { PANEL_LABELS } from '@/lib/layout'
 import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
 import { modifierLabel } from '@/lib/platform'
-import type { Integration, LayoutNode, LayoutPreset, PanelId } from '@/types/beacon'
+import type {
+  Integration,
+  LayoutNode,
+  LayoutPreset,
+  PanelId,
+  Requirement,
+} from '@/types/beacon'
 import { LayoutThumb } from './LayoutThumb'
 import styles from './SettingsScreen.module.css'
 
-type SectionId = 'layout' | 'panels' | 'workspace' | 'keyboard' | 'claude' | 'about'
+type SectionId =
+  | 'requirements'
+  | 'layout'
+  | 'panels'
+  | 'workspace'
+  | 'keyboard'
+  | 'claude'
+  | 'about'
 
 const SECTIONS: Array<{ id: SectionId; label: string }> = [
+  { id: 'requirements', label: 'Requirements' },
   { id: 'layout', label: 'Layout' },
   { id: 'panels', label: 'Panels' },
   { id: 'workspace', label: 'Workspace' },
@@ -77,6 +91,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }): React.Reac
         </nav>
 
         <div className={styles['content']}>
+          {section === 'requirements' ? <RequirementsSection /> : null}
           {section === 'layout' ? <LayoutSection /> : null}
           {section === 'panels' ? <PanelsSection /> : null}
           {section === 'workspace' ? <WorkspaceSection /> : null}
@@ -86,6 +101,115 @@ export function SettingsScreen({ onClose }: { onClose: () => void }): React.Reac
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * What Beacon needs from the machine, and how to get what is missing.
+ *
+ * Written for somebody who was handed this application and has not set anything
+ * up. A check that only reports "missing" leaves them exactly as stuck, so each
+ * one says what it costs, where it was looked for, and what to run.
+ */
+function RequirementsSection(): React.ReactElement {
+  const [requirements, setRequirements] = useState<Requirement[] | null>(null)
+  const [daemon, setDaemon] = useState<boolean | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const look = useCallback(() => {
+    setRequirements(null)
+    void Promise.all([ipc.checkRequirements(), ipc.daemonAvailable()]).then(
+      ([found, hasDaemon]) => {
+        setRequirements(found)
+        setDaemon(hasDaemon)
+      },
+    )
+  }, [])
+
+  useEffect(look, [look])
+
+  const copy = (command: string): void => {
+    void navigator.clipboard.writeText(command)
+    setCopied(command)
+    window.setTimeout(() => setCopied((current) => (current === command ? null : current)), 1200)
+  }
+
+  return (
+    <section className={styles['section']}>
+      <h2 className={styles['sectionTitle']}>What Beacon needs</h2>
+      <p className={styles['sectionNote']}>
+        Beacon runs the tools you already have rather than bundling its own. Each is looked for
+        through your login shell, which is the same way a session finds it — so what this says is
+        what will actually happen.
+      </p>
+
+      {daemon === false ? (
+        <div className={styles['conflict']}>
+          The session daemon is missing from this build, so terminals and Claude cannot start. That
+          is a packaging fault rather than something you can install: it should sit beside the
+          application. Rebuild with <code>pnpm app:build</code>, or ask whoever gave you this.
+        </div>
+      ) : null}
+
+      {requirements === null ? (
+        <p className={styles['sectionNote']}>Looking…</p>
+      ) : (
+        requirements.map((requirement) => (
+          <div className={styles['requirement']} key={requirement.id}>
+            <div className={styles['requirementHead']}>
+              <span
+                className={styles['stateDot']}
+                data-state={requirement.path ? 'installed' : undefined}
+              />
+              <span className={styles['requirementName']}>{requirement.name}</span>
+              {!requirement.path ? (
+                <span className={styles['tag']} data-importance={requirement.importance}>
+                  {requirement.importance === 'required' ? 'Needed' : 'Optional'}
+                </span>
+              ) : null}
+              <span style={{ flex: 1 }} />
+              {requirement.version ? (
+                <span className={styles['found']}>{requirement.version}</span>
+              ) : null}
+            </div>
+
+            {requirement.path ? (
+              <div className={styles['found']} title={requirement.path}>
+                {requirement.path}
+              </div>
+            ) : (
+              <>
+                <p className={styles['sectionNote']} style={{ marginBottom: 4 }}>
+                  {requirement.whatBreaks}
+                </p>
+                {requirement.install.map((option) => (
+                  <div className={styles['installOption']} key={option.command}>
+                    <span className={styles['installLabel']}>{option.label}</span>
+                    <button
+                      type="button"
+                      className={styles['installCommand']}
+                      title="Copy"
+                      onClick={() => copy(option.command)}
+                    >
+                      {copied === option.command ? 'Copied' : option.command}
+                    </button>
+                  </div>
+                ))}
+                {requirement.note ? (
+                  <p className={styles['sectionNote']} style={{ marginTop: 10, marginBottom: 0 }}>
+                    {requirement.note}
+                  </p>
+                ) : null}
+              </>
+            )}
+          </div>
+        ))
+      )}
+
+      <button type="button" className={styles['resetAll']} onClick={look}>
+        Check again
+      </button>
+    </section>
   )
 }
 

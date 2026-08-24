@@ -1,4 +1,5 @@
 import { TerminalView } from '@/features/terminal/TerminalView'
+import { MissingTool } from '@/features/settings/MissingTool'
 import { useBeacon } from '@/app/store'
 import type { Project } from '@/types/beacon'
 import { Panel } from './Panel'
@@ -21,6 +22,7 @@ export function ClaudePanel({
   focused: boolean
 }): React.ReactElement {
   const restartSession = useBeacon((s) => s.restartSession)
+  const missingClaude = useBeacon((s) => s.missing.find((entry) => entry.id === 'claude'))
   const epoch = useBeacon((s) => s.sessionEpoch[`${project.id}:claude`] ?? 0)
   const attachEpoch = useBeacon((s) => s.attachEpoch)
 
@@ -40,13 +42,17 @@ export function ClaudePanel({
         </button>
       }
     >
-      <TerminalView
-        key={`${project.id}:${epoch}:${attachEpoch}`}
-        workspaceId={workspaceId}
-        projectId={project.id}
-        kind="claude"
-        autoFocus={focused}
-      />
+      {missingClaude ? (
+        <MissingTool requirement={missingClaude} />
+      ) : (
+        <TerminalView
+          key={`${project.id}:${epoch}:${attachEpoch}`}
+          workspaceId={workspaceId}
+          projectId={project.id}
+          kind="claude"
+          autoFocus={focused}
+        />
+      )}
     </Panel>
   )
 }

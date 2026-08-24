@@ -14,6 +14,10 @@ export function StatusBar(): React.ReactElement {
   const dismissNotice = useBeacon((s) => s.dismissNotice)
   const bindings = useBeacon((s) => s.snapshot?.bindings ?? [])
   const detached = useBeacon((s) => s.detached)
+  const missingRequired = useBeacon((s) =>
+    s.missing.filter((entry) => entry.importance === 'required'),
+  )
+  const setOverlay = useBeacon((s) => s.setOverlay)
 
   /** Whatever the shortcut actually is now, not what it shipped as. */
   const hint = (action: string): string => {
@@ -24,6 +28,17 @@ export function StatusBar(): React.ReactElement {
   return (
     <footer className={styles['bar']}>
       <span className={styles['path']}>{project?.displayPath ?? ''}</span>
+
+      {missingRequired.length > 0 ? (
+        <button
+          type="button"
+          className={styles['notice']}
+          onClick={() => setOverlay('settings')}
+          title="Settings → Requirements"
+        >
+          {missingRequired.map((entry) => entry.name).join(', ')} not installed
+        </button>
+      ) : null}
 
       {detached ? (
         <span className={styles['notice']}>Reconnecting to the session daemon…</span>

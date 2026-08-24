@@ -36,6 +36,16 @@ What is left is a few smaller things listed in the roadmap.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 
+## Giving it to someone else
+
+`pnpm app:build` produces a `.app` and a `.dmg`. They are ad-hoc signed, so
+macOS will refuse a downloaded copy with a misleading "damaged" message — see
+[`docs/DISTRIBUTING.md`](docs/DISTRIBUTING.md) for the three ways round that and
+what a colleague needs installed.
+
+Beacon checks for what it needs on startup and explains anything missing in
+Settings → Requirements, and in the panel that is affected.
+
 ## Requirements
 
 - Node 20+ and pnpm 10+

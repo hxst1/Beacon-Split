@@ -1,7 +1,26 @@
 use beacon_core::claude_hooks::{self, HookStatus};
 use beacon_core::client::daemon_binary_path;
+use beacon_core::requirements::{self, Requirement};
 
 use crate::error::CommandResult;
+
+/// What the machine has, and what is missing.
+///
+/// Checked on demand rather than cached: someone told that git is missing will
+/// go and install it, and the next thing they do is look again.
+#[tauri::command]
+pub fn check_requirements() -> Vec<Requirement> {
+    requirements::check()
+}
+
+/// Whether the session daemon was found where it should be.
+///
+/// Its absence is a packaging fault rather than something the user can install,
+/// so it is reported separately and says so.
+#[tauri::command]
+pub fn daemon_available() -> bool {
+    requirements::daemon_present(&daemon_binary_path())
+}
 
 /// The command Claude Code would run for each hook.
 ///

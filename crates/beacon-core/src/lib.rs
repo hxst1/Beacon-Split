@@ -18,11 +18,13 @@ pub mod keymap;
 pub mod layout;
 pub mod paths;
 pub mod protocol;
+pub mod requirements;
 pub mod scrollback;
 pub mod session;
 pub mod settings;
 pub mod state;
 pub mod store;
+pub mod tools;
 pub mod ui_state;
 
 pub use error::{CoreError, Result};

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { MissingTool } from '@/features/settings/MissingTool'
+import { useBeacon } from '@/app/store'
 import { errorMessage, ipc } from '@/ipc'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 import type { FileState, GitEntry, GitStatus } from '@/types/beacon'
@@ -39,6 +41,7 @@ export function GitPane({
   workspaceId: string
   projectId: string
 }): React.ReactElement {
+  const missingGit = useBeacon((s) => s.missing.find((entry) => entry.id === 'git'))
   const [status, setStatus] = useState<GitStatus | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -119,6 +122,7 @@ export function GitPane({
     }
   }
 
+  if (missingGit) return <MissingTool requirement={missingGit} />
   if (status === undefined) return <div className={styles['status']}>Reading…</div>
   if (status === null) {
     return <div className={styles['status']}>This project is not a git repository.</div>

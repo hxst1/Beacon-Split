@@ -148,6 +148,26 @@ export interface SessionActivity {
 /** Whether Beacon's hooks are registered with Claude Code. */
 export type HookStatus = 'installed' | 'stale' | 'notInstalled'
 
+export type Importance = 'required' | 'recommended'
+
+export interface InstallOption {
+  label: string
+  command: string
+}
+
+/** Something Beacon needs from the machine, and how to get it. */
+export interface Requirement {
+  id: string
+  name: string
+  importance: Importance
+  /** Where it was found, resolved the way a session would resolve it. */
+  path?: string
+  version?: string
+  whatBreaks: string
+  install: InstallOption[]
+  note?: string
+}
+
 export interface Integration {
   hooks: HookStatus
   hookCommand: string

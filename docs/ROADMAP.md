@@ -198,6 +198,30 @@ numbers are dimmed and labelled rather than left standing as current.
 Still to do: notifying the system when a project starts waiting, so it reaches
 you when Beacon is not the window you are looking at.
 
+## Milestone 9 — Handing it to someone else 🚧
+
+macOS first; Arch Linux is next and has never been built, so nothing here claims
+it works there.
+
+Done:
+
+- Beacon checks for what it needs — Claude Code, Git — through the same login
+  shell a session uses, so a passing check means the thing will actually run
+- Anything missing is explained where it is felt: the Claude panel says why it
+  is empty and what to run, and so does Git, rather than failing with whatever
+  error the absent program produced
+- Settings → Requirements lists each one with what it costs, where it was looked
+  for, and copyable install commands
+- A release build produces a signed-by-nobody `.app` and `.dmg`, and
+  `docs/DISTRIBUTING.md` is honest about what Gatekeeper does with that
+
+Remaining:
+
+- Signing and notarisation, which needs an Apple Developer membership
+- A universal build; today's is Apple Silicon only
+- Linux: build it, condition the window configuration by platform — vibrancy and
+  the overlay title bar are macOS-only — and document the system dependencies
+
 ## Later — not scheduled
 
 Both of these were on the original "do not build" list. They are here because

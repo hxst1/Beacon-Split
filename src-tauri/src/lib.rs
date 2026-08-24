@@ -77,6 +77,8 @@ pub fn run() {
             commands::stop_daemon,
             commands::claude_hook_status,
             commands::claude_integration,
+            commands::check_requirements,
+            commands::daemon_available,
             commands::install_claude_status_line,
             commands::remove_claude_status_line,
             commands::session_usage,

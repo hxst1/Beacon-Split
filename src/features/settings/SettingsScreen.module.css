@@ -385,3 +385,80 @@
   margin-top: 12px;
   align-items: center;
 }
+
+.requirement {
+  padding: 12px 14px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+}
+
+.requirementHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+}
+
+.requirementName {
+  color: var(--fg-1);
+  font-size: var(--text-md);
+}
+
+.tag {
+  padding: 1px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--line-1);
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+}
+
+.tag[data-importance='required'] {
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+  color: var(--danger);
+}
+
+.found {
+  color: var(--fg-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.installOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.installLabel {
+  width: 130px;
+  flex: none;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+}
+
+.installCommand {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-sm);
+  background: rgb(0 0 0 / 0.3);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-x: auto;
+  white-space: nowrap;
+  text-align: left;
+  user-select: text;
+}
+
+.installCommand:hover {
+  border-color: var(--accent-line);
+  color: var(--fg-1);
+}

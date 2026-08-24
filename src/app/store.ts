@@ -16,6 +16,7 @@ import { applyAccent } from '@/lib/accent'
 import { setPlatform } from '@/lib/platform'
 import type {
   LayoutNode,
+  Requirement,
   LayoutPreset,
   PanelId,
   Project,
@@ -47,6 +48,13 @@ interface BeaconState {
   attachEpoch: number
   /** True while there is no connection to the daemon. */
   detached: boolean
+  /**
+   * Things Beacon needs that this machine does not have.
+   *
+   * Checked once at startup so a panel can explain itself rather than failing
+   * with whatever error the missing program happened to produce.
+   */
+  missing: Requirement[]
   /**
    * Bumped when a session is replaced, keyed `projectId:kind`.
    *
@@ -126,6 +134,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     overlay: null,
     attachEpoch: 0,
     detached: false,
+    missing: [],
     sessionEpoch: {},
 
     load: async () => {
@@ -134,6 +143,12 @@ export const useBeacon = create<BeaconState>((set, get) => {
         accept(await ipc.getSnapshot())
         // Whatever sessions were already running have already reported.
         loadUsage()
+
+        // Best-effort: not knowing what is missing must not stop Beacon opening.
+        ipc
+          .checkRequirements()
+          .then((found) => set({ missing: found.filter((entry) => !entry.path) }))
+          .catch(() => undefined)
       } catch (error) {
         set({ status: 'error', fatal: errorMessage(error) })
       }
