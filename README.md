@@ -16,11 +16,14 @@ click or two.
 
 ## Status
 
-Milestones 0, 2, 2.5, 3 and 4 are complete and Milestone 1 is nearly there.
+Milestones 0 and 2 through 5 are complete, and Milestone 1 is nearly there.
 Today Beacon gives you workspaces, projects, tabs, layout presets, the workspace
-accent, a file tree with an editor and a `.env` view, and — per project — a real
-shell and a real `claude` session, each in its own PTY. Git is a placeholder
-that names the milestone it arrives in.
+accent, a file tree with an editor and a `.env` view, git status, diff, stage
+and commit, and — per project — a real shell and a real `claude` session, each
+in its own PTY.
+
+What is left is the parts that make it fast to drive: the command palette,
+quick open, and the session daemon.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 

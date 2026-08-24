@@ -1,13 +1,17 @@
+import { GitPane } from '@/features/git/GitPane'
+import type { Project } from '@/types/beacon'
 import { Panel } from './Panel'
-import { Placeholder } from './Placeholder'
 
-export function GitPanel(): React.ReactElement {
+export function GitPanel({
+  workspaceId,
+  project,
+}: {
+  workspaceId: string
+  project: Project
+}): React.ReactElement {
   return (
-    <Panel title="Git">
-      <Placeholder
-        milestone="Milestone 5"
-        text="Status, branch, diff, stage and commit — driven by the git CLI."
-      />
+    <Panel title="Git" subtitle={project.name}>
+      <GitPane key={project.id} workspaceId={workspaceId} projectId={project.id} />
     </Panel>
   )
 }

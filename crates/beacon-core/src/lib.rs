@@ -11,6 +11,7 @@ pub mod domain;
 pub mod dotenv;
 pub mod error;
 pub mod files;
+pub mod git;
 pub mod layout;
 pub mod paths;
 pub mod scrollback;

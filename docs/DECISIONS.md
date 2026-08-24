@@ -387,3 +387,41 @@ turns one secret into two.
 **Consequence.** Reopening the view re-reads the file, which also means it never
 shows a stale value. Nothing derived from a value is stored, so there is no
 search or filter over them.
+
+## ADR-023: Git is read through `--porcelain=v1 -z`
+
+**Context.** The Git panel needs status, and status output has to be parsed.
+
+**Decision.** `git status --porcelain=v1 -z --branch --untracked-files=all`,
+parsed by a pure function with its own tests, plus an integration suite that
+runs real repositories.
+
+**Why.** `--porcelain` is the format git promises not to change; the human one
+is explicitly not. `-z` matters more than it looks: without it a path containing
+a space, a quote or a newline comes back quoted and escaped, and every consumer
+has to unescape it correctly. NUL separators make that whole class of bug
+impossible. There is a test with a filename containing spaces.
+
+**Consequence.** Renames arrive as two records rather than one line, which the
+parser has to know about — also tested. The integration tests are what catch git
+changing its output from under the unit tests' assumptions; the unstage case
+before the first commit was found exactly that way.
+
+## ADR-024: Git never gets to ask a question
+
+**Context.** `push` and `pull` talk to a network and may want credentials. There
+is no terminal attached to these commands.
+
+**Decision.** Git runs with `GIT_TERMINAL_PROMPT=0`, empty askpass variables and
+`GIT_PAGER=cat`. Push and pull run on the blocking pool rather than an IPC
+worker. `pull` is `--ff-only`.
+
+**Why.** A prompt with nowhere to appear is a hang, not a question, and a hung
+command on an IPC worker takes the window's responsiveness with it. `--ff-only`
+because starting a merge or a rebase from a side panel — with no way to see or
+resolve a conflict there — leaves the repository somewhere the user did not ask
+to be.
+
+**Consequence.** A repository needing an interactive credential fails with git's
+own message instead of hanging, which is the right trade. A pull that is not a
+fast-forward is refused, and the terminal panel is where that gets sorted out.

@@ -11,6 +11,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
   DirEntry,
+  GitStatus,
   EnvEntry,
   FileContents,
   HostPlatform,
@@ -138,6 +139,38 @@ export const ipc = {
   /** Read fresh every time; values are never cached on this side either. */
   readEnvFile: (workspaceId: string, projectId: string, path: string) =>
     invoke<EnvEntry[]>('read_env_file', { workspaceId, projectId, path }),
+
+  // ---- git ----
+
+  /** `null` when the project is not a repository, which is not an error. */
+  gitStatus: (workspaceId: string, projectId: string) =>
+    invoke<GitStatus | null>('git_status', { workspaceId, projectId }),
+
+  gitDiff: (
+    workspaceId: string,
+    projectId: string,
+    path: string,
+    staged: boolean,
+    untracked: boolean,
+  ) => invoke<string>('git_diff', { workspaceId, projectId, path, staged, untracked }),
+
+  gitStage: (workspaceId: string, projectId: string, path: string) =>
+    invoke<GitStatus>('git_stage', { workspaceId, projectId, path }),
+
+  gitUnstage: (workspaceId: string, projectId: string, path: string) =>
+    invoke<GitStatus>('git_unstage', { workspaceId, projectId, path }),
+
+  gitStageAll: (workspaceId: string, projectId: string) =>
+    invoke<GitStatus>('git_stage_all', { workspaceId, projectId }),
+
+  gitCommit: (workspaceId: string, projectId: string, message: string) =>
+    invoke<GitStatus>('git_commit', { workspaceId, projectId, message }),
+
+  gitPush: (workspaceId: string, projectId: string) =>
+    invoke<string>('git_push', { workspaceId, projectId }),
+
+  gitPull: (workspaceId: string, projectId: string) =>
+    invoke<string>('git_pull', { workspaceId, projectId }),
 }
 
 /** Native folder picker. Resolves to `null` when the user cancels. */

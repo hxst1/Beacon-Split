@@ -153,3 +153,39 @@ export interface EnvEntry {
   /** 1-based, so the editor can jump to it. */
   line: number
 }
+
+// ---- git --------------------------------------------------------------------
+
+export type FileState =
+  | 'unmodified'
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'typeChanged'
+  | 'untracked'
+  | 'ignored'
+  | 'conflicted'
+
+export interface GitEntry {
+  /** Relative to the repository root, as git reports it. */
+  path: string
+  /** Where a rename or copy came from. */
+  originalPath?: string
+  /** What is staged for the next commit. */
+  staged: FileState
+  /** What has changed since, in the working tree. */
+  unstaged: FileState
+}
+
+export interface GitStatus {
+  /** `null` when the head is detached. */
+  branch: string | null
+  upstream?: string
+  ahead: number
+  behind: number
+  /** True before the first commit. */
+  unborn: boolean
+  entries: GitEntry[]
+}

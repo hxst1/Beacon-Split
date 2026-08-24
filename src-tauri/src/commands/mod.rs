@@ -5,12 +5,14 @@
 //! whole state keeps the frontend from having to reconcile partial updates.
 
 mod files;
+mod git;
 mod projects;
 mod sessions;
 mod system;
 mod workspaces;
 
 pub use files::*;
+pub use git::*;
 pub use projects::*;
 pub use sessions::*;
 pub use system::*;

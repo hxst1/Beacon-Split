@@ -66,3 +66,23 @@
   background: var(--surface-2);
   color: var(--fg-2);
 }
+
+/* Closing a panel is hiding it: the layout keeps its place, so reopening puts
+   it back where it was. Only the editor offers this — the others are toggled
+   from settings or a shortcut, and Claude is the point of the window. */
+.close {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  color: var(--fg-4);
+  font-size: 10px;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.close:hover {
+  background: var(--surface-3);
+  color: var(--fg-1);
+}

@@ -82,7 +82,7 @@ function renderPanel(
     case 'editor':
       return <EditorPanel workspaceId={workspaceId} project={project} focused={focused} />
     case 'git':
-      return <GitPanel />
+      return <GitPanel workspaceId={workspaceId} project={project} />
     case 'terminal':
       return (
         <TerminalPanel workspaceId={workspaceId} project={project} focused={focused} />

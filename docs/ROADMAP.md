@@ -104,11 +104,19 @@ guesswork, so they wait for something better.
 
 Still to do here: go-to-line, and following file changes made outside Beacon.
 
-## Milestone 5 — Git
+## Milestone 5 — Git ✅
 
-- Status, current branch, diff for the selected file
-- Stage, unstage, commit, push, pull
-- Driven by the `git` CLI from Rust
+- Status split into staged and unstaged, with the branch and how far ahead or
+  behind it is
+- Diff for the selected file, including untracked ones
+- Stage, unstage, stage all, commit, push, pull
+- Driven by the `git` CLI, with `--porcelain=v1 -z` so a path containing spaces
+  or quotes is never misread
+- Push and pull run off the IPC thread, and git is configured never to stop and
+  ask for a password — there is no terminal here for it to ask on
+
+Not planned: branch switching, history, rebase, conflict resolution. The
+terminal panel is two keystrokes away and is better at all of them.
 
 ## Milestone 6 — UX
 
