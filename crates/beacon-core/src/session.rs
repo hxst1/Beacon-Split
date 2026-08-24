@@ -139,6 +139,7 @@ fn extract_resolved_path(stdout: &str) -> Option<PathBuf> {
 /// package script would otherwise push that script's configuration into every
 /// project shell.
 const STRIPPED_ENV: &[&str] = &[
+    // Terminal identity. See the note above.
     "TERM_PROGRAM",
     "TERM_PROGRAM_VERSION",
     "TERM_SESSION_ID",
@@ -149,11 +150,32 @@ const STRIPPED_ENV: &[&str] = &[
     // Stale geometry from the launching terminal; the PTY sets the real size.
     "COLUMNS",
     "LINES",
+    // Injected by a package script, not by the user.
     "INIT_CWD",
     "NODE_ENV",
+    // Claude Code's own per-process state, when Beacon was launched from
+    // inside a session. Without this the `claude` Beacon starts sees the
+    // parent's CLAUDE_CODE_CHILD_SESSION marker, concludes it is a nested
+    // session, and turns transcript saving off. The messaging socket and token
+    // are the parent's private channel and have no business in a project shell.
+    //
+    // Only per-process state is listed. Configuration such as ANTHROPIC_API_KEY,
+    // ANTHROPIC_BASE_URL or CLAUDE_CODE_USE_BEDROCK belongs to the user and is
+    // deliberately passed through, which is why this is a list and not a
+    // CLAUDE_* prefix rule.
+    "CLAUDECODE",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_BRIDGE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_EFFORT",
+    "CLAUDE_PID",
 ];
 
-/// Strips the launching terminal's identity from a probe subprocess.
+/// Strips the launcher's identity from a probe subprocess.
 ///
 /// The same reasoning as [`prepare_environment`]: asking the shell a question
 /// while pretending to be Terminal.app runs that terminal's session machinery,

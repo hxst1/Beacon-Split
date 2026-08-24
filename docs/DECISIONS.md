@@ -263,9 +263,19 @@ direction: launching Beacon through `pnpm app:dev` would otherwise push that
 script's configuration into every project shell, so what a command does would
 depend on how Beacon happened to be started.
 
+Claude Code is the same problem from another direction. Beacon started from
+inside a session inherits that session's markers, and the `claude` it launches
+then sees `CLAUDE_CODE_CHILD_SESSION`, concludes it is nested, and turns
+transcript saving off. The parent's messaging socket and token are a private
+channel and have no business in a project shell either.
+
 **Consequence.** The strip list is a denylist, so a new leak from a new launcher
 would need adding to it. An allowlist would be stricter but would break the
-user's own configuration, which is the environment we are here to preserve.
+user's own configuration, which is the environment we are here to preserve —
+and that distinction is the whole rule: per-process state of the launcher is
+stripped, configuration such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_USE_BEDROCK`
+is passed through. That is why the Claude Code entries are listed individually
+rather than matched as a `CLAUDE_*` prefix.
 
 ## ADR-017: `claude` is located through the user's interactive login shell
 
