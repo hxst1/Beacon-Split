@@ -504,3 +504,21 @@ need. An internally tagged enum cannot hold a bare sequence, and serde only
 finds that out at runtime — so the session list is a struct variant. Neither
 failure was visible until a request timed out, which is why the daemon now
 answers what it cannot parse and never drops a reply it cannot encode.
+
+## ADR-029: The daemon ships as a Tauri sidecar
+
+**Context.** A packaged Beacon has to carry its daemon; a build that produces an
+application unable to start a session is not a build.
+
+**Decision.** `externalBin`, with the binary staged as
+`beacon-daemon-<target-triple>` before bundling. Tauri strips the triple and
+places it beside the main executable, which is where the client already looks.
+
+**Why.** The triple in the name is the point: it makes it impossible for a
+bundle to pick up a daemon built for a different machine. Using it also means
+the nested binary is signed with the bundle on macOS, which a plain resource
+copy would not be.
+
+**Consequence.** One staging step before bundling, and a `binaries/` directory
+that is built rather than committed. The path resolution needed no special case
+for bundles — verified by building one and looking, not by assuming.

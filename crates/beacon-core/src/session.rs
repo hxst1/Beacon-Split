@@ -439,6 +439,14 @@ impl SessionManager {
     }
 
     pub fn resize(&self, id: &SessionId, cols: u16, rows: u16) -> Result<()> {
+        // A grid this small is a client that measured a panel mid-layout, not a
+        // window someone actually made that narrow. Honour it — the client is
+        // entitled to be believed — but say so, because the symptom is output
+        // wrapped at two columns and nothing else would point here.
+        if cols < 20 || rows < 4 {
+            tracing::warn!(session = %id, cols, rows, "implausibly small terminal size");
+        }
+
         let sessions = self.sessions.lock_or_recover();
         let session = sessions
             .get(id)

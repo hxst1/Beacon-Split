@@ -25,7 +25,8 @@ in its own PTY.
 Sessions outlive the window: closing Beacon leaves them running, and opening it
 again reattaches to them.
 
-What is left is packaging, and making keyboard bindings editable.
+What is left is making keyboard bindings editable, and a few smaller things
+listed in the roadmap.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 
@@ -49,7 +50,7 @@ Other useful commands:
 pnpm check        # typecheck + vitest + rustfmt + clippy + cargo test
 pnpm typecheck    # TypeScript only
 pnpm rs:test      # Rust tests only
-pnpm app:build    # production bundle
+pnpm app:build    # production bundle, daemon included
 ```
 
 ## Where things live

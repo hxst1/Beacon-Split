@@ -54,16 +54,36 @@ export function TerminalView({
 
       container.append(terminal.element)
 
+      /**
+       * Measures the panel and tells the process what size it is.
+       *
+       * Guarded, because a panel caught mid-layout — hidden, collapsing, or not
+       * yet placed — measures as almost nothing. Fitting to that and sending it
+       * on tells the process it has two columns, and everything it prints until
+       * the next resize is wrapped at two columns. That damage is already in the
+       * scrollback by the time the real size arrives, which is why it looked
+       * like a rendering bug that a restart fixed.
+       */
       const apply = (): void => {
+        const box = container.getBoundingClientRect()
+        if (box.width < MIN_USABLE_PX || box.height < MIN_USABLE_PX) return
+
         terminal.fit.fit()
-        void ipc.resizeSession(session.id, terminal.term.cols, terminal.term.rows)
+        const { cols, rows } = terminal.term
+        if (cols < MIN_COLS || rows < MIN_ROWS) return
+
+        void ipc.resizeSession(session.id, cols, rows)
       }
 
-      // Wait a frame so the element has been laid out before measuring.
+      // Cell metrics depend on the font, so fitting before it loads measures
+      // the fallback and gets the grid wrong.
       const frame = requestAnimationFrame(() => {
-        apply()
-        setReady(true)
-        if (autoFocus) terminal.term.focus()
+        void document.fonts.ready.then(() => {
+          if (cancelled) return
+          apply()
+          setReady(true)
+          if (autoFocus) terminal.term.focus()
+        })
       })
 
       const observer = new ResizeObserver(() => apply())
@@ -98,15 +118,24 @@ export function TerminalView({
   )
 }
 
+/** Below this, a panel is mid-layout rather than genuinely small. */
+const MIN_USABLE_PX = 60
+const MIN_COLS = 20
+const MIN_ROWS = 4
+
 /**
  * A first guess at the PTY grid, from the panel size and xterm's default cell.
  *
- * Only used for the initial spawn; the real measurement follows one frame later.
+ * Only used for the initial spawn; the real measurement follows once the font
+ * has loaded. An unmeasurable panel falls back to a conventional terminal size,
+ * which is wrong by a little rather than catastrophically.
  */
 function estimateGrid(container: HTMLElement): { cols: number; rows: number } {
   const { width, height } = container.getBoundingClientRect()
+  if (width < MIN_USABLE_PX || height < MIN_USABLE_PX) return { cols: 80, rows: 24 }
+
   return {
-    cols: Math.max(20, Math.floor(width / 7.2)),
-    rows: Math.max(5, Math.floor(height / 16.2)),
+    cols: Math.max(MIN_COLS, Math.floor(width / 7.2)),
+    rows: Math.max(MIN_ROWS, Math.floor(height / 16.2)),
   }
 }

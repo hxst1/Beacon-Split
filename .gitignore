@@ -5,3 +5,4 @@ target/
 *.log
 .vite/
 src-tauri/gen/schemas/
+src-tauri/binaries/

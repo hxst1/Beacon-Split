@@ -37,6 +37,7 @@
   },
   "bundle": {
     "active": true,
+    "externalBin": ["binaries/beacon-daemon"],
     "targets": "all",
     "category": "DeveloperTool",
     "icon": [

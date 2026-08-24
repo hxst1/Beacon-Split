@@ -155,10 +155,10 @@ management, not a change to how sessions work.
 - The daemon stops itself after five minutes with no sessions and nobody
   attached, and can be stopped deliberately from the palette
 
-Still to do: packaging. `daemon_binary_path` looks beside the executable, which
-is right in development and needs the daemon added to the bundle for a release
-build. A missing daemon is reported clearly rather than failing silently, and
-the rest of Beacon works without it.
+Packaged as a Tauri sidecar: the bundler names the binary with its target
+triple so a bundle can never pick up one built for another machine, and places
+it beside the main executable — which is exactly where the client looks, in a
+bundle and in development alike. `pnpm app:build` builds and stages it.
 
 Resuming Claude across a machine restart is a separate question — a process
 cannot survive a shutdown, so it means using Claude's own resume, and that
