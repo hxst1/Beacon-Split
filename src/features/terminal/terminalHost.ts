@@ -98,6 +98,8 @@ export async function acquire(
   }
   replayed(sessionId, snapshot.endOffset)
 
+
+
   terminal.term.onData((data) => {
     void ipc.writeSession(sessionId, data)
   })

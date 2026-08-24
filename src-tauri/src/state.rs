@@ -1,7 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use beacon_core::client::{DaemonClient, DaemonEvents, daemon_binary_path};
+use beacon_core::domain::ProjectId;
 use beacon_core::protocol::Event;
+use beacon_core::session::SessionId;
 use beacon_core::{Beacon, CoreError};
 use tauri::{AppHandle, Emitter};
 
@@ -46,6 +48,37 @@ impl AppState {
     }
 }
 
+/// What the window receives for each event.
+///
+/// Spelled out rather than reusing the protocol enum: the shapes the frontend
+/// reads are part of this boundary, and sharing a type whose serialisation is
+/// tagged for a different transport is how they silently stopped matching.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OutputPayload {
+    id: SessionId,
+    project: ProjectId,
+    offset: u64,
+    /// Base64-encoded bytes.
+    data: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExitPayload {
+    id: SessionId,
+    project: ProjectId,
+    code: Option<i32>,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActivityPayload {
+    project: ProjectId,
+    activity: beacon_core::protocol::ClaudeActivity,
+    detail: Option<String>,
+}
+
 /// Forwards what the daemon reports to the webview.
 ///
 /// The only place that knows sessions are rendered in a window at all.
@@ -68,12 +101,44 @@ pub const EVENT_REATTACHED: &str = "session:reattached";
 
 impl DaemonEvents for WebviewEvents {
     fn event(&self, event: Event) {
+        // Emitted as the payload the window expects, not as the enum that
+        // carried it here. `Event` is adjacently tagged, so emitting it whole
+        // wraps everything in `{event, data}` — and a listener reading `id` off
+        // that finds nothing, drops the chunk, and shows an empty terminal
+        // while the daemon fills up with output nobody sees.
+        //
         // Never log the payload: it carries whatever is on the user's screen.
         let delivered = match event {
-            Event::Output { .. } => self.app.emit(EVENT_OUTPUT, event),
-            Event::Exit { .. } => self.app.emit(EVENT_EXIT, event),
-            Event::Activity { .. } => self.app.emit(EVENT_ACTIVITY, event),
-            Event::Usage(ref report) => self.app.emit(EVENT_USAGE, report.clone()),
+            Event::Output {
+                id,
+                project,
+                offset,
+                data,
+            } => self.app.emit(
+                EVENT_OUTPUT,
+                OutputPayload {
+                    id,
+                    project,
+                    offset,
+                    data,
+                },
+            ),
+            Event::Exit { id, project, code } => {
+                self.app.emit(EVENT_EXIT, ExitPayload { id, project, code })
+            }
+            Event::Activity {
+                project,
+                activity,
+                detail,
+            } => self.app.emit(
+                EVENT_ACTIVITY,
+                ActivityPayload {
+                    project,
+                    activity,
+                    detail,
+                },
+            ),
+            Event::Usage(report) => self.app.emit(EVENT_USAGE, report),
         };
 
         if let Err(err) = delivered {
@@ -89,5 +154,56 @@ impl DaemonEvents for WebviewEvents {
     fn reattached(&self) {
         tracing::info!("reattached to the session daemon");
         let _ = self.app.emit(EVENT_REATTACHED, ());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The window reads `id`, `offset` and `data` off the top of the payload.
+    ///
+    /// This broke once by sharing the protocol enum with the webview: `Event`
+    /// is adjacently tagged, so emitting it whole wraps everything in
+    /// `{event, data}`, every listener found `id` undefined, and terminals sat
+    /// empty while the daemon filled with output nobody saw. Nothing about
+    /// reading the code showed it.
+    #[test]
+    fn event_payloads_are_flat() {
+        let output = serde_json::to_value(OutputPayload {
+            id: SessionId("sn_x".into()),
+            project: ProjectId("pj_x".into()),
+            offset: 12,
+            data: "aGk=".into(),
+        })
+        .unwrap();
+
+        assert_eq!(output.get("id").and_then(|v| v.as_str()), Some("sn_x"));
+        assert_eq!(output.get("offset").and_then(|v| v.as_u64()), Some(12));
+        assert!(
+            output.get("event").is_none(),
+            "a tag here would bury every field one level down: {output}"
+        );
+
+        let exit = serde_json::to_value(ExitPayload {
+            id: SessionId("sn_x".into()),
+            project: ProjectId("pj_x".into()),
+            code: Some(0),
+        })
+        .unwrap();
+        assert_eq!(exit.get("id").and_then(|v| v.as_str()), Some("sn_x"));
+        assert!(exit.get("event").is_none());
+
+        let activity = serde_json::to_value(ActivityPayload {
+            project: ProjectId("pj_x".into()),
+            activity: beacon_core::protocol::ClaudeActivity::Waiting,
+            detail: Some("Bash".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            activity.get("project").and_then(|v| v.as_str()),
+            Some("pj_x")
+        );
+        assert!(activity.get("event").is_none());
     }
 }
