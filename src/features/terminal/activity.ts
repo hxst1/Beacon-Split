@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 import { watchActivity } from './sessionBridge'
-import type { Activity } from '@/types/beacon'
+import type { Activity, ClaudeActivity } from '@/types/beacon'
 
 /** How long after its last output a project stops looking busy. */
 const SETTLE_MS = 700
@@ -17,6 +17,14 @@ interface ActivityState {
   sessions: Record<string, string>
   /** Projects that produced output within the settle window. */
   busy: Record<string, true>
+
+  /**
+   * What Claude Code said, where it has said anything.
+   *
+   * Takes precedence over the output heuristic: a report is a fact, and
+   * "something printed recently" is an inference from it at best.
+   */
+  reported: Record<string, { activity: ClaudeActivity; detail: string | null }>
 
   sessionOpened: (sessionId: string, project: string) => void
   sessionClosed: (sessionId: string) => void
@@ -35,6 +43,7 @@ interface ActivityState {
 export const useActivity = create<ActivityState>((set) => ({
   sessions: {},
   busy: {},
+  reported: {},
 
   sessionOpened: (sessionId, project) =>
     set((state) => ({ sessions: { ...state.sessions, [sessionId]: project } })),
@@ -52,8 +61,10 @@ export const useActivity = create<ActivityState>((set) => ({
         Object.entries(state.sessions).filter(([, owner]) => owner !== project),
       )
       const busy = { ...state.busy }
+      const reported = { ...state.reported }
       delete busy[project]
-      return { sessions, busy }
+      delete reported[project]
+      return { sessions, busy, reported }
     }),
 }))
 
@@ -90,14 +101,36 @@ watchActivity({
   onExit: (_project, sessionId) => {
     useActivity.getState().sessionClosed(sessionId)
   },
+  onClaudeActivity: ({ project, activity, detail }) => {
+    useActivity.setState((state) => {
+      const reported = { ...state.reported }
+      if (activity === 'ended') delete reported[project]
+      else reported[project] = { activity, detail }
+      return { reported }
+    })
+  },
 })
 
 function derive(state: ActivityState, project: string): Activity {
   const running = Object.values(state.sessions).includes(project)
   if (!running) return 'stopped'
+
+  // What Claude said beats what we inferred from bytes arriving.
+  const reported = state.reported[project]
+  if (reported) {
+    if (reported.activity === 'waiting') return 'waiting'
+    if (reported.activity === 'working') return 'working'
+    if (reported.activity === 'done') return state.busy[project] ? 'working' : 'done'
+  }
+
   return state.busy[project] ? 'working' : 'idle'
 }
 
 export function useProjectActivity(project: string): Activity {
   return useActivity((state) => derive(state, project))
+}
+
+/** What Claude is doing, for a tooltip — `Bash`, `Edit`, and so on. */
+export function useProjectDetail(project: string): string | null {
+  return useActivity((state) => state.reported[project]?.detail ?? null)
 }

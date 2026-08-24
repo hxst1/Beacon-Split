@@ -82,9 +82,12 @@ Remaining: rearranging panels by hand, which is what turns the preset into
   no pickier about where it lives than the terminal it was installed from
 - Activity on tabs: working, idle, stopped
 
-Still to do here: `dev server` and `error` states, which need understanding what
-a session printed rather than that it printed. Detecting them by pattern is
-guesswork, so they wait for something better.
+Something better arrived: Claude Code's own hooks. Tabs now say working, done,
+or waiting for you, because Claude says so — see Milestone 8.
+
+A dev-server state is still unbuilt. The honest way is the process tree: Beacon
+spawns the shell, so it can see what its children are listening on, rather than
+reading output and guessing.
 
 ## Milestone 4 — Files ✅
 
@@ -170,6 +173,21 @@ bundle and in development alike. `pnpm app:build` builds and stages it.
 Resuming Claude across a machine restart is a separate question — a process
 cannot survive a shutdown, so it means using Claude's own resume, and that
 belongs with whatever comes next.
+
+## Milestone 8 — Claude Code integration ✅
+
+- Tabs report what Claude is actually doing, from Claude Code's hooks rather
+  than from inferring it out of terminal output
+- `waiting` is the state the integration exists for: Claude stopped and needs an
+  answer. With several projects open, the expensive thing is not switching tabs,
+  it is not knowing which one needs you
+- The daemon binary doubles as the hook, so there is no script to package, and
+  it is inert outside Beacon: no socket in the environment, nothing to report
+- Installed explicitly from settings, which shows the exact command first, and
+  removable without leaving anything behind
+
+Still to do: notifying the system when a project starts waiting, so it reaches
+you when Beacon is not the window you are looking at.
 
 ## Later — not scheduled
 

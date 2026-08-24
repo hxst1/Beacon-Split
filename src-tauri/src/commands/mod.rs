@@ -6,6 +6,7 @@
 
 mod files;
 mod git;
+mod integration;
 mod projects;
 mod sessions;
 mod system;
@@ -13,6 +14,7 @@ mod workspaces;
 
 pub use files::*;
 pub use git::*;
+pub use integration::*;
 pub use projects::*;
 pub use sessions::*;
 pub use system::*;

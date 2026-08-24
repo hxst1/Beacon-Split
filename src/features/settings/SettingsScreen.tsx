@@ -6,17 +6,18 @@ import { ACCENT_PRESETS } from '@/lib/accent'
 import { PANEL_LABELS } from '@/lib/layout'
 import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
 import { modifierLabel } from '@/lib/platform'
-import type { LayoutNode, LayoutPreset, PanelId } from '@/types/beacon'
+import type { HookStatus, LayoutNode, LayoutPreset, PanelId } from '@/types/beacon'
 import { LayoutThumb } from './LayoutThumb'
 import styles from './SettingsScreen.module.css'
 
-type SectionId = 'layout' | 'panels' | 'workspace' | 'keyboard' | 'about'
+type SectionId = 'layout' | 'panels' | 'workspace' | 'keyboard' | 'claude' | 'about'
 
 const SECTIONS: Array<{ id: SectionId; label: string }> = [
   { id: 'layout', label: 'Layout' },
   { id: 'panels', label: 'Panels' },
   { id: 'workspace', label: 'Workspace' },
   { id: 'keyboard', label: 'Keyboard' },
+  { id: 'claude', label: 'Claude Code' },
   { id: 'about', label: 'About' },
 ]
 
@@ -80,6 +81,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }): React.Reac
           {section === 'panels' ? <PanelsSection /> : null}
           {section === 'workspace' ? <WorkspaceSection /> : null}
           {section === 'keyboard' ? <KeyboardSection /> : null}
+          {section === 'claude' ? <ClaudeSection /> : null}
           {section === 'about' ? <AboutSection /> : null}
         </div>
       </div>
@@ -324,6 +326,101 @@ function KeyboardSection(): React.ReactElement {
       >
         Reset all shortcuts
       </button>
+    </section>
+  )
+}
+
+/**
+ * The Claude Code integration.
+ *
+ * Opt-in, and it says exactly what it will add before adding it. This writes
+ * into a file belonging to another application; doing that unprompted is not
+ * Beacon's to decide, however useful the result.
+ */
+function ClaudeSection(): React.ReactElement {
+  const [status, setStatus] = useState<HookStatus | null>(null)
+  const [command, setCommand] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([ipc.claudeHookStatus(), ipc.claudeHookCommand()])
+      .then(([found, hookCommand]) => {
+        if (cancelled) return
+        setStatus(found)
+        setCommand(hookCommand)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(errorMessage(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const act = (run: () => Promise<HookStatus>): void => {
+    run()
+      .then(setStatus)
+      .catch((err: unknown) => setError(errorMessage(err)))
+  }
+
+  const label =
+    status === 'installed'
+      ? 'Installed'
+      : status === 'stale'
+        ? 'Installed, but pointing at another copy of Beacon'
+        : 'Not installed'
+
+  return (
+    <section className={styles['section']}>
+      <h2 className={styles['sectionTitle']}>Activity from Claude Code</h2>
+      <p className={styles['sectionNote']}>
+        Tabs can say what Claude is doing — working, finished, or stopped and waiting for you to
+        answer it. That last one is the point: with several projects open, the expensive thing is
+        not switching tabs, it is not knowing which one needs you.
+      </p>
+      <p className={styles['sectionNote']}>
+        This works by registering hooks in your own <code>~/.claude/settings.json</code>. Beacon
+        adds one entry per event and touches nothing else, and removing it puts the file back. The
+        hook does nothing outside Beacon: a Claude started anywhere else has no socket to report
+        to, so it exits immediately.
+      </p>
+
+      <div className={styles['command']}>{command || '…'}</div>
+
+      <div className={styles['buttons']}>
+        <span className={styles['state']}>
+          <span className={styles['stateDot']} data-state={status ?? 'notInstalled'} />
+          {status === null ? 'Checking…' : label}
+        </span>
+        <span style={{ flex: 1 }} />
+
+        {status === 'installed' ? (
+          <button
+            type="button"
+            className={styles['resetAll']}
+            style={{ marginTop: 0 }}
+            onClick={() => act(() => ipc.removeClaudeHooks())}
+          >
+            Remove
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles['primary']}
+            onClick={() => act(() => ipc.installClaudeHooks())}
+          >
+            {status === 'stale' ? 'Update' : 'Install'}
+          </button>
+        )}
+      </div>
+
+      {error ? <p className={styles['conflict']}>{error}</p> : null}
+
+      <p className={styles['sectionNote']} style={{ marginTop: 14 }}>
+        A Claude session already running will not pick this up — restart it, or the session daemon,
+        once the hooks are installed.
+      </p>
     </section>
   )
 }

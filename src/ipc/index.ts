@@ -11,6 +11,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
   DirEntry,
+  HookStatus,
   GitStatus,
   EnvEntry,
   FileContents,
@@ -112,6 +113,17 @@ export const ipc = {
 
   /** Stops the daemon, and with it every session in every project. */
   stopDaemon: () => invoke<void>('stop_daemon'),
+
+  // ---- Claude Code integration ----
+
+  claudeHookStatus: () => invoke<HookStatus>('claude_hook_status'),
+
+  /** The exact command that would be registered, to show before agreeing. */
+  claudeHookCommand: () => invoke<string>('claude_hook_command'),
+
+  installClaudeHooks: () => invoke<HookStatus>('install_claude_hooks'),
+
+  removeClaudeHooks: () => invoke<HookStatus>('remove_claude_hooks'),
 
   // ---- files ----
   // Every path is relative to the project; the backend refuses anything that

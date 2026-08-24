@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 base64 = "0.22"
 beacon-core = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

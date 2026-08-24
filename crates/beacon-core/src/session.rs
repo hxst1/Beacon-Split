@@ -259,6 +259,11 @@ pub struct SessionManager {
     /// Where `claude` lives, worked out once. `None` means it was looked for
     /// and not found.
     claude_path: OnceLock<Option<PathBuf>>,
+    /// The socket a Claude session's hooks should report to.
+    ///
+    /// Only the daemon knows this, and only Claude sessions are told: a shell
+    /// has no reason to be able to reach the daemon that spawned it.
+    hook_socket: Mutex<Option<PathBuf>>,
 }
 
 impl SessionManager {
@@ -268,7 +273,13 @@ impl SessionManager {
             sessions: Mutex::new(HashMap::new()),
             by_project: Mutex::new(HashMap::new()),
             claude_path: OnceLock::new(),
+            hook_socket: Mutex::new(None),
         }
+    }
+
+    /// Tells the manager where Claude Code's hooks should report.
+    pub fn set_hook_socket(&self, socket: PathBuf) {
+        *self.hook_socket.lock_or_recover() = Some(socket);
     }
 
     /// The command for a session kind.
@@ -350,6 +361,16 @@ impl SessionManager {
         let mut command = self.command_for(kind)?;
         command.cwd(cwd);
         prepare_environment(&mut command);
+
+        // A Claude session is told how to reach us, so its hooks can say what
+        // it is doing. Without these the hook is inert, which is what makes it
+        // safe to register once and forget about.
+        if kind == SessionKind::Claude
+            && let Some(socket) = self.hook_socket.lock_or_recover().as_ref()
+        {
+            command.env("BEACON_SOCKET", socket);
+            command.env("BEACON_PROJECT", project.as_str());
+        }
 
         let child = pair
             .slave

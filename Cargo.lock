@@ -246,6 +246,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "beacon-core",
+ "serde",
  "serde_json",
  "tracing",
  "tracing-subscriber",

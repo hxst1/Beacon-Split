@@ -4,6 +4,7 @@
 //! was showing. The window is a client: it attaches, renders what the daemon
 //! has, and detaches. Nothing about a session depends on anyone watching it.
 
+mod hook;
 mod server;
 
 use std::io::ErrorKind;
@@ -24,6 +25,12 @@ fn requested_dir() -> std::path::PathBuf {
 }
 
 fn main() {
+    // Running as a Claude Code hook rather than as the daemon. Checked before
+    // anything else, including logging: a hook must be silent and quick.
+    if std::env::args().nth(1).as_deref() == Some("hook") {
+        hook::run();
+    }
+
     init_tracing();
 
     let dir = requested_dir();

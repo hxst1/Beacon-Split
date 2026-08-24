@@ -332,3 +332,56 @@
   background: var(--surface-2);
   color: var(--fg-1);
 }
+
+.command {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-sm);
+  background: rgb(0 0 0 / 0.3);
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-x: auto;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+}
+
+.stateDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--fg-4);
+  flex: none;
+}
+
+.stateDot[data-state='installed'] { background: #8fd18a; }
+.stateDot[data-state='stale'] { background: #e0a76a; }
+
+.primary {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  font-size: var(--text-xs);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+.primary:hover {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+.buttons {
+  display: flex;
+  gap: 7px;
+  margin-top: 12px;
+  align-items: center;
+}

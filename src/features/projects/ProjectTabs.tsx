@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { Popover } from '@/app/ui/Popover'
-import { useProjectActivity } from '@/features/terminal/activity'
+import { useProjectActivity, useProjectDetail } from '@/features/terminal/activity'
 import { selectActiveProject, selectProjects, useBeacon } from '@/app/store'
 import { pickFolder } from '@/ipc'
 import { shortcutLabel } from '@/lib/platform'
@@ -12,6 +12,14 @@ import styles from './ProjectTabs.module.css'
 interface MenuTarget {
   project: Project
   anchor: DOMRect
+}
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  working: 'Claude is working',
+  waiting: 'Claude is waiting for you',
+  done: 'Claude finished',
+  idle: 'Idle',
+  stopped: 'Stopped',
 }
 
 /** A single tab. Split out so only the busy one re-renders as activity changes. */
@@ -29,21 +37,24 @@ function ProjectTab({
   onMenu: (anchor: DOMRect) => void
 }): React.ReactElement {
   const activity = useProjectActivity(project.id)
+  const detail = useProjectDetail(project.id)
   const shortcut = index < 9 ? ` · ${shortcutLabel(String(index + 1))}` : ''
+  const doing = ACTIVITY_LABELS[activity]
+  const said = detail ? `${doing} (${detail})` : doing
 
   return (
     <button
       type="button"
       className={styles['tab']}
       data-active={active}
-      title={`${project.displayPath}${shortcut}`}
+      title={`${project.displayPath}${shortcut}\n${said}`}
       onClick={onSelect}
       onContextMenu={(event) => {
         event.preventDefault()
         onMenu(event.currentTarget.getBoundingClientRect())
       }}
     >
-      <span className={styles['status']} data-state={activity} />
+      <span className={styles['status']} data-state={activity} title={said} />
       <span className={styles['name']}>{project.name}</span>
     </button>
   )

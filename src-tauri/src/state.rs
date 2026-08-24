@@ -55,6 +55,8 @@ struct WebviewEvents {
 
 pub const EVENT_OUTPUT: &str = "session:output";
 pub const EVENT_EXIT: &str = "session:exit";
+/// What a project's Claude session is doing, as Claude Code itself reports it.
+pub const EVENT_ACTIVITY: &str = "session:activity";
 /// Raised when the connection drops. Sessions keep running; this window is no
 /// longer watching them.
 pub const EVENT_DETACHED: &str = "session:detached";
@@ -68,6 +70,7 @@ impl DaemonEvents for WebviewEvents {
         let delivered = match event {
             Event::Output { .. } => self.app.emit(EVENT_OUTPUT, event),
             Event::Exit { .. } => self.app.emit(EVENT_EXIT, event),
+            Event::Activity { .. } => self.app.emit(EVENT_ACTIVITY, event),
         };
 
         if let Err(err) = delivered {

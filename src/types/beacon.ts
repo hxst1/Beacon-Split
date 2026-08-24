@@ -129,10 +129,24 @@ export interface SessionExit {
 /**
  * What a project appears to be doing, shown on its tab.
  *
- * Only these three are derived today. `devServer` and `error` need output
- * inspection and are recorded in the roadmap rather than guessed at.
+ * `working`, `idle` and `stopped` are inferred from the session stream.
+ * `waiting` and `done` come from Claude Code's own hooks, when they are
+ * installed — the difference between guessing and being told.
  */
-export type Activity = 'working' | 'idle' | 'stopped' 
+export type Activity = 'working' | 'idle' | 'stopped' | 'waiting' | 'done'
+
+/** What Claude Code reports through a hook. */
+export type ClaudeActivity = 'working' | 'waiting' | 'done' | 'ended'
+
+export interface SessionActivity {
+  project: string
+  activity: ClaudeActivity
+  /** The tool it just started, when there is one worth naming. */
+  detail: string | null
+}
+
+/** Whether Beacon's hooks are registered with Claude Code. */
+export type HookStatus = 'installed' | 'stale' | 'notInstalled' 
 
 // ---- files ------------------------------------------------------------------
 

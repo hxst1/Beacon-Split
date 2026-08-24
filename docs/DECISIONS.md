@@ -605,3 +605,61 @@ possible — which is a reasonable thing to want.
 **Consequence.** One more argument on two functions, and a wrong socket now
 produces a second daemon rather than an error. That is the correct behaviour for
 a path that names which daemon you mean.
+
+## ADR-034: Activity comes from Claude Code, not from reading its output
+
+**Context.** Milestone 3 left `dev server` and `error` unbuilt because inferring
+them from terminal output is guesswork. The state that actually matters —
+Claude stopped and waiting for an answer — was not available at all.
+
+**Decision.** Claude Code's hooks report it. `PermissionRequest` and
+`Notification` mean waiting, `PreToolUse` means working and names the tool,
+`Stop` means finished. A report always beats the output heuristic, which stays
+as the fallback for sessions with no hooks installed.
+
+**Why.** These are facts Claude Code already knows and is willing to tell us. A
+regex over terminal output would be a worse answer to a question that has an
+exact one.
+
+**Consequence.** The states depend on hooks being installed, so the heuristic
+has to remain. Only events that change what someone would *do* about a project
+get a state: every hook is a process Claude has to start, and a tab that
+flickers through six states per turn tells you less than one that does not.
+
+## ADR-035: The daemon binary is the hook
+
+**Context.** The hook has to be a command Claude Code can run, present wherever
+Beacon is.
+
+**Decision.** `beacon-daemon hook`. It reads the event from stdin, finds
+`BEACON_SOCKET` and `BEACON_PROJECT` in its environment, writes one line, and
+exits zero — always zero, whatever happened.
+
+**Why.** No extra file to ship, sign or keep beside the app; the daemon is
+already there and already knows the protocol. Always exiting zero matters more
+than it looks: a hook that fails is a hook that interferes with someone's work,
+and knowing what a tab is doing is not worth that.
+
+**Consequence.** A hook that cannot reach the daemon says nothing rather than
+complaining. That is also what makes it safe to register once, globally: outside
+Beacon there is no socket in the environment, so it exits immediately.
+
+## ADR-036: Beacon asks before editing another application's configuration
+
+**Context.** The integration works by adding hooks to `~/.claude/settings.json`,
+which belongs to Claude Code, not to Beacon.
+
+**Decision.** Never on startup, never silently. A settings section shows the
+exact command that would be registered, installs it when asked, and removes it
+cleanly — including the empty scaffolding it created. Everything else in the
+file is preserved, and it is written atomically.
+
+**Why.** The same line as ADR-031: Beacon strips what belongs to whoever
+launched it and changes nothing else. A useful feature is not a licence to edit
+files the user did not point us at. A truncated `~/.claude/settings.json` would
+break Claude Code everywhere on the machine, not only here.
+
+**Consequence.** The feature is off until asked for, and installing it is
+visible rather than something that happened. Hooks pointing at a Beacon that
+moved are reported as stale rather than as missing, since one needs installing
+and the other needs replacing.

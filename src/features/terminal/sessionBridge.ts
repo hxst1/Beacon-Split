@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 
-import type { SessionExit, SessionOutput } from '@/types/beacon'
+import type { SessionActivity, SessionExit, SessionOutput } from '@/types/beacon'
 
 /** Something that can receive PTY bytes — in practice, an xterm instance. */
 export interface OutputSink {
@@ -38,6 +38,8 @@ export interface ActivityWatcher {
   onDetached?: () => void
   /** A connection is live again, possibly to a different daemon. */
   onReattached?: () => void
+  /** Claude Code said what a project's session is doing. */
+  onClaudeActivity?: (report: SessionActivity) => void
 }
 
 const watchers = new Set<ActivityWatcher>()
@@ -101,6 +103,9 @@ function ensureListening(): Promise<void> {
     }),
     listen('session:reattached', () => {
       for (const watcher of watchers) watcher.onReattached?.()
+    }),
+    listen<SessionActivity>('session:activity', ({ payload }) => {
+      for (const watcher of watchers) watcher.onClaudeActivity?.(payload)
     }),
   ]).then(() => undefined)
 

@@ -17,6 +17,25 @@ pub const PROTOCOL_VERSION: u32 = 1;
 /// Chosen over anything framed or binary because the traffic is small, the
 /// contents are inspectable with `nc` when something goes wrong, and the whole
 /// codec is two lines of `serde_json`.
+/// What a Claude session is doing, as reported by Claude Code itself.
+///
+/// These come from hooks rather than from reading the terminal. Milestone 3
+/// left `dev server` and `error` unimplemented because inferring them from
+/// output is guesswork; this is the difference between guessing and being told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ClaudeActivity {
+    /// Running a tool, or thinking.
+    Working,
+    /// Stopped and waiting for the user — a permission prompt, a question.
+    /// The state worth interrupting someone for.
+    Waiting,
+    /// Finished its turn.
+    Done,
+    /// The session ended.
+    Ended,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params", rename_all = "camelCase")]
 pub enum Request {
@@ -50,6 +69,18 @@ pub enum Request {
     },
     #[serde(rename_all = "camelCase")]
     CloseProject { project: ProjectId },
+    /// Reported by a Claude Code hook running inside a session.
+    ///
+    /// Sent by a short-lived process, not by the window: the hook connects,
+    /// says one thing, and exits.
+    #[serde(rename_all = "camelCase")]
+    Report {
+        project: ProjectId,
+        activity: ClaudeActivity,
+        /// What it is doing, when there is something worth naming — the tool it
+        /// just started, for instance.
+        detail: Option<String>,
+    },
     /// Which sessions are alive, so a reattaching client can find its work.
     ///
     /// Carries a body it does not need: a unit variant serialises without a
@@ -134,6 +165,13 @@ pub enum Event {
         id: SessionId,
         project: ProjectId,
         code: Option<i32>,
+    },
+    /// A project's Claude session said what it is doing.
+    #[serde(rename_all = "camelCase")]
+    Activity {
+        project: ProjectId,
+        activity: ClaudeActivity,
+        detail: Option<String>,
     },
 }
 
@@ -224,6 +262,11 @@ mod tests {
             Request::CloseProject { project },
             Request::List {},
             Request::Shutdown {},
+            Request::Report {
+                project: ProjectId("pj_y".into()),
+                activity: ClaudeActivity::Waiting,
+                detail: Some("Bash".into()),
+            },
         ];
 
         for (index, request) in requests.into_iter().enumerate() {
@@ -318,6 +361,21 @@ mod tests {
             Outcome::Err(message) => assert_eq!(message, "no such session"),
             Outcome::Ok(_) => panic!("expected an error"),
         }
+    }
+
+    #[test]
+    fn an_activity_event_is_told_apart_from_a_reply() {
+        let event = serde_json::to_string(&Event::Activity {
+            project: ProjectId("pj_x".into()),
+            activity: ClaudeActivity::Waiting,
+            detail: None,
+        })
+        .unwrap();
+
+        assert!(matches!(
+            serde_json::from_str::<Message>(&event).unwrap(),
+            Message::Event(Event::Activity { .. })
+        ));
     }
 
     #[test]

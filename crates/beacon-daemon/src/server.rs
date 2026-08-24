@@ -43,6 +43,15 @@ impl Broadcaster {
     }
 }
 
+impl Daemon {
+    fn broadcast(&self, event: &Event) {
+        Broadcaster {
+            clients: Arc::clone(&self.clients),
+        }
+        .send(event);
+    }
+}
+
 impl SessionEvents for Broadcaster {
     fn output(&self, id: &SessionId, project: &ProjectId, offset: u64, bytes: &[u8]) {
         use base64::Engine as _;
@@ -80,9 +89,12 @@ pub fn serve(listener: UnixListener, socket: std::path::PathBuf) {
         clients: Arc::clone(&clients),
     });
 
+    let sessions = Arc::new(SessionManager::new(events));
+    sessions.set_hook_socket(socket.clone());
+
     let daemon = Arc::new(Daemon {
         socket: socket.clone(),
-        sessions: Arc::new(SessionManager::new(events)),
+        sessions,
         clients,
         attached: AtomicUsize::new(0),
         stopping: Arc::new(AtomicBool::new(false)),
@@ -318,6 +330,22 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             .map(Reply::Session),
 
         Request::CloseProject { project } => sessions.close_project(&project).map(|_| Reply::Done),
+
+        Request::Report {
+            project,
+            activity,
+            detail,
+        } => {
+            // Straight through to every window. The daemon does not keep this:
+            // it is what a project is doing *now*, and a client that was not
+            // connected has nothing to catch up on.
+            daemon.broadcast(&Event::Activity {
+                project,
+                activity,
+                detail,
+            });
+            Ok(Reply::Done)
+        }
 
         Request::List {} => Ok(Reply::Sessions {
             sessions: sessions.list(),

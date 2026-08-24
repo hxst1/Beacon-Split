@@ -75,6 +75,10 @@ pub fn run() {
             commands::stop_project,
             commands::list_sessions,
             commands::stop_daemon,
+            commands::claude_hook_status,
+            commands::claude_hook_command,
+            commands::install_claude_hooks,
+            commands::remove_claude_hooks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Beacon");

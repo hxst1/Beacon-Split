@@ -25,6 +25,10 @@ in its own PTY.
 Sessions outlive the window: closing Beacon leaves them running, and opening it
 again reattaches to them.
 
+Tabs can also say what Claude is doing — working, finished, or stopped and
+waiting for you — by registering hooks with Claude Code from Settings → Claude
+Code. It is opt-in, shows what it will add first, and removes cleanly.
+
 What is left is a few smaller things listed in the roadmap.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.

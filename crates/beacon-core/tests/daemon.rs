@@ -18,10 +18,20 @@ struct Recorder {
     output: Mutex<Vec<u8>>,
     disconnects: Mutex<usize>,
     reattachments: Mutex<usize>,
+    activity: Mutex<Vec<(beacon_core::protocol::ClaudeActivity, Option<String>)>>,
 }
 
 impl DaemonEvents for Recorder {
     fn event(&self, event: Event) {
+        if let Event::Activity {
+            activity, detail, ..
+        } = &event
+        {
+            self.activity
+                .lock()
+                .unwrap()
+                .push((*activity, detail.clone()));
+        }
         if let Event::Output { data, .. } = event {
             use base64::Engine as _;
             let bytes = base64::engine::general_purpose::STANDARD
@@ -262,4 +272,106 @@ fn the_client_gets_itself_back_after_the_daemon_is_replaced() {
     assert!(fresh.running);
 
     client.close(&fresh.id).unwrap();
+}
+
+#[test]
+fn a_claude_hook_reaches_the_window() {
+    // The whole path: Claude Code runs the hook, the hook finds the socket in
+    // its environment, and the window learns that a project needs attention —
+    // without anything reading terminal output and guessing.
+    use beacon_core::protocol::ClaudeActivity;
+
+    let binary = daemon_binary();
+    if !binary.exists() {
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let socket = private_socket(dir.path());
+    let recorder = Arc::new(Recorder::default());
+    let client = DaemonClient::connect_at(
+        &binary,
+        &socket,
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    )
+    .unwrap();
+
+    let project = ProjectId::generate();
+
+    // Exactly what Claude Code sends a hook on stdin when a tool wants
+    // permission.
+    let payload = serde_json::json!({
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "Bash",
+        "session_id": "whatever",
+        "cwd": dir.path(),
+    })
+    .to_string();
+
+    let mut hook = std::process::Command::new(&binary)
+        .arg("hook")
+        .env("BEACON_SOCKET", &socket)
+        .env("BEACON_PROJECT", project.as_str())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("the hook should run");
+
+    use std::io::Write as _;
+    hook.stdin
+        .as_mut()
+        .unwrap()
+        .write_all(payload.as_bytes())
+        .unwrap();
+    drop(hook.stdin.take());
+
+    let status = hook.wait().unwrap();
+    assert!(
+        status.success(),
+        "a hook must never fail: Claude would notice"
+    );
+
+    assert!(
+        wait_for(Duration::from_secs(10), || !recorder
+            .activity
+            .lock()
+            .unwrap()
+            .is_empty()),
+        "the window should have been told"
+    );
+
+    let reported = recorder.activity.lock().unwrap().clone();
+    assert_eq!(reported[0].0, ClaudeActivity::Waiting);
+    assert_eq!(reported[0].1.as_deref(), Some("Bash"));
+
+    drop(client);
+}
+
+#[test]
+fn a_hook_outside_beacon_does_nothing_at_all() {
+    // Registered once in the user's Claude settings, it runs for every session
+    // everywhere. Anywhere but here it must be a no-op that costs nothing.
+    let binary = daemon_binary();
+    if !binary.exists() {
+        return;
+    }
+
+    let mut hook = std::process::Command::new(&binary)
+        .arg("hook")
+        .env_remove("BEACON_SOCKET")
+        .env_remove("BEACON_PROJECT")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+
+    use std::io::Write as _;
+    hook.stdin
+        .as_mut()
+        .unwrap()
+        .write_all(br#"{"hook_event_name":"Stop"}"#)
+        .unwrap();
+    drop(hook.stdin.take());
+
+    assert!(hook.wait().unwrap().success());
 }
