@@ -1,0 +1,24 @@
+/*
+ * The workspace signal.
+ *
+ * A 1px inner hairline plus a wide, very low-opacity bloom. The point is
+ * peripheral recognition — you should know which workspace you are in before
+ * you read anything — so it must never compete with content.
+ */
+.frame {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  border-radius: 12px;
+  box-shadow:
+    inset 0 0 0 1px var(--accent-line),
+    inset 0 0 34px -14px var(--accent-glow),
+    inset 0 0 90px -40px var(--accent-glow);
+  transition: box-shadow var(--dur-2) var(--ease);
+}
+
+/* Dim the signal when the window loses focus, the way native chrome does. */
+:global(body:not(:focus-within)) .frame {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent);
+}

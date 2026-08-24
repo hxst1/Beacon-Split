@@ -1,0 +1,36 @@
+/*
+ * Splitters are invisible until you reach for them: a 1px line with a wider
+ * invisible hit area, and an accent tint while dragging.
+ */
+.resizer {
+  position: relative;
+  z-index: 5;
+  background: transparent;
+  transition: background var(--dur-2) var(--ease);
+}
+
+.vertical {
+  grid-area: vsplit;
+  width: 1px;
+  cursor: col-resize;
+  background: var(--line-1);
+}
+
+.horizontal {
+  grid-area: hsplit;
+  height: 1px;
+  cursor: row-resize;
+  background: var(--line-1);
+}
+
+.vertical::after,
+.horizontal::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+
+.resizer:hover,
+.resizer[data-dragging='true'] {
+  background: var(--accent-line);
+}

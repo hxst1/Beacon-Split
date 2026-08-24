@@ -1,0 +1,38 @@
+{
+  "name": "beacon-split",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build",
+    "rs:check": "cargo check --workspace --all-targets",
+    "rs:test": "cargo test --workspace",
+    "rs:fmt": "cargo fmt --all -- --check",
+    "rs:lint": "cargo clippy --workspace --all-targets -- -D warnings",
+    "check": "pnpm typecheck && pnpm rs:fmt && pnpm rs:lint && pnpm rs:test"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-opener": "^2.5.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

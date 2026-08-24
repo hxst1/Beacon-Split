@@ -1,0 +1,61 @@
+.bar {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding-left: var(--titlebar-inset);
+  padding-right: 8px;
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+  backdrop-filter: var(--blur-panel);
+  /* The bar itself drags the window; interactive children opt out. */
+  -webkit-app-region: drag;
+}
+
+.workspace {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+  padding: 4px 9px 4px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--fg-1);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+
+.workspace:hover {
+  background: var(--surface-2);
+  border-color: var(--line-1);
+}
+
+.workspaceDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 12px 0 var(--accent-glow);
+  flex: none;
+}
+
+.chevron {
+  color: var(--fg-4);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.divider {
+  width: 1px;
+  margin: 9px 0;
+  background: var(--line-1);
+  flex: none;
+}
+
+.tabsRegion {
+  flex: 1;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+}

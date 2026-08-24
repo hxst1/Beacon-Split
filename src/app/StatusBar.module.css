@@ -1,0 +1,47 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 24px;
+  padding: 0 12px;
+  flex: none;
+  border-top: 1px solid var(--line-1);
+  background: var(--surface-1);
+  backdrop-filter: var(--blur-panel);
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: color-mix(in oklab, var(--danger) 16%, transparent);
+  color: var(--danger);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dismiss {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.hint {
+  flex: none;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}

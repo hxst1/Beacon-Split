@@ -1,0 +1,45 @@
+.root {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  gap: 12px;
+}
+
+.mark {
+  width: 3px;
+  height: 34px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 24px 2px var(--accent-glow);
+  opacity: 0.85;
+  animation: breathe 1.6s var(--ease) infinite;
+}
+
+.error {
+  max-width: 460px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  backdrop-filter: var(--blur-panel);
+  color: var(--fg-2);
+  font-size: var(--text-sm);
+  user-select: text;
+}
+
+.errorTitle {
+  color: var(--fg-1);
+  margin-bottom: 6px;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scaleY(0.7);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scaleY(1);
+  }
+}

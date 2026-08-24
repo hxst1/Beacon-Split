@@ -1,0 +1,83 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 7px;
+  min-width: 220px;
+}
+
+.label {
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: rgb(0 0 0 / 0.28);
+  color: var(--fg-1);
+  font-size: var(--text-sm);
+  outline: none;
+  user-select: text;
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+
+.input:focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 5px;
+}
+
+.swatch {
+  height: 16px;
+  border-radius: var(--radius-xs);
+  opacity: 0.55;
+  transition: opacity var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+
+.swatch:hover {
+  opacity: 0.85;
+}
+
+.swatch[data-selected='true'] {
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.5) inset;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.button {
+  padding: 5px 11px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-2);
+  font-size: var(--text-sm);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.button:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
+.button[data-primary='true'] {
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+.button[data-primary='true']:hover {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+}

@@ -1,0 +1,79 @@
+.strip {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  align-self: center;
+  max-width: 210px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-3);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  transition: color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+
+.tab:hover {
+  color: var(--fg-2);
+  background: var(--surface-1);
+}
+
+.tab[data-active='true'] {
+  color: var(--fg-1);
+  background: var(--surface-2);
+  /* The active tab is the only place the accent appears as fill. */
+  box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 20px -8px var(--accent-glow);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Activity indicator. Only `idle` exists today; the rest land with sessions. */
+.status {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  flex: none;
+  background: var(--fg-4);
+  transition: background var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease);
+}
+
+.status[data-state='working'] {
+  background: var(--accent);
+  box-shadow: 0 0 10px 0 var(--accent-glow);
+}
+
+.add {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-3);
+  font-size: 15px;
+  line-height: 1;
+  flex: none;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.add:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}

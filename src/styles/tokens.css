@@ -1,0 +1,82 @@
+/*
+ * Beacon's design tokens.
+ *
+ * The palette is built out of translucency rather than flat greys: surfaces are
+ * white at very low alpha over a near-black window, so panels read as layers of
+ * the same material instead of separate boxes. `--accent` is rewritten at
+ * runtime from the active workspace; everything tinted derives from it with
+ * `color-mix` so a workspace only ever has to declare one colour.
+ */
+
+:root {
+  /* Window base. Kept slightly translucent so macOS vibrancy shows through;
+     on Linux it degrades to this near-black, which is the intended look anyway. */
+  --window: 8 8 11;
+  --window-alpha: 0.86;
+
+  /* Layered surfaces */
+  --surface-1: rgb(255 255 255 / 0.022);
+  --surface-2: rgb(255 255 255 / 0.042);
+  --surface-3: rgb(255 255 255 / 0.068);
+
+  /* Hairlines. Nothing in Beacon uses a border heavier than 1px. */
+  --line-1: rgb(255 255 255 / 0.055);
+  --line-2: rgb(255 255 255 / 0.09);
+
+  /* Text, by descending importance */
+  --fg-1: rgb(255 255 255 / 0.94);
+  --fg-2: rgb(255 255 255 / 0.6);
+  --fg-3: rgb(255 255 255 / 0.36);
+  --fg-4: rgb(255 255 255 / 0.2);
+
+  /* Workspace identity — replaced at runtime */
+  --accent: #6b7cff;
+  --accent-line: color-mix(in oklab, var(--accent) 42%, transparent);
+  --accent-wash: color-mix(in oklab, var(--accent) 14%, transparent);
+  --accent-glow: color-mix(in oklab, var(--accent) 30%, transparent);
+  --accent-text: color-mix(in oklab, var(--accent) 72%, white 28%);
+
+  --danger: #ff6b6b;
+
+  --blur-panel: blur(18px) saturate(150%);
+  --blur-float: blur(30px) saturate(160%);
+
+  --radius-xs: 5px;
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Motion stays under ~150ms: the app must feel like it responded, not like
+     it animated. */
+  --dur-1: 80ms;
+  --dur-2: 140ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui,
+    sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Menlo',
+    'DejaVu Sans Mono', monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+
+  --titlebar-height: 40px;
+  --panel-header-height: 30px;
+  /* Room for the macOS traffic lights under an overlay title bar. */
+  --titlebar-inset: 78px;
+}
+
+:root[data-platform='linux'],
+:root[data-platform='windows'] {
+  --titlebar-inset: 12px;
+}
+
+/* Respect the system setting; Beacon's motion budget is small enough that this
+   only needs to zero it out. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms;
+    --dur-2: 0ms;
+  }
+}

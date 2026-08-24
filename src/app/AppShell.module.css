@@ -1,0 +1,6 @@
+.shell {
+  display: grid;
+  grid-template-rows: var(--titlebar-height) 1fr auto;
+  height: 100%;
+  min-height: 0;
+}

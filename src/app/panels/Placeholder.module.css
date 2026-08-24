@@ -1,0 +1,33 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 18px;
+  color: var(--fg-4);
+  font-size: var(--text-sm);
+}
+
+.centered {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.milestone {
+  padding: 2px 7px;
+  border: 1px solid var(--line-1);
+  border-radius: 99px;
+  background: var(--surface-1);
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  letter-spacing: 0.03em;
+}
+
+.detail {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-4);
+  opacity: 0.8;
+  user-select: text;
+}

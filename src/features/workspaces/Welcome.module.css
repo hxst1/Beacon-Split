@@ -1,0 +1,108 @@
+.root {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 40px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 420px;
+  padding: 32px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  backdrop-filter: var(--blur-float);
+  text-align: center;
+}
+
+.mark {
+  width: 3px;
+  height: 30px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 26px 2px var(--accent-glow);
+}
+
+.title {
+  color: var(--fg-1);
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.body {
+  color: var(--fg-3);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: rgb(0 0 0 / 0.28);
+  color: var(--fg-1);
+  font-size: var(--text-md);
+  text-align: center;
+  outline: none;
+  user-select: text;
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+
+.input:focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+.swatches {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 99px;
+  opacity: 0.45;
+  transition: opacity var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+
+.swatch:hover {
+  opacity: 0.8;
+}
+
+.swatch[data-selected='true'] {
+  opacity: 1;
+  transform: scale(1.1);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.55) inset;
+}
+
+.action {
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+  box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 34px -14px var(--accent-glow);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.action:hover {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+.action:disabled {
+  opacity: 0.4;
+}

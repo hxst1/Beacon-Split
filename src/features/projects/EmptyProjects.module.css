@@ -1,0 +1,34 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 30px;
+  text-align: center;
+}
+
+.title {
+  color: var(--fg-2);
+  font-size: 15px;
+}
+
+.hint {
+  max-width: 320px;
+  color: var(--fg-4);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.action {
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+  box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 30px -14px var(--accent-glow);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.action:hover {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+}
