@@ -1,5 +1,5 @@
 import { describeBinding } from './keymap'
-import { selectActiveProject, useBeacon } from './store'
+import { selectActiveProject, selectBindings, useBeacon } from './store'
 import styles from './StatusBar.module.css'
 
 /**
@@ -12,11 +12,12 @@ export function StatusBar(): React.ReactElement {
   const project = useBeacon(selectActiveProject)
   const notice = useBeacon((s) => s.notice)
   const dismissNotice = useBeacon((s) => s.dismissNotice)
-  const bindings = useBeacon((s) => s.snapshot?.bindings ?? [])
+  const bindings = useBeacon(selectBindings)
   const detached = useBeacon((s) => s.detached)
-  const missingRequired = useBeacon((s) =>
-    s.missing.filter((entry) => entry.importance === 'required'),
-  )
+  // Selected whole and filtered here: filtering inside the selector would hand
+  // the store a new array every call.
+  const missing = useBeacon((s) => s.missing)
+  const missingRequired = missing.filter((entry) => entry.importance === 'required')
   const setOverlay = useBeacon((s) => s.setOverlay)
 
   /** Whatever the shortcut actually is now, not what it shipped as. */

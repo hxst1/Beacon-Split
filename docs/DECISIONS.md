@@ -728,26 +728,32 @@ for having written it.
 **Consequence.** One more line at startup, and subscriptions that can be torn
 down rather than lasting as long as the module system does.
 
-## ADR-040: The frontend is not minified
+## ADR-040: Selectors must return stable references
 
-**Context.** A release build opened a window that stayed blank. The backend was
-running fine behind it — it had attached to the daemon — and the log said `web
-content process terminated`.
+**Context.** A release build opened a window and painted nothing. The backend
+was fine behind it, the stylesheet had loaded, and `#root` was empty.
 
-**Decision.** `minify: false`, unconditionally.
+**What it actually was.** React error #185 — an infinite render loop. Several
+Zustand selectors built their value on the way out: `s.snapshot?.bindings ?? []`
+hands back a fresh array every call, and `s.missing.filter(...)` always does.
+Zustand compares with `Object.is`, concludes the state changed, re-renders, and
+never stops. React unmounts the whole tree, which is what an empty `#root` with
+working styles looks like.
 
-**Why.** A controlled experiment: the same code, built twice, differing only in
-minification. Minified, WebKit's content process died and the window stayed
-empty. Unminified, it rendered — confirmed by the daemon receiving the requests
-only a mounted frontend sends.
+**Decision.** Selectors return references that only change when the data does:
+stable module-level empties for the absent case, and any filtering done in the
+component rather than in the selector. Tests assert that calling a selector
+twice with the same state returns the same reference.
 
-Minifying buys nothing here in any case. These assets are embedded in the
-binary and never travel over a network, so the entire benefit is disk space:
-two hundred kilobytes on an application of seven megabytes, in exchange for a
-build that opens.
+**Why it took so long to find.** A controlled experiment pointed at
+minification — unminified it rendered, minified it did not — and that was true
+but not the cause. Minification only changed how the loop failed: minified, it
+exhausted memory and macOS killed WebKit's content process; unminified, React
+threw first. A reproducible experiment can still support the wrong conclusion,
+and this one cost an evening. Minification is back on.
 
-**Consequence.** If the minifier is fixed upstream this can be revisited, and
-the cost of not doing so is small enough that there is no hurry. Worth
-remembering that a release-only bug of this kind is invisible in development,
-which is the argument for building and running the bundle rather than trusting
-`tauri dev`.
+**Consequence.** The frontend now reports uncaught render errors to the backend
+log. A release build has no inspector to open, and a tree that unmounts itself
+says nothing about why — this is the difference between a blank window and one
+that names its own error.
+

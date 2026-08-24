@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { MenuHeading, MenuItem, MenuSeparator } from '@/app/ui/Menu'
 import { InlineField } from '@/app/ui/InlineField'
-import { selectActiveWorkspace, useBeacon } from '@/app/store'
+import { selectActiveWorkspace, selectWorkspaces, useBeacon } from '@/app/store'
 import { ACCENT_PRESETS } from '@/lib/accent'
 
 type Mode = 'list' | 'create' | 'rename' | 'confirm-delete'
@@ -10,7 +10,7 @@ type Mode = 'list' | 'create' | 'rename' | 'confirm-delete'
 /** Switch workspaces, or edit the one you are in. */
 export function WorkspaceMenu({ onDone }: { onDone: () => void }): React.ReactElement {
   const [mode, setMode] = useState<Mode>('list')
-  const workspaces = useBeacon((s) => s.snapshot?.workspaces ?? [])
+  const workspaces = useBeacon(selectWorkspaces)
   const active = useBeacon(selectActiveWorkspace)
   const selectWorkspace = useBeacon((s) => s.selectWorkspace)
   const createWorkspace = useBeacon((s) => s.createWorkspace)

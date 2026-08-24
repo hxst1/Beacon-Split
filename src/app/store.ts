@@ -15,6 +15,7 @@ import { errorMessage, ipc } from '@/ipc'
 import { applyAccent } from '@/lib/accent'
 import { setPlatform } from '@/lib/platform'
 import type {
+  ActionBinding,
   LayoutNode,
   Requirement,
   LayoutPreset,
@@ -306,6 +307,26 @@ export function startConnectionTracking(): () => void {
       useBeacon.setState((state) => ({ detached: false, attachEpoch: state.attachEpoch + 1 }))
     },
   })
+}
+
+/*
+ * Stable empties.
+ *
+ * A selector must return the same reference when nothing changed. Zustand
+ * compares with `Object.is`, so `?? []` hands it a fresh array every call, it
+ * concludes the state changed, and re-renders — forever. That is not a
+ * theoretical hazard: it took the whole application down, and the symptom was a
+ * blank window rather than anything pointing here.
+ */
+const NO_WORKSPACES: Workspace[] = []
+const NO_BINDINGS: ActionBinding[] = []
+
+export function selectWorkspaces(state: BeaconState): Workspace[] {
+  return state.snapshot?.workspaces ?? NO_WORKSPACES
+}
+
+export function selectBindings(state: BeaconState): ActionBinding[] {
+  return state.snapshot?.bindings ?? NO_BINDINGS
 }
 
 export function selectLayout(state: BeaconState): LayoutNode | null {

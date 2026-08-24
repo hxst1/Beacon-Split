@@ -19,18 +19,6 @@ export default defineConfig({
     target: 'safari15',
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
     // Vite 8 minifies with oxc; naming esbuild here would pull in a dep we do not need.
-    /*
-     * Not minified, deliberately.
-     *
-     * Vite 8's minifier produced a bundle that killed the WebKit content
-     * process in a release build — a blank window, with the backend running
-     * fine behind it. The same code unminified renders. Same experiment, one
-     * variable.
-     *
-     * Minifying buys nothing here anyway: these assets are embedded in the
-     * binary and never travel over a network. A few hundred kilobytes of disk
-     * is not worth a build that does not open.
-     */
-    minify: false,
+    minify: !process.env.TAURI_ENV_DEBUG,
   },
 })

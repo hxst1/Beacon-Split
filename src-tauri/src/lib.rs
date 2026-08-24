@@ -46,6 +46,7 @@ pub fn run() {
             commands::set_active_project,
             commands::reveal_project,
             commands::host_platform,
+            commands::report_frontend_error,
             commands::list_dir,
             commands::read_file,
             commands::write_file,
@@ -98,7 +99,7 @@ fn init_tracing() {
     use tracing_subscriber::EnvFilter;
 
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("beacon_split_lib=info,beacon_core=info"));
+        .unwrap_or_else(|_| EnvFilter::new("beacon_split_lib=info,beacon_core=info,frontend=info"));
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)

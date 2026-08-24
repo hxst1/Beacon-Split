@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { selectActiveWorkspace, selectHidden, useBeacon } from '@/app/store'
+import { selectActiveWorkspace, selectBindings, selectHidden, useBeacon } from '@/app/store'
 import { errorMessage, ipc } from '@/ipc'
 import { ACCENT_PRESETS } from '@/lib/accent'
 import { PANEL_LABELS } from '@/lib/layout'
@@ -354,7 +354,7 @@ function WorkspaceSection(): React.ReactElement {
 }
 
 function KeyboardSection(): React.ReactElement {
-  const bindings = useBeacon((s) => s.snapshot?.bindings ?? [])
+  const bindings = useBeacon(selectBindings)
   const setBinding = useBeacon((s) => s.setBinding)
   const resetBindings = useBeacon((s) => s.resetBindings)
 

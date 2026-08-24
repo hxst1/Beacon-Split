@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { MenuHeading, MenuItem, MenuSeparator } from '@/app/ui/Menu'
 import { InlineField } from '@/app/ui/InlineField'
-import { selectActiveWorkspace, useBeacon } from '@/app/store'
+import { selectActiveWorkspace, selectWorkspaces, useBeacon } from '@/app/store'
 import { isMac } from '@/lib/platform'
 import type { Project } from '@/types/beacon'
 
@@ -20,7 +20,7 @@ interface ProjectMenuProps {
  */
 export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactElement {
   const [renaming, setRenaming] = useState(false)
-  const workspaces = useBeacon((s) => s.snapshot?.workspaces ?? [])
+  const workspaces = useBeacon(selectWorkspaces)
   const activeWorkspace = useBeacon(selectActiveWorkspace)
   const renameProject = useBeacon((s) => s.renameProject)
   const removeProject = useBeacon((s) => s.removeProject)

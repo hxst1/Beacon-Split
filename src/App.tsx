@@ -18,6 +18,7 @@ export function App(): React.ReactElement {
     // several modules doing it as a side effect of being imported.
     const stop = [startConnectionTracking(), startActivityTracking(), startUsageTracking()]
     void load()
+
     return () => stop.forEach((unsubscribe) => unsubscribe())
   }, [load])
 
