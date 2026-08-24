@@ -49,3 +49,20 @@
   color: var(--fg-3);
   box-shadow: inset 0 1px 0 0 var(--accent-line);
 }
+
+/* A header affordance. Quiet until you are looking for it. */
+.action {
+  padding: 1px 7px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  letter-spacing: 0.03em;
+  text-transform: none;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.action:hover {
+  background: var(--surface-2);
+  color: var(--fg-2);
+}

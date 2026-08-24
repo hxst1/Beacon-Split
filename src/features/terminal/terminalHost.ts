@@ -2,6 +2,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 
 import { ipc } from '@/ipc'
+import type { SessionKind } from '@/types/beacon'
 import { attach, replayed } from './sessionBridge'
 
 export interface HostedTerminal {
@@ -11,6 +12,7 @@ export interface HostedTerminal {
   element: HTMLDivElement
   /** Which project this belongs to, so it can be torn down with it. */
   project: string
+  kind: SessionKind
 }
 
 /**
@@ -28,7 +30,7 @@ function readAccent(): string {
   return value.trim() || '#6b7cff'
 }
 
-function create(project: string): HostedTerminal {
+function create(project: string, kind: SessionKind): HostedTerminal {
   const element = document.createElement('div')
   element.style.width = '100%'
   element.style.height = '100%'
@@ -60,7 +62,7 @@ function create(project: string): HostedTerminal {
   term.loadAddon(fit)
   term.open(element)
 
-  return { term, fit, element, project }
+  return { term, fit, element, project, kind }
 }
 
 /**
@@ -69,11 +71,15 @@ function create(project: string): HostedTerminal {
  * The snapshot is replayed before live output is released, so a terminal opened
  * for an existing session shows exactly what that session has printed.
  */
-export async function acquire(sessionId: string, project: string): Promise<HostedTerminal> {
+export async function acquire(
+  sessionId: string,
+  project: string,
+  kind: SessionKind,
+): Promise<HostedTerminal> {
   const existing = hosted.get(sessionId)
   if (existing) return existing
 
-  const terminal = create(project)
+  const terminal = create(project, kind)
   hosted.set(sessionId, terminal)
 
   await attach(sessionId, {
@@ -106,6 +112,13 @@ export function dispose(sessionId: string): void {
   terminal.term.dispose()
   terminal.element.remove()
   hosted.delete(sessionId)
+}
+
+/** Tears down one project's terminal of a given kind, e.g. before a restart. */
+export function disposeFor(project: string, kind: SessionKind): void {
+  for (const [sessionId, terminal] of hosted) {
+    if (terminal.project === project && terminal.kind === kind) dispose(sessionId)
+  }
 }
 
 /** Tears down every terminal belonging to a project. */

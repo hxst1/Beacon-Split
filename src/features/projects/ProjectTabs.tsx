@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { Popover } from '@/app/ui/Popover'
+import { useProjectActivity } from '@/features/terminal/activity'
 import { selectActiveProject, selectProjects, useBeacon } from '@/app/store'
 import { pickFolder } from '@/ipc'
 import { shortcutLabel } from '@/lib/platform'
@@ -11,6 +12,41 @@ import styles from './ProjectTabs.module.css'
 interface MenuTarget {
   project: Project
   anchor: DOMRect
+}
+
+/** A single tab. Split out so only the busy one re-renders as activity changes. */
+function ProjectTab({
+  project,
+  index,
+  active,
+  onSelect,
+  onMenu,
+}: {
+  project: Project
+  index: number
+  active: boolean
+  onSelect: () => void
+  onMenu: (anchor: DOMRect) => void
+}): React.ReactElement {
+  const activity = useProjectActivity(project.id)
+  const shortcut = index < 9 ? ` · ${shortcutLabel(String(index + 1))}` : ''
+
+  return (
+    <button
+      type="button"
+      className={styles['tab']}
+      data-active={active}
+      title={`${project.displayPath}${shortcut}`}
+      onClick={onSelect}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        onMenu(event.currentTarget.getBoundingClientRect())
+      }}
+    >
+      <span className={styles['status']} data-state={activity} />
+      <span className={styles['name']}>{project.name}</span>
+    </button>
+  )
 }
 
 /**
@@ -35,21 +71,14 @@ export function ProjectTabs(): React.ReactElement {
   return (
     <div className={styles['strip']} data-tauri-drag-region>
       {projects.map((project, index) => (
-        <button
+        <ProjectTab
           key={project.id}
-          type="button"
-          className={styles['tab']}
-          data-active={project.id === activeProject?.id}
-          title={`${project.displayPath}${index < 9 ? ` · ${shortcutLabel(String(index + 1))}` : ''}`}
-          onClick={() => void selectProject(project.id)}
-          onContextMenu={(event) => {
-            event.preventDefault()
-            setMenu({ project, anchor: event.currentTarget.getBoundingClientRect() })
-          }}
-        >
-          <span className={styles['status']} data-state="idle" />
-          <span className={styles['name']}>{project.name}</span>
-        </button>
+          project={project}
+          index={index}
+          active={project.id === activeProject?.id}
+          onSelect={() => void selectProject(project.id)}
+          onMenu={(anchor) => setMenu({ project, anchor })}
+        />
       ))}
 
       <button

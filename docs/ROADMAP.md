@@ -69,12 +69,22 @@ content in a region and would have made the change more expensive.
 Remaining: rearranging panels by hand, which is what turns the preset into
 `custom`, and per-workspace layouts.
 
-## Milestone 3 — Claude
+## Milestone 3 — Claude ✅
 
-- The real `claude` CLI in a PTY, one session per project
-- Colours, interactive prompts, permissions, selection, scroll — untouched
-- Restart Claude, stop project, switch without losing sessions
-- Activity states on tabs: working, idle, dev server, stopped, error
+- The real `claude` CLI in a PTY, one session per project. Colours, prompts,
+  permissions, selection and scrolling are whatever the CLI does, because it is
+  the CLI
+- A project runs its shell and its Claude at the same time, tracked separately
+- Restart Claude or the terminal from the panel header or the tab menu; stop a
+  project's processes without removing it
+- Switching projects keeps every session running and replays nothing
+- `claude` is located through the user's interactive login shell, so Beacon is
+  no pickier about where it lives than the terminal it was installed from
+- Activity on tabs: working, idle, stopped
+
+Still to do here: `dev server` and `error` states, which need understanding what
+a session printed rather than that it printed. Detecting them by pattern is
+guesswork, so they wait for something better.
 
 ## Milestone 4 — Files
 

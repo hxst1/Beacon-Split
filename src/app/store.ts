@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
-import { disposeProject, refreshAccent } from '@/features/terminal/terminalHost'
+import { useActivity } from '@/features/terminal/activity'
+import { disposeFor, disposeProject, refreshAccent } from '@/features/terminal/terminalHost'
 import { errorMessage, ipc } from '@/ipc'
 import { applyAccent } from '@/lib/accent'
 import { setPlatform } from '@/lib/platform'
@@ -9,6 +10,7 @@ import type {
   LayoutPreset,
   PanelId,
   Project,
+  SessionKind,
   Snapshot,
   Workspace,
 } from '@/types/beacon'
@@ -24,6 +26,13 @@ interface BeaconState {
   snapshot: Snapshot | null
   /** Panel temporarily expanded to fill the window. Never persisted. */
   fullscreenPanel: PanelId | null
+  /**
+   * Bumped when a session is replaced, keyed `projectId:kind`.
+   *
+   * Terminal views are keyed on it, so a restart rebuilds the view rather than
+   * leaving it attached to a session that no longer exists.
+   */
+  sessionEpoch: Record<string, number>
 
   load: () => Promise<void>
   createWorkspace: (name: string, accent: string) => Promise<void>
@@ -35,6 +44,8 @@ interface BeaconState {
   removeProject: (projectId: string) => Promise<void>
   /** Stops the project's processes without removing the project. */
   stopProject: (projectId: string) => Promise<void>
+  /** Replaces one of the project's sessions with a fresh one. */
+  restartSession: (projectId: string, kind: SessionKind) => Promise<void>
   moveProject: (projectId: string, targetWorkspaceId: string) => Promise<void>
   selectProject: (projectId: string) => Promise<void>
   selectProjectAt: (index: number) => Promise<void>
@@ -79,6 +90,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     notice: null,
     snapshot: null,
     fullscreenPanel: null,
+    sessionEpoch: {},
 
     load: async () => {
       try {
@@ -115,12 +127,33 @@ export const useBeacon = create<BeaconState>((set, get) => {
       // The backend stops the processes; this drops the views that showed them.
       await run(() => ipc.removeProject(workspaceId, projectId))
       disposeProject(projectId)
+      useActivity.getState().projectStopped(projectId)
     },
 
     stopProject: async (projectId) => {
       try {
         await ipc.stopProject(projectId)
         disposeProject(projectId)
+        useActivity.getState().projectStopped(projectId)
+      } catch (error) {
+        set({ notice: errorMessage(error) })
+      }
+    },
+
+    restartSession: async (projectId, kind) => {
+      const workspaceId = requireWorkspace()
+      if (!workspaceId) return
+      try {
+        // The view is rebuilt from scratch, so its size is measured again
+        // anyway; these are only the grid the new process starts with.
+        await ipc.restartSession(workspaceId, projectId, kind, 80, 24)
+        disposeFor(projectId, kind)
+        set((state) => {
+          const key = `${projectId}:${kind}`
+          return {
+            sessionEpoch: { ...state.sessionEpoch, [key]: (state.sessionEpoch[key] ?? 0) + 1 },
+          }
+        })
       } catch (error) {
         set({ notice: errorMessage(error) })
       }

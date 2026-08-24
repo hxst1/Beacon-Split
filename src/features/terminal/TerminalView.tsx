@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { errorMessage, ipc } from '@/ipc'
 import type { SessionKind } from '@/types/beacon'
+import { useActivity } from './activity'
 import { acquire } from './terminalHost'
 import styles from './TerminalView.module.css'
 import '@xterm/xterm/css/xterm.css'
@@ -46,8 +47,9 @@ export function TerminalView({
       const probe = estimateGrid(container)
       const session = await ipc.openSession(workspaceId, projectId, kind, probe.cols, probe.rows)
       if (cancelled) return
+      useActivity.getState().sessionOpened(session.id, projectId)
 
-      const terminal = await acquire(session.id, projectId)
+      const terminal = await acquire(session.id, projectId, kind)
       if (cancelled) return
 
       container.append(terminal.element)

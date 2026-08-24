@@ -24,6 +24,28 @@ interface Attachment {
 const attachments = new Map<string, Attachment>()
 let listening: Promise<void> | null = null
 
+/**
+ * Anything that wants to know a session did something, whether or not it is
+ * showing that session.
+ *
+ * Activity indicators need every session's events, including projects whose
+ * panels are not mounted, so they listen here rather than through a terminal.
+ */
+export interface ActivityWatcher {
+  onOutput: (project: string) => void
+  onExit: (project: string, sessionId: string) => void
+}
+
+const watchers = new Set<ActivityWatcher>()
+
+export function watchActivity(watcher: ActivityWatcher): () => void {
+  watchers.add(watcher)
+  void ensureListening()
+  return () => {
+    watchers.delete(watcher)
+  }
+}
+
 function decode(base64: string): Uint8Array {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
@@ -56,6 +78,8 @@ function deliver(attachment: Attachment, chunk: SessionOutput): void {
 function ensureListening(): Promise<void> {
   listening ??= Promise.all([
     listen<SessionOutput>('session:output', ({ payload }) => {
+      for (const watcher of watchers) watcher.onOutput(payload.project)
+
       const attachment = attachments.get(payload.id)
       if (!attachment) return
       if (attachment.replaying) {
@@ -65,6 +89,7 @@ function ensureListening(): Promise<void> {
       deliver(attachment, payload)
     }),
     listen<SessionExit>('session:exit', ({ payload }) => {
+      for (const watcher of watchers) watcher.onExit(payload.project, payload.id)
       attachments.get(payload.id)?.sink.onExit?.(payload.code)
     }),
   ]).then(() => undefined)

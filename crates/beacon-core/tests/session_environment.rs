@@ -17,11 +17,11 @@ struct Recorder {
 }
 
 impl SessionEvents for Recorder {
-    fn output(&self, _id: &SessionId, _offset: u64, bytes: &[u8]) {
+    fn output(&self, _id: &SessionId, _project: &ProjectId, _offset: u64, bytes: &[u8]) {
         self.output.lock().unwrap().extend_from_slice(bytes);
     }
 
-    fn exited(&self, _id: &SessionId, _code: Option<i32>) {}
+    fn exited(&self, _id: &SessionId, _project: &ProjectId, _code: Option<i32>) {}
 }
 
 impl Recorder {

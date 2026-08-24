@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use beacon_core::domain::ProjectId;
 use beacon_core::{Beacon, SessionEvents, SessionId, SessionManager};
 use tauri::{AppHandle, Emitter};
 
@@ -48,6 +49,9 @@ struct WebviewEvents {
 #[serde(rename_all = "camelCase")]
 struct OutputPayload {
     id: SessionId,
+    /// Travels with the event so the UI can show which project is busy without
+    /// tracking sessions itself.
+    project: ProjectId,
     /// Where this chunk starts in the session's lifetime stream.
     offset: u64,
     data: String,
@@ -57,6 +61,7 @@ struct OutputPayload {
 #[serde(rename_all = "camelCase")]
 struct ExitPayload {
     id: SessionId,
+    project: ProjectId,
     code: Option<i32>,
 }
 
@@ -64,10 +69,11 @@ pub const EVENT_OUTPUT: &str = "session:output";
 pub const EVENT_EXIT: &str = "session:exit";
 
 impl SessionEvents for WebviewEvents {
-    fn output(&self, id: &SessionId, offset: u64, bytes: &[u8]) {
+    fn output(&self, id: &SessionId, project: &ProjectId, offset: u64, bytes: &[u8]) {
         use base64::Engine as _;
         let payload = OutputPayload {
             id: id.clone(),
+            project: project.clone(),
             offset,
             data: base64::engine::general_purpose::STANDARD.encode(bytes),
         };
@@ -77,9 +83,10 @@ impl SessionEvents for WebviewEvents {
         }
     }
 
-    fn exited(&self, id: &SessionId, code: Option<i32>) {
+    fn exited(&self, id: &SessionId, project: &ProjectId, code: Option<i32>) {
         let payload = ExitPayload {
             id: id.clone(),
+            project: project.clone(),
             code,
         };
         if let Err(err) = self.app.emit(EVENT_EXIT, payload) {

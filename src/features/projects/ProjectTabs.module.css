@@ -46,19 +46,40 @@
   text-overflow: ellipsis;
 }
 
-/* Activity indicator. Only `idle` exists today; the rest land with sessions. */
+/*
+ * What the project is doing. Read at a glance, so the states differ in weight
+ * rather than only in colour: filled and glowing for working, outlined for
+ * idle, barely there for stopped.
+ */
 .status {
   width: 6px;
   height: 6px;
   border-radius: 99px;
   flex: none;
-  background: var(--fg-4);
-  transition: background var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease);
+  transition: background var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease),
+    opacity var(--dur-2) var(--ease);
+}
+
+.status[data-state='stopped'] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--fg-4);
+  opacity: 0.7;
+}
+
+.status[data-state='idle'] {
+  background: var(--fg-3);
 }
 
 .status[data-state='working'] {
   background: var(--accent);
-  box-shadow: 0 0 10px 0 var(--accent-glow);
+  box-shadow: 0 0 9px 0 var(--accent-glow);
+  animation: pulse 1.4s var(--ease) infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
 }
 
 .add {

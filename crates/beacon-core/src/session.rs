@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
@@ -43,28 +43,87 @@ pub enum SessionKind {
 }
 
 impl SessionKind {
-    /// The command to launch, resolved from the environment where it matters.
-    fn command(self) -> CommandBuilder {
+    pub fn as_str(self) -> &'static str {
         match self {
-            Self::Shell => {
-                let shell = std::env::var("SHELL").unwrap_or_else(|_| default_shell().to_string());
-                let mut cmd = CommandBuilder::new(shell);
-                // A login shell, like every terminal emulator: without it macOS
-                // GUI apps inherit a PATH that is missing most of your tools.
-                cmd.arg("-l");
-                cmd
-            }
-            Self::Claude => CommandBuilder::new("claude"),
+            Self::Shell => "shell",
+            Self::Claude => "claude",
         }
     }
 }
 
-fn default_shell() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "/bin/zsh"
-    } else {
-        "/bin/bash"
+fn user_shell() -> String {
+    std::env::var("SHELL").unwrap_or_else(|_| {
+        if cfg!(target_os = "macos") {
+            "/bin/zsh".to_string()
+        } else {
+            "/bin/bash".to_string()
+        }
+    })
+}
+
+/// Marks the answer inside whatever else a shell prints on the way.
+const PROBE_MARKER: &str = "BEACON_RESOLVED=";
+
+/// Finds a program the way the user's own shell would.
+///
+/// A GUI application starts with a minimal PATH, so Beacon must not be pickier
+/// about where `claude` lives than the terminal the user installed it from.
+///
+/// The interactive login shell is asked first, because that is the only one
+/// that reads `.zshrc` — where a great many people, including anyone using a
+/// framework or a version manager, set their PATH. A non-interactive login
+/// shell is the fallback, and our own PATH the last resort.
+///
+/// Runs once per program and is cached; it costs one short subprocess.
+fn resolve_program(name: &str) -> Option<PathBuf> {
+    let script = format!("{PROBE_MARKER}$(command -v {name} 2>/dev/null)");
+
+    for args in [&["-l", "-i", "-c"][..], &["-l", "-c"][..]] {
+        let mut probe = std::process::Command::new(user_shell());
+        probe.args(args).arg(&script);
+        strip_terminal_identity(&mut probe);
+
+        if let Ok(output) = probe.output()
+            && let Some(path) = extract_resolved_path(&String::from_utf8_lossy(&output.stdout))
+        {
+            tracing::debug!(program = name, path = %path.display(), "resolved via login shell");
+            return Some(path);
+        }
     }
+
+    // Beacon's own environment, which is enough when it was launched from a
+    // shell that already had the program on its PATH.
+    std::env::var_os("PATH")
+        .map(|paths| {
+            std::env::split_paths(&paths)
+                .map(|dir| dir.join(name))
+                .collect::<Vec<_>>()
+        })
+        .and_then(|candidates| candidates.into_iter().find(|path| path.is_file()))
+}
+
+/// Pulls the answer out of a shell's stdout.
+///
+/// An interactive shell prints more than the answer: a themed prompt writes a
+/// terminal title escape, and it lands on the same line. The marker makes the
+/// answer findable regardless of what surrounds it.
+fn extract_resolved_path(stdout: &str) -> Option<PathBuf> {
+    let answer = stdout
+        .rmatch_indices(PROBE_MARKER)
+        .map(|(index, _)| &stdout[index + PROBE_MARKER.len()..])
+        .next()?;
+
+    let value = answer
+        .lines()
+        .next()?
+        .trim_matches(|c: char| c.is_whitespace() || c.is_control());
+
+    if value.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(value);
+    path.is_file().then_some(path)
 }
 
 /// Environment variables a spawned session must not inherit from whatever
@@ -94,6 +153,17 @@ const STRIPPED_ENV: &[&str] = &[
     "NODE_ENV",
 ];
 
+/// Strips the launching terminal's identity from a probe subprocess.
+///
+/// The same reasoning as [`prepare_environment`]: asking the shell a question
+/// while pretending to be Terminal.app runs that terminal's session machinery,
+/// which prints into the answer.
+fn strip_terminal_identity(command: &mut std::process::Command) {
+    for key in STRIPPED_ENV {
+        command.env_remove(key);
+    }
+}
+
 /// Gives the session a clean, honest environment.
 fn prepare_environment(command: &mut CommandBuilder) {
     for key in STRIPPED_ENV {
@@ -120,8 +190,11 @@ fn prepare_environment(command: &mut CommandBuilder) {
 pub trait SessionEvents: Send + Sync + 'static {
     /// `offset` is where this chunk starts in the session's lifetime stream, so
     /// a client that replayed a snapshot can tell what it has already seen.
-    fn output(&self, id: &SessionId, offset: u64, bytes: &[u8]);
-    fn exited(&self, id: &SessionId, code: Option<i32>);
+    ///
+    /// The project travels with the event so a listener can tell which tab just
+    /// did something without keeping its own session-to-project map.
+    fn output(&self, id: &SessionId, project: &ProjectId, offset: u64, bytes: &[u8]);
+    fn exited(&self, id: &SessionId, project: &ProjectId, code: Option<i32>);
 }
 
 /// A session as the UI sees it.
@@ -156,6 +229,9 @@ pub struct SessionManager {
     /// One session per (project, kind), so switching tabs reuses rather than
     /// respawns.
     by_project: Mutex<HashMap<(ProjectId, SessionKind), SessionId>>,
+    /// Where `claude` lives, worked out once. `None` means it was looked for
+    /// and not found.
+    claude_path: OnceLock<Option<PathBuf>>,
 }
 
 impl SessionManager {
@@ -164,6 +240,36 @@ impl SessionManager {
             events,
             sessions: Mutex::new(HashMap::new()),
             by_project: Mutex::new(HashMap::new()),
+            claude_path: OnceLock::new(),
+        }
+    }
+
+    /// The command for a session kind.
+    ///
+    /// Shells run as login shells, like every terminal emulator: without that a
+    /// GUI application's PATH is missing most of the user's tools. Claude is
+    /// launched directly from its resolved path, so nothing the user's startup
+    /// files print ends up in the panel above it.
+    fn command_for(&self, kind: SessionKind) -> Result<CommandBuilder> {
+        match kind {
+            SessionKind::Shell => {
+                let mut command = CommandBuilder::new(user_shell());
+                command.arg("-l");
+                Ok(command)
+            }
+            SessionKind::Claude => {
+                let path = self
+                    .claude_path
+                    .get_or_init(|| resolve_program("claude"))
+                    .as_ref()
+                    .ok_or_else(|| {
+                        CoreError::invalid(
+                            "could not find the claude command. Install Claude Code, or make sure \
+                             it is on the PATH your login shell sets.",
+                        )
+                    })?;
+                Ok(CommandBuilder::new(path))
+            }
         }
     }
 
@@ -214,7 +320,7 @@ impl SessionManager {
             })
             .map_err(|err| CoreError::session("could not open a pty", err))?;
 
-        let mut command = kind.command();
+        let mut command = self.command_for(kind)?;
         command.cwd(cwd);
         prepare_environment(&mut command);
 
@@ -242,6 +348,7 @@ impl SessionManager {
             // The PTY read is blocking, so it gets its own thread. It ends when
             // the child closes the pty, which is also how we learn it exited.
             let id = id.clone();
+            let owner = project.clone();
             let events = Arc::clone(&self.events);
             let scrollback = Arc::clone(&scrollback);
             std::thread::Builder::new()
@@ -256,7 +363,7 @@ impl SessionManager {
                                 // Recording and numbering happen under one lock
                                 // so a snapshot can never interleave with this.
                                 let offset = scrollback.lock_or_recover().push(bytes);
-                                events.output(&id, offset, bytes);
+                                events.output(&id, &owner, offset, bytes);
                             }
                             Err(err) => {
                                 tracing::debug!(session = %id, error = %err, "pty read ended");
@@ -264,7 +371,7 @@ impl SessionManager {
                             }
                         }
                     }
-                    events.exited(&id, None);
+                    events.exited(&id, &owner, None);
                 })
                 .map_err(|err| CoreError::session("could not start the reader thread", err))?;
         }
@@ -381,22 +488,31 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Closes a session and starts a replacement for the same project and kind.
-    pub fn restart(&self, id: &SessionId, size: (u16, u16)) -> Result<SessionId> {
-        let (project, kind, cwd) = {
-            let sessions = self.sessions.lock_or_recover();
-            let session = sessions
-                .get(id)
-                .ok_or_else(|| CoreError::SessionNotFound(id.to_string()))?;
-            (session.project.clone(), session.kind, session.cwd.clone())
-        };
-
-        self.close(id)?;
-        let new_id = self.spawn(project.clone(), kind, &cwd, size)?;
-        self.by_project
+    /// Restarts a project's session of a given kind, starting one if it had
+    /// none.
+    ///
+    /// Addressed by project rather than by session id: the caller wants "give
+    /// this project a fresh Claude", and should not have to know which session
+    /// that replaces.
+    pub fn restart_for(
+        &self,
+        project: &ProjectId,
+        kind: SessionKind,
+        cwd: &Path,
+        size: (u16, u16),
+    ) -> Result<SessionId> {
+        let existing = self
+            .by_project
             .lock_or_recover()
-            .insert((project, kind), new_id.clone());
-        Ok(new_id)
+            .get(&(project.clone(), kind))
+            .cloned();
+
+        if let Some(id) = existing {
+            // Already gone is not a failure: the point is to end up running.
+            let _ = self.close(&id);
+        }
+
+        self.ensure(project, kind, cwd, size)
     }
 }
 
@@ -410,5 +526,48 @@ trait LockOrRecover<T> {
 impl<T> LockOrRecover<T> for Mutex<T> {
     fn lock_or_recover(&self) -> std::sync::MutexGuard<'_, T> {
         self.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_answer_is_found_despite_a_prompt_writing_a_terminal_title() {
+        // A themed prompt writes an OSC title sequence that lands on the same
+        // line as the answer. This is what an interactive zsh actually emits.
+        let noisy = "\u{1b}]0;uwu\u{7}BEACON_RESOLVED=/bin/sh\n";
+        assert_eq!(extract_resolved_path(noisy), Some(PathBuf::from("/bin/sh")));
+    }
+
+    #[test]
+    fn a_program_the_shell_could_not_find_resolves_to_nothing() {
+        assert_eq!(extract_resolved_path("BEACON_RESOLVED=\n"), None);
+    }
+
+    #[test]
+    fn output_without_the_marker_resolves_to_nothing() {
+        assert_eq!(
+            extract_resolved_path("gitstatus failed to initialize\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_path_that_is_not_a_file_is_refused() {
+        assert_eq!(
+            extract_resolved_path("BEACON_RESOLVED=/definitely/not/here\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn the_last_marker_wins_when_a_shell_echoes_the_script() {
+        let echoed = "BEACON_RESOLVED=$(command -v sh)\nBEACON_RESOLVED=/bin/sh\n";
+        assert_eq!(
+            extract_resolved_path(echoed),
+            Some(PathBuf::from("/bin/sh"))
+        );
     }
 }

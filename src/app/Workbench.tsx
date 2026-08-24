@@ -75,7 +75,7 @@ function renderPanel(
 
   switch (panel) {
     case 'claude':
-      return <ClaudePanel project={project} focused={focused} />
+      return <ClaudePanel workspaceId={workspaceId} project={project} focused={focused} />
     case 'files':
       return <FilesPanel project={project} />
     case 'git':

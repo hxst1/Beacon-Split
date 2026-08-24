@@ -14,11 +14,11 @@ struct Recorder {
 }
 
 impl SessionEvents for Recorder {
-    fn output(&self, _id: &SessionId, _offset: u64, bytes: &[u8]) {
+    fn output(&self, _id: &SessionId, _project: &ProjectId, _offset: u64, bytes: &[u8]) {
         self.output.lock().unwrap().extend_from_slice(bytes);
     }
 
-    fn exited(&self, id: &SessionId, _code: Option<i32>) {
+    fn exited(&self, id: &SessionId, _project: &ProjectId, _code: Option<i32>) {
         self.exits.lock().unwrap().push(id.clone());
     }
 }
@@ -126,7 +126,9 @@ fn restarting_replaces_the_session_for_the_project() {
     let first = manager
         .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
         .unwrap();
-    let second = manager.restart(&first, (80, 24)).unwrap();
+    let second = manager
+        .restart_for(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .unwrap();
 
     assert_ne!(first, second);
     // The project now points at the replacement, not the dead one.
@@ -136,6 +138,44 @@ fn restarting_replaces_the_session_for_the_project() {
     assert_eq!(reused, second);
 
     manager.close(&second).unwrap();
+}
+
+#[test]
+fn restarting_a_project_with_no_session_just_starts_one() {
+    let recorder = Arc::new(Recorder::default());
+    let manager = SessionManager::new(recorder as Arc<dyn SessionEvents>);
+    let dir = tempfile::tempdir().unwrap();
+    let project = ProjectId::generate();
+
+    let id = manager
+        .restart_for(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .expect("restart should start a session rather than fail");
+    assert!(manager.info(&id).unwrap().running);
+
+    manager.close(&id).unwrap();
+}
+
+#[test]
+fn a_project_can_run_a_shell_and_claude_at_the_same_time() {
+    let recorder = Arc::new(Recorder::default());
+    let manager = SessionManager::new(recorder as Arc<dyn SessionEvents>);
+    let dir = tempfile::tempdir().unwrap();
+    let project = ProjectId::generate();
+
+    let shell = manager
+        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .unwrap();
+
+    // Claude may not be installed wherever this runs; what matters is that it
+    // is tracked separately from the shell rather than replacing it.
+    if let Ok(claude) = manager.ensure(&project, SessionKind::Claude, dir.path(), (80, 24)) {
+        assert_ne!(shell, claude);
+        assert_eq!(manager.info(&claude).unwrap().kind, SessionKind::Claude);
+        manager.close(&claude).unwrap();
+    }
+
+    assert!(manager.info(&shell).unwrap().running);
+    manager.close(&shell).unwrap();
 }
 
 #[test]

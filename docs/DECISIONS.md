@@ -266,3 +266,41 @@ depend on how Beacon happened to be started.
 **Consequence.** The strip list is a denylist, so a new leak from a new launcher
 would need adding to it. An allowlist would be stricter but would break the
 user's own configuration, which is the environment we are here to preserve.
+
+## ADR-017: `claude` is located through the user's interactive login shell
+
+**Context.** A GUI application starts with a minimal PATH. Launching `claude`
+by name would fail for anyone whose PATH is set up by their shell configuration
+— which, with a framework or a version manager, is most people.
+
+**Decision.** The path is resolved once, by asking the user's login shell
+interactively, and cached. A non-interactive login shell is the fallback, and
+Beacon's own PATH the last resort. The session then runs the resolved binary
+directly.
+
+**Why.** Only an interactive shell reads `.zshrc`, and that is where the PATH
+usually comes from — on this machine a non-interactive login shell fails to find
+`claude` at all. Running the resolved binary rather than launching through the
+shell keeps whatever the user's startup files print out of the Claude panel.
+
+**Consequence.** One subprocess on first use, running the user's full
+interactive init. The shell prints more than the answer — a themed prompt writes
+a terminal title escape onto the same line — so the probe marks its answer and
+the marker is what is parsed, never the bare line.
+
+## ADR-018: Activity is derived from the session stream, not from output
+
+**Context.** Tabs should show what a project is doing: working, idle, a dev
+server, an error.
+
+**Decision.** Working, idle and stopped are derived from session events —
+whether a project has a live session, and whether it printed anything recently.
+`dev server` and `error` are not implemented.
+
+**Why.** The first three follow from facts Beacon already has. The other two
+require understanding what was printed, and a regex over terminal output would
+be wrong often enough to be worse than showing nothing.
+
+**Consequence.** Sessions are keyed by id in the activity store rather than
+counted per project: opening a session is idempotent on the backend, so a
+counter would drift every time a panel remounted.

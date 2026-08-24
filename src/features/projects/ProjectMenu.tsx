@@ -27,6 +27,7 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
   const moveProject = useBeacon((s) => s.moveProject)
   const revealProject = useBeacon((s) => s.revealProject)
   const stopProject = useBeacon((s) => s.stopProject)
+  const restartSession = useBeacon((s) => s.restartSession)
 
   if (renaming) {
     return (
@@ -84,6 +85,20 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
       ) : null}
 
       <MenuSeparator />
+      <MenuItem
+        label="Restart Claude"
+        onSelect={() => {
+          void restartSession(project.id, 'claude')
+          onDone()
+        }}
+      />
+      <MenuItem
+        label="Restart terminal"
+        onSelect={() => {
+          void restartSession(project.id, 'shell')
+          onDone()
+        }}
+      />
       <MenuItem
         label="Stop processes"
         hint="Terminal, Claude"

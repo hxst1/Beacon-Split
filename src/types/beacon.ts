@@ -101,6 +101,8 @@ export interface ScrollbackSnapshot {
 
 export interface SessionOutput {
   id: string
+  /** Travels with the event so the UI knows which project is busy. */
+  project: string
   /** Where this chunk starts in the session's lifetime stream. */
   offset: number
   /** Base64-encoded bytes. */
@@ -109,5 +111,14 @@ export interface SessionOutput {
 
 export interface SessionExit {
   id: string
+  project: string
   code: number | null
 }
+
+/**
+ * What a project appears to be doing, shown on its tab.
+ *
+ * Only these three are derived today. `devServer` and `error` need output
+ * inspection and are recorded in the roadmap rather than guessed at.
+ */
+export type Activity = 'working' | 'idle' | 'stopped' 

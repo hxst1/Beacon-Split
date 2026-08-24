@@ -16,10 +16,11 @@ click or two.
 
 ## Status
 
-Milestones 0 and 2 are complete and Milestone 1 is nearly there. Today Beacon
-gives you workspaces, projects, tabs, persisted layout, the workspace accent,
-and a real shell per project running in a PTY. Claude, files and git are
-placeholders that name the milestone they arrive in.
+Milestones 0, 2, 2.5 and 3 are complete and Milestone 1 is nearly there. Today
+Beacon gives you workspaces, projects, tabs, layout presets, the workspace
+accent, and — per project — a real shell and a real `claude` session, each in
+its own PTY. Files and git are placeholders that name the milestone they arrive
+in.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 

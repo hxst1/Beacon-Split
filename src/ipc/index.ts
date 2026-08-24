@@ -87,8 +87,13 @@ export const ipc = {
 
   closeSession: (id: string) => invoke<void>('close_session', { id }),
 
-  restartSession: (id: string, cols: number, rows: number) =>
-    invoke<SessionInfo>('restart_session', { id, cols, rows }),
+  restartSession: (
+    workspaceId: string,
+    projectId: string,
+    kind: SessionKind,
+    cols: number,
+    rows: number,
+  ) => invoke<SessionInfo>('restart_session', { workspaceId, projectId, kind, cols, rows }),
 
   stopProject: (projectId: string) => invoke<void>('stop_project', { projectId }),
 }

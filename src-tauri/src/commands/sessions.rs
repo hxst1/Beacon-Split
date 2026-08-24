@@ -79,16 +79,23 @@ pub fn close_session(state: State<'_, AppState>, id: SessionId) -> CommandResult
     Ok(())
 }
 
-/// Stops the session and starts a fresh one in its place.
+/// Gives a project a fresh session of this kind, replacing any it had.
 #[tauri::command]
 pub fn restart_session(
     state: State<'_, AppState>,
-    id: SessionId,
+    workspace_id: WorkspaceId,
+    project_id: ProjectId,
+    kind: SessionKind,
     cols: u16,
     rows: u16,
 ) -> CommandResult<SessionInfo> {
-    let new_id = state.sessions.restart(&id, (cols.max(2), rows.max(2)))?;
-    Ok(state.sessions.info(&new_id)?)
+    let cwd = state
+        .beacon()
+        .resolve_project_path(&workspace_id, &project_id)?;
+    let id = state
+        .sessions
+        .restart_for(&project_id, kind, &cwd, (cols.max(2), rows.max(2)))?;
+    Ok(state.sessions.info(&id)?)
 }
 
 /// Stops every process belonging to a project, leaving the project itself in
