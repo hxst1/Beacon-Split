@@ -497,7 +497,13 @@ to stop and starts one it understands.
 daemon left running from an older build answers in shapes the client
 half-understands, and a half-understood session is worse than a new one.
 
-**Consequence.** Two serde shapes bit us and both are now covered by tests over
+**Consequence.** The version has to move when a message is *added*, not only
+when one changes shape — the case that is easy to forget, because an older
+daemon simply rejects the new request and the check that exists to replace it
+never fires. That happened once; the round-trip tests now assert how many
+messages there are, so adding one fails until the version moves with it.
+
+Two serde shapes bit us and both are now covered by tests over
 every variant. A unit enum variant serialises without its content field and
 `#[serde(flatten)]` cannot read it back — so requests carry bodies they do not
 need. An internally tagged enum cannot hold a bare sequence, and serde only

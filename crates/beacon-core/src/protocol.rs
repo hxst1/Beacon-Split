@@ -7,10 +7,17 @@ use crate::session::{SessionId, SessionInfo, SessionKind};
 
 /// The wire contract between Beacon and its session daemon.
 ///
-/// Bumped whenever a message changes shape. A client that finds a daemon
-/// speaking a different version asks it to quit and starts one it understands,
-/// rather than guessing — a half-understood session is worse than a new one.
-pub const PROTOCOL_VERSION: u32 = 1;
+/// Bumped whenever a message changes shape — including when one is *added*,
+/// which is the case that is easy to forget: a daemon from an older build
+/// simply rejects the new request, and the version check that exists to replace
+/// it never fires because nobody moved the number.
+///
+/// A client that finds a daemon speaking a different version asks it to quit
+/// and starts one it understands, rather than guessing: a half-understood
+/// session is worse than a new one.
+///
+/// Version 2 added `Report`, `ReportUsage` and `Usage`.
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Newline-delimited JSON, one message per line.
 ///
@@ -319,6 +326,15 @@ mod tests {
             Request::Usage {},
         ];
 
+        // A guard, not a formality. Adding a request without moving
+        // PROTOCOL_VERSION leaves older daemons rejecting it instead of being
+        // replaced, which is exactly what happened once already.
+        assert_eq!(
+            requests.len(),
+            13,
+            "the set of requests changed: PROTOCOL_VERSION must change with it"
+        );
+
         for (index, request) in requests.into_iter().enumerate() {
             let envelope = Envelope {
                 id: index as u64,
@@ -387,6 +403,12 @@ mod tests {
             },
             Reply::Done,
         ];
+
+        assert_eq!(
+            replies.len(),
+            6,
+            "the set of replies changed: PROTOCOL_VERSION must change with it"
+        );
 
         for (index, reply) in replies.into_iter().enumerate() {
             let response = Response {
