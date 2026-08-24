@@ -1,72 +1,60 @@
 import { useEffect } from 'react'
 
 import { hasPrimaryModifier } from '@/lib/platform'
+import { bindingOf, missingHandlers, runBinding } from './keymap'
 import { useBeacon } from './store'
 
 /**
  * The keyboard layer.
  *
- * Bindings are expressed against "the primary modifier" rather than ⌘ or Ctrl,
- * so the same table is correct on macOS and Linux. This table will move into
- * user configuration in Milestone 6; the indirection is here from the start so
- * that change does not touch every call site.
+ * Bindings come from the backend, already resolved from defaults and whatever
+ * the user changed, and are expressed against "the primary modifier" so one
+ * table is correct on macOS and Linux.
  */
 export function useShortcuts(): void {
+  const bindings = useBeacon((s) => s.snapshot?.bindings)
+
   useEffect(() => {
+    if (!bindings) return
+
+    const unimplemented = missingHandlers(bindings)
+    if (unimplemented.length > 0) {
+      // A bindable action with nothing behind it would look like a broken
+      // shortcut; better to say so where a developer will see it.
+      console.warn('actions with no handler:', unimplemented.join(', '))
+    }
+
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!hasPrimaryModifier(event)) return
 
-      const store = useBeacon.getState()
+      const pressed = bindingOf(event)
+      if (!pressed) return
 
-      // The palette and quick open are how you reach everything without the
-      // mouse, so they are the two bindings that work from anywhere — including
-      // from inside the other one.
-      const key = event.key.toLowerCase()
-      if (key === 'k' || key === 'p') {
+      // Jumping to a numbered tab is not rebindable: the binding is the number,
+      // and there are as many of them as there are projects.
+      const digit = /^mod\+([1-9])$/.exec(pressed)
+      if (digit?.[1]) {
         event.preventDefault()
-        store.setOverlay(key === 'k' ? 'palette' : 'quickOpen')
+        void useBeacon.getState().selectProjectAt(Number(digit[1]) - 1)
         return
       }
 
-      // Everything else leaves a field the user is typing in alone.
-      const target = event.target as HTMLElement | null
-      if (target?.tagName === 'INPUT' || target?.isContentEditable) return
-
-      // ⌘1..⌘9 — jump straight to a project tab.
-      if (/^[1-9]$/.test(event.key)) {
-        event.preventDefault()
-        void store.selectProjectAt(Number(event.key) - 1)
-        return
+      // The overlays are how you reach everything without the mouse, so they
+      // work from anywhere — including from inside a text field.
+      const overlayAction = bindings.find(
+        (binding) =>
+          binding.binding === pressed &&
+          (binding.action === 'palette.open' || binding.action === 'quickOpen.open'),
+      )
+      if (!overlayAction) {
+        const target = event.target as HTMLElement | null
+        if (target?.tagName === 'INPUT' || target?.isContentEditable) return
       }
 
-      switch (event.key.toLowerCase()) {
-        // Files and Git are separate panels now, so they toggle separately.
-        case 'e':
-          event.preventDefault()
-          void store.togglePanel('files')
-          break
-        case 'g':
-          event.preventDefault()
-          void store.togglePanel('git')
-          break
-        case 'j':
-          event.preventDefault()
-          void store.togglePanel('terminal')
-          break
-        case 'o':
-          event.preventDefault()
-          void store.togglePanel('editor')
-          break
-        case 'enter':
-          event.preventDefault()
-          store.toggleFullscreen(store.fullscreenPanel ?? 'claude')
-          break
-        default:
-          break
-      }
+      if (runBinding(event, bindings)) event.preventDefault()
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [bindings])
 }

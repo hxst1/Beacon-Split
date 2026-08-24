@@ -522,3 +522,43 @@ copy would not be.
 **Consequence.** One staging step before bundling, and a `binaries/` directory
 that is built rather than committed. The path resolution needed no special case
 for bundles — verified by building one and looking, not by assuming.
+
+## ADR-030: Only overridden shortcuts are stored
+
+**Context.** Shortcuts became editable, which means deciding what a settings
+file remembers.
+
+**Decision.** `settings.json` holds only the bindings that differ from their
+default. Binding an action to what it already was removes the entry rather than
+writing it. The catalogue of bindable actions and their defaults lives in the
+backend; what each one does lives in the frontend, keyed by the same ids.
+
+**Why.** Writing out every default freezes them: change one in a later version
+and nobody who never touched it would ever see the change. Keeping the catalogue
+in the backend is what lets conflict checking be a single rule rather than two
+implementations that can disagree — and a conflict names the action that already
+has the shortcut, because silently leaving one of two bindings dead gives the
+user no way to tell which.
+
+**Consequence.** An action in the catalogue with no handler does nothing, which
+would look like a broken shortcut. `missingHandlers` reports that where a
+developer sees it. The palette lists dynamic commands too — switching to one
+particular project — and those stay unbindable, since a binding has to mean the
+same thing next week.
+
+## ADR-031: Beacon does not correct the user's shell
+
+**Context.** A session shows zsh's `%` end-of-line mark. It is emitted by the
+user's own prompt configuration, and could be suppressed by setting
+`PROMPT_EOL_MARK` when spawning.
+
+**Decision.** Leave it. Beacon strips the launcher's per-process state
+(ADR-016) and changes nothing else about the environment.
+
+**Why.** The line between the two is the whole rule: state that belongs to
+whatever started Beacon is not the user's choice, and their shell configuration
+is. Once Beacon starts overriding one prompt setting because it looks untidy in
+our window, a session stops being the shell they configured.
+
+**Consequence.** Anything their shell does, it does here too. Where that is
+undesirable it is theirs to change — `PROMPT_EOL_MARK=""` in this case.

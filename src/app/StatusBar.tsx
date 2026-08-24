@@ -1,4 +1,4 @@
-import { shortcutLabel } from '@/lib/platform'
+import { describeBinding } from './keymap'
 import { selectActiveProject, useBeacon } from './store'
 import styles from './StatusBar.module.css'
 
@@ -12,6 +12,13 @@ export function StatusBar(): React.ReactElement {
   const project = useBeacon(selectActiveProject)
   const notice = useBeacon((s) => s.notice)
   const dismissNotice = useBeacon((s) => s.dismissNotice)
+  const bindings = useBeacon((s) => s.snapshot?.bindings ?? [])
+
+  /** Whatever the shortcut actually is now, not what it shipped as. */
+  const hint = (action: string): string => {
+    const binding = bindings.find((entry) => entry.action === action)
+    return binding ? describeBinding(binding.binding) : ''
+  }
 
   return (
     <footer className={styles['bar']}>
@@ -27,7 +34,8 @@ export function StatusBar(): React.ReactElement {
       ) : null}
 
       <span className={styles['hint']}>
-        {shortcutLabel('K')} commands · {shortcutLabel('P')} files · {shortcutLabel('J')} terminal
+        {hint('palette.open')} commands · {hint('quickOpen.open')} files ·{' '}
+        {hint('panel.toggle.terminal')} terminal
       </span>
     </footer>
   )

@@ -241,6 +241,8 @@ struct Session {
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     scrollback: Arc<Mutex<Scrollback>>,
+    /// The last size the process was told about.
+    size: (u16, u16),
 }
 
 /// Owns every live PTY.
@@ -413,6 +415,7 @@ impl SessionManager {
                 writer,
                 child,
                 scrollback,
+                size: (cols, rows),
             },
         );
 
@@ -447,10 +450,19 @@ impl SessionManager {
             tracing::warn!(session = %id, cols, rows, "implausibly small terminal size");
         }
 
-        let sessions = self.sessions.lock_or_recover();
+        let mut sessions = self.sessions.lock_or_recover();
         let session = sessions
-            .get(id)
+            .get_mut(id)
             .ok_or_else(|| CoreError::SessionNotFound(id.to_string()))?;
+
+        // Only when it actually changes. A mismatch between what the process
+        // believes and what is on screen is invisible until output arrives
+        // scrambled, so the size it was last told is worth having in the log.
+        if session.size != (cols, rows) {
+            tracing::info!(session = %id, cols, rows, "terminal resized");
+            session.size = (cols, rows);
+        }
+
         session
             .master
             .resize(PtySize {

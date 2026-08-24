@@ -58,6 +58,15 @@ export type LayoutNode =
       second: LayoutNode
     }
 
+/** An action that can be given a keyboard shortcut. */
+export interface ActionBinding {
+  action: string
+  /** What it is bound to now, e.g. `mod+shift+p`. */
+  binding: string
+  /** What it would be with nothing configured. */
+  defaultBinding: string
+}
+
 export type LayoutPreset =
   | 'claude-left'
   | 'claude-right'
@@ -74,6 +83,8 @@ export interface Snapshot {
   preset: LayoutPreset
   /** Panels toggled off. They keep their place in the tree. */
   hidden: PanelId[]
+  /** Every bindable action with the shortcut it answers to. */
+  bindings: ActionBinding[]
   projectsHome: string
 }
 

@@ -13,6 +13,7 @@ pub mod dotenv;
 pub mod error;
 pub mod files;
 pub mod git;
+pub mod keymap;
 pub mod layout;
 pub mod paths;
 pub mod protocol;

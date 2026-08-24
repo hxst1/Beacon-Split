@@ -25,8 +25,7 @@ in its own PTY.
 Sessions outlive the window: closing Beacon leaves them running, and opening it
 again reattaches to them.
 
-What is left is making keyboard bindings editable, and a few smaller things
-listed in the roadmap.
+What is left is a few smaller things listed in the roadmap.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 
@@ -108,8 +107,9 @@ the same configuration works on macOS and Linux.
 | `⌘K` | Command palette |
 | `⌘P` | Quick open |
 
-Bindings are not user-editable yet; commands and shortcuts already resolve
-against one registry, so that is a settings surface rather than a rework.
+Every shortcut is editable in Settings → Keyboard: click one and press the new
+one. Only the ones you change are stored, so later changes to a default still
+reach you. Numbered project tabs are fixed, since the binding is the number.
 
 ## A promise about your files
 

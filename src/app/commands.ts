@@ -1,6 +1,7 @@
 import { ipc, pickFolder } from '@/ipc'
 import { useEditor } from '@/features/editor/openFiles'
 import { shortcutLabel } from '@/lib/platform'
+import { describeBinding } from './keymap'
 import type { LayoutPreset, PanelId } from '@/types/beacon'
 import { useBeacon } from './store'
 
@@ -9,8 +10,8 @@ export interface Command {
   title: string
   /** Grouping shown beside the title. */
   group: string
-  /** Rendered on the right; the same string the keyboard layer resolves to. */
-  hint?: string
+  /** Rendered on the right; the same shortcut the keyboard layer resolves to. */
+  hint?: string | undefined
   run: () => void | Promise<void>
 }
 
@@ -31,11 +32,18 @@ export function buildCommands(): Command[] {
   const activeProjectId = workspace ? snapshot?.activeProject[workspace.id] : undefined
   const project = projects.find((p) => p.id === activeProjectId) ?? projects[0]
 
+  /** The shortcut an action currently answers to, whatever the user set. */
+  const hintFor = (action: string): string | undefined => {
+    const binding = snapshot?.bindings.find((entry) => entry.action === action)
+    return binding ? describeBinding(binding.binding) : undefined
+  }
+
   const commands: Command[] = [
     {
       id: 'app.settings',
       title: 'Open settings',
       group: 'Beacon',
+      ...(hintFor('settings.open') ? { hint: hintFor('settings.open') } : {}),
       run: () => store.setOverlay('settings'),
     },
     {
@@ -76,6 +84,7 @@ export function buildCommands(): Command[] {
         id: 'project.restartClaude',
         title: 'Restart Claude',
         group: 'Session',
+        ...(hintFor('session.restartClaude') ? { hint: hintFor('session.restartClaude') } : {}),
         run: () => store.restartSession(project.id, 'claude'),
       },
       {
@@ -119,20 +128,20 @@ export function buildCommands(): Command[] {
 
   // ---- panels ----
 
-  const panels: Array<{ panel: PanelId; label: string; key?: string }> = [
-    { panel: 'files', label: 'Files', key: 'E' },
-    { panel: 'git', label: 'Git', key: 'G' },
-    { panel: 'terminal', label: 'Terminal', key: 'J' },
-    { panel: 'editor', label: 'the editor', key: 'O' },
+  const panels: Array<{ panel: PanelId; label: string }> = [
+    { panel: 'files', label: 'Files' },
+    { panel: 'git', label: 'Git' },
+    { panel: 'terminal', label: 'Terminal' },
+    { panel: 'editor', label: 'the editor' },
   ]
 
-  for (const { panel, label, key } of panels) {
+  for (const { panel, label } of panels) {
     const hidden = snapshot?.hidden.includes(panel) === true
     commands.push({
       id: `panel.toggle.${panel}`,
       title: `${hidden ? 'Show' : 'Hide'} ${label}`,
       group: 'Panels',
-      ...(key ? { hint: shortcutLabel(key) } : {}),
+      ...(hintFor(`panel.toggle.${panel}`) ? { hint: hintFor(`panel.toggle.${panel}`) } : {}),
       run: () => store.togglePanel(panel),
     })
   }
@@ -141,7 +150,7 @@ export function buildCommands(): Command[] {
     id: 'panel.fullscreen',
     title: store.fullscreenPanel ? 'Leave fullscreen' : 'Fullscreen the Claude panel',
     group: 'Panels',
-    hint: shortcutLabel('↩'),
+    ...(hintFor('panel.fullscreen') ? { hint: hintFor('panel.fullscreen') } : {}),
     run: () => store.toggleFullscreen(store.fullscreenPanel ?? 'claude'),
   })
 

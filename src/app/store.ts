@@ -58,6 +58,15 @@ interface BeaconState {
   setLayout: (layout: LayoutNode) => Promise<void>
   setPreset: (preset: LayoutPreset) => Promise<void>
   togglePanel: (panel: PanelId) => Promise<void>
+  /**
+   * Binds an action, or clears it with `null`.
+   *
+   * Returns the reason it was refused rather than raising a status-bar notice:
+   * a rejected shortcut belongs beside the row it was rejected for, where the
+   * conflicting action is named.
+   */
+  setBinding: (action: string, binding: string | null) => Promise<string | null>
+  resetBindings: () => Promise<void>
   /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
   showPanel: (panel: PanelId) => Promise<void>
   toggleFullscreen: (panel: PanelId) => void
@@ -201,6 +210,17 @@ export const useBeacon = create<BeaconState>((set, get) => {
     setPreset: (preset) => run(() => ipc.setLayoutPreset(preset)),
 
     togglePanel: (panel) => run(() => ipc.togglePanel(panel)),
+
+    setBinding: async (action, binding) => {
+      try {
+        accept(await ipc.setBinding(action, binding))
+        return null
+      } catch (error) {
+        return errorMessage(error)
+      }
+    },
+
+    resetBindings: () => run(() => ipc.resetBindings()),
 
     showPanel: async (panel) => {
       if (!get().snapshot?.hidden.includes(panel)) return

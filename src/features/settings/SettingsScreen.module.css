@@ -259,3 +259,76 @@
     transform: translateY(-8px) scale(0.995);
   }
 }
+
+.binding {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xs);
+  background: rgb(255 255 255 / 0.03);
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+  min-width: 88px;
+  justify-content: center;
+  transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.binding:hover {
+  border-color: var(--line-2);
+  color: var(--fg-1);
+}
+
+/* While capturing, the row is the only thing the keyboard is talking to. */
+.binding[data-capturing='true'] {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+}
+
+.binding[data-changed='true'] {
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+.revert {
+  width: 18px;
+  padding: 0;
+  border-radius: var(--radius-xs);
+  color: var(--fg-4);
+  font-size: 11px;
+  flex: none;
+}
+
+.revert:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
+.revertSpacer {
+  width: 18px;
+  flex: none;
+}
+
+.conflict {
+  margin-top: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--danger) 14%, transparent);
+  color: var(--danger);
+  font-size: var(--text-xs);
+}
+
+.resetAll {
+  margin-top: 12px;
+  padding: 5px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-1);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+}
+
+.resetAll:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}

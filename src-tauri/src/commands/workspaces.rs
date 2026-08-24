@@ -71,6 +71,26 @@ pub fn set_layout_preset(
     Ok(beacon.snapshot())
 }
 
+/// Binds an action to a shortcut, or clears it back to the default.
+#[tauri::command]
+pub fn set_binding(
+    state: State<'_, AppState>,
+    action: String,
+    binding: Option<String>,
+) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_binding(&action, binding.as_deref())?;
+    Ok(beacon.snapshot())
+}
+
+/// Puts every shortcut back to how it shipped.
+#[tauri::command]
+pub fn reset_bindings(state: State<'_, AppState>) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.reset_bindings()?;
+    Ok(beacon.snapshot())
+}
+
 /// The built-in arrangements and the tree behind each one.
 ///
 /// Served from the backend so a settings preview is drawn from exactly the tree

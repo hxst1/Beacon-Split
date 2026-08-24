@@ -50,6 +50,12 @@ export const ipc = {
 
   togglePanel: (panel: PanelId) => invoke<Snapshot>('toggle_panel', { panel }),
 
+  /** `null` clears the binding back to its default. */
+  setBinding: (action: string, binding: string | null) =>
+    invoke<Snapshot>('set_binding', { action, binding }),
+
+  resetBindings: () => invoke<Snapshot>('reset_bindings'),
+
   addProject: (workspaceId: string, path: string) =>
     invoke<Snapshot>('add_project', { workspaceId, path }),
 

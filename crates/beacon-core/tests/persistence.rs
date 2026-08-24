@@ -271,3 +271,76 @@ fn a_layout_stored_before_the_editor_existed_gains_it_hidden() {
         "a panel introduced by a repair must start hidden, not show an empty pane"
     );
 }
+
+#[test]
+fn a_rebound_shortcut_survives_a_reload() {
+    let (_guard, config) = scratch();
+    {
+        let mut beacon = Beacon::load(&config).unwrap();
+        beacon
+            .set_binding("palette.open", Some("Cmd+Shift+P"))
+            .unwrap();
+    }
+
+    let bindings = Beacon::load(&config).unwrap().snapshot().bindings;
+    let palette = bindings
+        .iter()
+        .find(|b| b.action == "palette.open")
+        .unwrap();
+    assert_eq!(palette.binding, "mod+shift+p", "stored in normalised form");
+    assert_eq!(palette.default_binding, "mod+k");
+}
+
+#[test]
+fn a_shortcut_another_action_already_has_is_refused_by_name() {
+    let (_guard, config) = scratch();
+    let mut beacon = Beacon::load(&config).unwrap();
+
+    let error = beacon
+        .set_binding("palette.open", Some("mod+p"))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("quickOpen.open"),
+        "should say who has it; got: {error}"
+    );
+}
+
+#[test]
+fn clearing_a_binding_returns_it_to_the_default() {
+    let (_guard, config) = scratch();
+    let mut beacon = Beacon::load(&config).unwrap();
+
+    beacon
+        .set_binding("panel.toggle.git", Some("mod+shift+g"))
+        .unwrap();
+    beacon.set_binding("panel.toggle.git", None).unwrap();
+
+    let bindings = beacon.snapshot().bindings;
+    let git = bindings
+        .iter()
+        .find(|b| b.action == "panel.toggle.git")
+        .unwrap();
+    assert_eq!(git.binding, git.default_binding);
+}
+
+#[test]
+fn binding_an_action_to_its_own_default_stores_nothing() {
+    let (_guard, config) = scratch();
+    std::fs::create_dir_all(&config).unwrap();
+    {
+        let mut beacon = Beacon::load(&config).unwrap();
+        beacon.set_binding("palette.open", Some("mod+k")).unwrap();
+    }
+
+    // Otherwise a later change to the default would never reach them.
+    let stored = std::fs::read_to_string(config.join("settings.json")).unwrap_or_default();
+    assert!(!stored.contains("palette.open"), "got: {stored}");
+}
+
+#[test]
+fn an_unknown_action_cannot_be_bound() {
+    let (_guard, config) = scratch();
+    let mut beacon = Beacon::load(&config).unwrap();
+    assert!(beacon.set_binding("nothing.here", Some("mod+y")).is_err());
+}

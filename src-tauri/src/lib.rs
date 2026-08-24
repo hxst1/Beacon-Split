@@ -36,6 +36,8 @@ pub fn run() {
             commands::set_layout,
             commands::set_layout_preset,
             commands::layout_presets,
+            commands::set_binding,
+            commands::reset_bindings,
             commands::toggle_panel,
             commands::add_project,
             commands::rename_project,

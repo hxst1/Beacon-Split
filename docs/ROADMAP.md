@@ -128,9 +128,12 @@ terminal panel is two keystrokes away and is better at all of them.
 - Git and the file tree keep up with changes made outside Beacon
 - `vitest` for the pure frontend logic — matching and layout maths
 
-Still to do here: user-editable keyboard bindings. Commands and bindings already
-resolve against one registry, so this is a settings surface rather than a
-rework. Cross-project search is still not planned for now.
+Shortcuts are editable from the settings screen: click one, press the new one.
+The catalogue of bindable actions and their defaults lives in the backend so
+conflict checking has one source of truth; only the shortcuts you change are
+stored, so a later change to a default reaches anyone who never overrode it.
+
+Cross-project search is still not planned.
 
 ## Milestone 6.5 — Detached panels
 

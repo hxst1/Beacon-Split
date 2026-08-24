@@ -4,6 +4,7 @@ import { selectActiveWorkspace, selectHidden, useBeacon } from '@/app/store'
 import { errorMessage, ipc } from '@/ipc'
 import { ACCENT_PRESETS } from '@/lib/accent'
 import { PANEL_LABELS } from '@/lib/layout'
+import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
 import { modifierLabel } from '@/lib/platform'
 import type { LayoutNode, LayoutPreset, PanelId } from '@/types/beacon'
 import { LayoutThumb } from './LayoutThumb'
@@ -29,17 +30,6 @@ const PRESET_LABELS: Record<LayoutPreset, string> = {
 
 const TOGGLEABLE: PanelId[] = ['editor', 'files', 'git', 'terminal']
 
-const BINDINGS: Array<{ keys: string[]; action: string }> = [
-  { keys: ['K'], action: 'Command palette' },
-  { keys: ['P'], action: 'Quick open' },
-  { keys: ['1', '…', '9'], action: 'Switch to project' },
-  { keys: ['E'], action: 'Toggle Files' },
-  { keys: ['G'], action: 'Toggle Git' },
-  { keys: ['O'], action: 'Toggle the editor' },
-  { keys: ['J'], action: 'Toggle the terminal' },
-  { keys: ['↩'], action: 'Fullscreen the focused panel' },
-  { keys: ['S'], action: 'Save the file being edited' },
-]
 
 /**
  * Beacon's settings, as a screen rather than a menu.
@@ -238,32 +228,102 @@ function WorkspaceSection(): React.ReactElement {
 }
 
 function KeyboardSection(): React.ReactElement {
-  const modifier = modifierLabel()
+  const bindings = useBeacon((s) => s.snapshot?.bindings ?? [])
+  const setBinding = useBeacon((s) => s.setBinding)
+  const resetBindings = useBeacon((s) => s.resetBindings)
+
+  const [capturing, setCapturing] = useState<string | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  // While a row is capturing it owns the keyboard: the shortcut being pressed
+  // must not also fire the action it is being taken from.
+  useEffect(() => {
+    if (!capturing) return
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      if (event.key === 'Escape') {
+        setCapturing(null)
+        return
+      }
+
+      const pressed = bindingOf(event)
+      if (!pressed) {
+        // Without the primary modifier it would fire while typing.
+        setProblem(`A shortcut has to include ${modifierLabel()}.`)
+        return
+      }
+
+      const action = capturing
+      setCapturing(null)
+      void setBinding(action, pressed).then(setProblem)
+    }
+
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [capturing, setBinding])
 
   return (
     <section className={styles['section']}>
       <h2 className={styles['sectionTitle']}>Shortcuts</h2>
       <p className={styles['sectionNote']}>
-        Bindings are written against the primary modifier — {modifier} here — so the same table is
-        correct on macOS and Linux. Editing them is not built yet; commands and shortcuts already
-        resolve against one registry, so it will be a surface over this list rather than a rework.
+        Every shortcut includes the primary modifier — {modifierLabel()} here — so one table is
+        correct on macOS and Linux, and nothing fires while you are typing. Click a shortcut and
+        press the new one; Escape cancels. Jumping to a numbered tab is fixed, since the binding is
+        the number.
       </p>
 
       <div className={styles['rows']}>
-        {BINDINGS.map((binding) => (
-          <div className={styles['row']} key={binding.action}>
-            <span className={styles['rowLabel']}>{binding.action}</span>
-            <span className={styles['keys']}>
-              <span className={styles['key']}>{modifier}</span>
-              {binding.keys.map((key) => (
-                <span className={styles['key']} key={key}>
-                  {key}
-                </span>
-              ))}
-            </span>
-          </div>
-        ))}
+        {bindings.map((entry) => {
+          const changed = entry.binding !== entry.defaultBinding
+          return (
+            <div className={styles['row']} key={entry.action}>
+              <span className={styles['rowLabel']}>
+                {ACTION_TITLES[entry.action] ?? entry.action}
+              </span>
+
+              {changed ? (
+                <button
+                  type="button"
+                  className={styles['revert']}
+                  title={`Back to ${describeBinding(entry.defaultBinding)}`}
+                  aria-label="Reset this shortcut"
+                  onClick={() => void setBinding(entry.action, null).then(setProblem)}
+                >
+                  ↺
+                </button>
+              ) : (
+                <span className={styles['revertSpacer']} />
+              )}
+
+              <button
+                type="button"
+                className={styles['binding']}
+                data-capturing={capturing === entry.action}
+                data-changed={changed}
+                onClick={() => {
+                  setProblem(null)
+                  setCapturing(entry.action)
+                }}
+              >
+                {capturing === entry.action ? 'Press a key…' : describeBinding(entry.binding)}
+              </button>
+            </div>
+          )
+        })}
       </div>
+
+      {problem ? <p className={styles['conflict']}>{problem}</p> : null}
+
+      <button
+        type="button"
+        className={styles['resetAll']}
+        onClick={() => void resetBindings().then(() => setProblem(null))}
+      >
+        Reset all shortcuts
+      </button>
     </section>
   )
 }

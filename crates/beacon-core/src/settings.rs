@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,13 @@ pub struct Settings {
     /// itself portable between macOS and Linux.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub projects_home: Option<String>,
+    /// Keyboard bindings, keyed by action id.
+    ///
+    /// Only the ones that differ from the default are stored, so changing a
+    /// default in a later version reaches everyone who never overrode it, and
+    /// no stale entry is left behind pointing at an action that moved on.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub bindings: BTreeMap<String, String>,
 }
 
 impl Settings {
@@ -34,6 +42,7 @@ impl Default for Settings {
         Self {
             schema_version: Self::SCHEMA_VERSION,
             projects_home: None,
+            bindings: BTreeMap::new(),
         }
     }
 }
@@ -48,6 +57,13 @@ mod tests {
             Settings::default().projects_home_path(),
             default_projects_home()
         );
+    }
+
+    #[test]
+    fn a_fresh_configuration_stores_no_bindings() {
+        // Defaults are not written out: they are not the user's choices.
+        let json = serde_json::to_string(&Settings::default()).unwrap();
+        assert!(!json.contains("bindings"), "got {json}");
     }
 
     #[test]

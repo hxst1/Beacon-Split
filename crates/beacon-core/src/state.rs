@@ -5,6 +5,7 @@ use serde::Serialize;
 use crate::detect::{ProjectKind, detect_kinds, suggest_name};
 use crate::domain::{Project, ProjectId, Workspace, WorkspaceId, WorkspacesFile, normalize_accent};
 use crate::error::{CoreError, Result};
+use crate::keymap::{self, ActionBinding};
 use crate::layout::{LayoutNode, LayoutPreset, PanelId};
 use crate::paths::{ProjectPath, default_config_dir};
 use crate::settings::Settings;
@@ -46,6 +47,8 @@ pub struct Snapshot {
     pub layout: LayoutNode,
     pub preset: LayoutPreset,
     pub hidden: Vec<PanelId>,
+    /// Every bindable action with the shortcut it currently answers to.
+    pub bindings: Vec<ActionBinding>,
     pub projects_home: String,
 }
 
@@ -149,6 +152,7 @@ impl Beacon {
             layout: self.ui.layout.clamped(),
             preset: self.ui.preset,
             hidden: self.ui.hidden.clone(),
+            bindings: keymap::resolve(&self.settings.bindings),
             projects_home: home.to_string_lossy().into_owned(),
         }
     }
@@ -412,6 +416,47 @@ impl Beacon {
         self.ui.preset = preset;
         self.ui.layout = tree;
         self.save_ui()
+    }
+
+    /// Binds an action to a shortcut, or clears it back to the default.
+    ///
+    /// Refuses a shortcut another action already answers to. Allowing it would
+    /// leave one of them silently dead, and the user would have no way to tell
+    /// which — so the conflict is named instead.
+    pub fn set_binding(&mut self, action: &str, binding: Option<&str>) -> Result<()> {
+        if !keymap::is_known_action(action) {
+            return Err(CoreError::invalid(format!("no action called {action}")));
+        }
+
+        let Some(binding) = binding else {
+            self.settings.bindings.remove(action);
+            return self.save_settings();
+        };
+
+        let normalized = keymap::normalize(binding)?;
+        if let Some(taken_by) =
+            keymap::conflicting_action(&self.settings.bindings, &normalized, action)
+        {
+            return Err(CoreError::invalid(format!(
+                "{normalized} is already {taken_by}"
+            )));
+        }
+
+        // An override equal to the default is not an override.
+        if keymap::default_binding(action) == Some(normalized.as_str()) {
+            self.settings.bindings.remove(action);
+        } else {
+            self.settings
+                .bindings
+                .insert(action.to_string(), normalized);
+        }
+        self.save_settings()
+    }
+
+    /// Puts every shortcut back to how it shipped.
+    pub fn reset_bindings(&mut self) -> Result<()> {
+        self.settings.bindings.clear();
+        self.save_settings()
     }
 
     /// Shows or hides a panel, leaving its place in the tree intact.
