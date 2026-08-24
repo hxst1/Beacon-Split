@@ -157,6 +157,10 @@ management, not a change to how sessions work.
   the offsets from Milestone 2
 - The daemon stops itself after five minutes with no sessions and nobody
   attached, and can be stopped deliberately from the palette
+- The connection repairs itself: a restarted daemon is found again, and the
+  window rebuilds its terminals rather than going quietly deaf
+- The socket is an argument rather than a constant, so tests cannot reach a
+  daemon someone is working in
 
 Packaged as a Tauri sidecar: the bundler names the binary with its target
 triple so a bundle can never pick up one built for another machine, and places

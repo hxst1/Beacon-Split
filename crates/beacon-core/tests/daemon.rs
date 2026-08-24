@@ -17,6 +17,7 @@ use beacon_core::session::SessionKind;
 struct Recorder {
     output: Mutex<Vec<u8>>,
     disconnects: Mutex<usize>,
+    reattachments: Mutex<usize>,
 }
 
 impl DaemonEvents for Recorder {
@@ -32,6 +33,10 @@ impl DaemonEvents for Recorder {
 
     fn disconnected(&self) {
         *self.disconnects.lock().unwrap() += 1;
+    }
+
+    fn reattached(&self) {
+        *self.reattachments.lock().unwrap() += 1;
     }
 }
 
@@ -50,6 +55,14 @@ fn wait_for(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
         std::thread::sleep(Duration::from_millis(25));
     }
     false
+}
+
+/// A socket of this test's own.
+///
+/// Never the default one: running the tests must not be able to reach — or shut
+/// down — a daemon somebody is actually working in.
+fn private_socket(dir: &std::path::Path) -> PathBuf {
+    dir.join("daemon.sock")
 }
 
 /// The daemon built alongside this test.
@@ -78,8 +91,12 @@ fn a_session_outlives_the_client_that_started_it() {
     // First client: start a shell and leave a mark in it.
     let first = Arc::new(Recorder::default());
     let session = {
-        let client = DaemonClient::connect(&binary, Arc::clone(&first) as Arc<dyn DaemonEvents>)
-            .expect("should reach a daemon");
+        let client = DaemonClient::connect_at(
+            &binary,
+            &private_socket(dir.path()),
+            Arc::clone(&first) as Arc<dyn DaemonEvents>,
+        )
+        .expect("should reach a daemon");
 
         let session = client
             .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
@@ -104,8 +121,12 @@ fn a_session_outlives_the_client_that_started_it() {
 
     // Second client: the session should still be there, with its scrollback.
     let second = Arc::new(Recorder::default());
-    let client = DaemonClient::connect(&binary, Arc::clone(&second) as Arc<dyn DaemonEvents>)
-        .expect("should reach the same daemon");
+    let client = DaemonClient::connect_at(
+        &binary,
+        &private_socket(dir.path()),
+        Arc::clone(&second) as Arc<dyn DaemonEvents>,
+    )
+    .expect("should reach the same daemon");
 
     let again = client
         .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
@@ -157,7 +178,12 @@ fn closing_a_project_stops_its_sessions_but_not_the_daemon() {
 
     let dir = tempfile::tempdir().unwrap();
     let recorder = Arc::new(Recorder::default());
-    let client = DaemonClient::connect(&binary, recorder as Arc<dyn DaemonEvents>).unwrap();
+    let client = DaemonClient::connect_at(
+        &binary,
+        &private_socket(dir.path()),
+        recorder as Arc<dyn DaemonEvents>,
+    )
+    .unwrap();
 
     let one = ProjectId::generate();
     let other = ProjectId::generate();
@@ -181,4 +207,59 @@ fn closing_a_project_stops_its_sessions_but_not_the_daemon() {
     );
 
     client.close(&kept.id).unwrap();
+}
+
+#[test]
+fn the_client_gets_itself_back_after_the_daemon_is_replaced() {
+    // The daemon is meant to outlive the window. A window that goes permanently
+    // deaf when the daemon is restarted — for an upgrade, or because someone
+    // stopped it — gets none of that benefit.
+    let binary = daemon_binary();
+    if !binary.exists() {
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let recorder = Arc::new(Recorder::default());
+    let client = DaemonClient::connect_at(
+        &binary,
+        &private_socket(dir.path()),
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    )
+    .unwrap();
+
+    let project = ProjectId::generate();
+    client
+        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .expect("a session to lose");
+
+    // Stopping the daemon is the harshest version of this: everything it held
+    // is gone, and the client has to notice and rebuild rather than hang.
+    client.shutdown().ok();
+
+    assert!(
+        wait_for(Duration::from_secs(10), || *recorder
+            .disconnects
+            .lock()
+            .unwrap()
+            > 0),
+        "the client should notice it was cut off"
+    );
+
+    assert!(
+        wait_for(Duration::from_secs(30), || *recorder
+            .reattachments
+            .lock()
+            .unwrap()
+            > 0),
+        "the client should get itself back without being asked"
+    );
+
+    // And it is usable again, not merely connected.
+    let fresh = client
+        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .expect("the reattached client should still work");
+    assert!(fresh.running);
+
+    client.close(&fresh.id).unwrap();
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -26,8 +26,40 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 /// Receives what the daemon reports without being asked.
 pub trait DaemonEvents: Send + Sync + 'static {
     fn event(&self, event: Event);
-    /// The connection dropped. Sessions are still running; this client is not.
+    /// The connection dropped. Sessions may still be running; we are no longer
+    /// hearing about them.
     fn disconnected(&self);
+    /// A connection is live again.
+    ///
+    /// Possibly to a different daemon, so anything holding a session id has to
+    /// ask for it again rather than assume it is still valid.
+    fn reattached(&self);
+}
+
+/// How long to wait between attempts to get back to the daemon.
+const RECONNECT_BACKOFF: &[Duration] = &[
+    Duration::from_millis(200),
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(5),
+];
+
+/// State shared between the client and the threads that read for it.
+struct Shared {
+    /// `None` between losing a connection and getting another.
+    stream: Mutex<Option<UnixStream>>,
+    pending: Mutex<HashMap<u64, Sender<Outcome>>>,
+    next_id: AtomicU64,
+    binary: PathBuf,
+    /// Where this client's daemon listens. Explicit so a second, isolated
+    /// Beacon is possible — and so tests cannot reach a daemon someone is using.
+    socket: PathBuf,
+    events: Arc<dyn DaemonEvents>,
+    /// Set when the client is dropped, so a reconnect loop stops trying.
+    stopped: AtomicBool,
+    /// Guards against two reconnect loops racing each other.
+    reconnecting: AtomicBool,
 }
 
 /// A connection to the session daemon.
@@ -35,10 +67,13 @@ pub trait DaemonEvents: Send + Sync + 'static {
 /// The UI holds one of these where it used to hold a `SessionManager`. The
 /// methods are the same shape on purpose: what changed is where the sessions
 /// live, not what can be done with them.
+///
+/// The connection repairs itself. A daemon that is restarted — during an
+/// upgrade, or because someone stopped it — must not leave the window
+/// permanently deaf, since the whole point of the daemon is that it outlives
+/// things.
 pub struct DaemonClient {
-    writer: Mutex<UnixStream>,
-    next_id: AtomicU64,
-    pending: Arc<Mutex<HashMap<u64, Sender<Outcome>>>>,
+    shared: Arc<Shared>,
 }
 
 impl DaemonClient {
@@ -47,9 +82,30 @@ impl DaemonClient {
     /// `daemon_binary` is where to find it; the caller knows, because in
     /// development it sits beside the app and in a bundle it is inside it.
     pub fn connect(daemon_binary: &Path, events: Arc<dyn DaemonEvents>) -> Result<Self> {
-        let client = Self::open(daemon_binary, Arc::clone(&events))?;
-        let greeting = client.hello()?;
+        Self::connect_at(daemon_binary, &socket_path(), events)
+    }
 
+    /// Connects to a daemon on a particular socket, starting one if needed.
+    pub fn connect_at(
+        daemon_binary: &Path,
+        socket: &Path,
+        events: Arc<dyn DaemonEvents>,
+    ) -> Result<Self> {
+        let shared = Arc::new(Shared {
+            stream: Mutex::new(None),
+            pending: Mutex::new(HashMap::new()),
+            next_id: AtomicU64::new(1),
+            binary: daemon_binary.to_path_buf(),
+            socket: socket.to_path_buf(),
+            events,
+            stopped: AtomicBool::new(false),
+            reconnecting: AtomicBool::new(false),
+        });
+
+        let client = Self { shared };
+        client.shared.open()?;
+
+        let greeting = client.hello()?;
         if greeting.version == PROTOCOL_VERSION {
             tracing::info!(
                 pid = greeting.pid,
@@ -67,103 +123,14 @@ impl DaemonClient {
             "replacing a daemon speaking a different protocol"
         );
         let _ = client.shutdown();
-        drop(client);
 
-        spawn_daemon(daemon_binary)?;
-        let replacement = Self::attach(wait_for_daemon()?, events)?;
-        replacement.hello()?;
-        Ok(replacement)
-    }
-
-    /// Connects to a running daemon, or starts one and waits for it.
-    fn open(daemon_binary: &Path, events: Arc<dyn DaemonEvents>) -> Result<Self> {
-        match connect_once() {
-            Some(stream) => Self::attach(stream, events),
-            None => {
-                spawn_daemon(daemon_binary)?;
-                Self::attach(wait_for_daemon()?, events)
-            }
-        }
-    }
-
-    fn attach(stream: UnixStream, events: Arc<dyn DaemonEvents>) -> Result<Self> {
-        let reader_half = stream
-            .try_clone()
-            .map_err(|err| CoreError::session("could not use the daemon socket", err))?;
-
-        let pending: Arc<Mutex<HashMap<u64, Sender<Outcome>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-
-        {
-            // One reader thread demultiplexes the stream: replies go to whoever
-            // is waiting for that id, everything else is an event.
-            let pending = Arc::clone(&pending);
-            std::thread::Builder::new()
-                .name("daemon-reader".into())
-                .spawn(move || {
-                    for line in BufReader::new(reader_half).lines() {
-                        let Ok(line) = line else { break };
-                        if line.trim().is_empty() {
-                            continue;
-                        }
-
-                        match serde_json::from_str::<Message>(&line) {
-                            Ok(Message::Response(Response { id, outcome })) => {
-                                if let Some(waiting) = pending.lock_or_recover().remove(&id) {
-                                    let _ = waiting.send(outcome);
-                                }
-                            }
-                            Ok(Message::Event(event)) => events.event(event),
-                            Err(err) => {
-                                tracing::warn!(error = %err, "could not read a daemon message");
-                            }
-                        }
-                    }
-
-                    // Wake anything still waiting rather than leaving it to time out.
-                    for (_, waiting) in pending.lock_or_recover().drain() {
-                        let _ = waiting.send(Outcome::Err("the daemon went away".into()));
-                    }
-                    events.disconnected();
-                })
-                .map_err(|err| CoreError::session("could not start the daemon reader", err))?;
-        }
-
-        Ok(Self {
-            writer: Mutex::new(stream),
-            next_id: AtomicU64::new(1),
-            pending,
-        })
+        client.shared.open()?;
+        client.hello()?;
+        Ok(client)
     }
 
     fn request(&self, request: Request) -> Result<Reply> {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
-        let (sender, receiver): (Sender<Outcome>, Receiver<Outcome>) = channel();
-        self.pending.lock_or_recover().insert(id, sender);
-
-        let line = serde_json::to_string(&Envelope { id, request })
-            .map_err(|err| CoreError::session("could not encode a daemon request", err))?;
-
-        {
-            let mut writer = self.writer.lock_or_recover();
-            writer
-                .write_all(line.as_bytes())
-                .and_then(|_| writer.write_all(b"\n"))
-                .and_then(|_| writer.flush())
-                .map_err(|err| {
-                    self.pending.lock_or_recover().remove(&id);
-                    CoreError::session("could not reach the session daemon", err)
-                })?;
-        }
-
-        match receiver.recv_timeout(REQUEST_TIMEOUT) {
-            Ok(Outcome::Ok(reply)) => Ok(reply),
-            Ok(Outcome::Err(message)) => Err(CoreError::invalid(message)),
-            Err(_) => {
-                self.pending.lock_or_recover().remove(&id);
-                Err(CoreError::invalid("the session daemon did not answer"))
-            }
-        }
+        self.shared.request(request)
     }
 
     fn hello(&self) -> Result<crate::protocol::Greeting> {
@@ -263,16 +230,167 @@ impl DaemonClient {
     }
 }
 
+impl Drop for DaemonClient {
+    fn drop(&mut self) {
+        // Otherwise the reconnect loop would outlive the client it serves.
+        self.shared.stopped.store(true, Ordering::SeqCst);
+    }
+}
+
+impl Shared {
+    /// Connects to a running daemon, or starts one and waits for it.
+    fn open(self: &Arc<Self>) -> Result<()> {
+        let stream = match connect_once(&self.socket) {
+            Some(stream) => stream,
+            None => {
+                spawn_daemon(&self.binary, &self.socket)?;
+                wait_for_daemon(&self.socket)?
+            }
+        };
+        self.adopt(stream)
+    }
+
+    /// Takes over a connection and starts reading from it.
+    fn adopt(self: &Arc<Self>, stream: UnixStream) -> Result<()> {
+        let reader_half = stream
+            .try_clone()
+            .map_err(|err| CoreError::session("could not use the daemon socket", err))?;
+
+        *self.stream.lock_or_recover() = Some(stream);
+
+        let shared = Arc::clone(self);
+        std::thread::Builder::new()
+            .name("daemon-reader".into())
+            .spawn(move || {
+                // One reader thread demultiplexes the stream: replies go to
+                // whoever is waiting for that id, everything else is an event.
+                for line in BufReader::new(reader_half).lines() {
+                    let Ok(line) = line else { break };
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+
+                    match serde_json::from_str::<Message>(&line) {
+                        Ok(Message::Response(Response { id, outcome })) => {
+                            if let Some(waiting) = shared.pending.lock_or_recover().remove(&id) {
+                                let _ = waiting.send(outcome);
+                            }
+                        }
+                        Ok(Message::Event(event)) => shared.events.event(event),
+                        Err(err) => {
+                            tracing::warn!(error = %err, "could not read a daemon message");
+                        }
+                    }
+                }
+
+                shared.handle_disconnect();
+            })
+            .map_err(|err| CoreError::session("could not start the daemon reader", err))?;
+
+        Ok(())
+    }
+
+    fn handle_disconnect(self: &Arc<Self>) {
+        *self.stream.lock_or_recover() = None;
+
+        // Wake anything still waiting rather than leaving it to time out.
+        for (_, waiting) in self.pending.lock_or_recover().drain() {
+            let _ = waiting.send(Outcome::Err("the daemon went away".into()));
+        }
+
+        self.events.disconnected();
+        if self.stopped.load(Ordering::SeqCst) {
+            return;
+        }
+        self.start_reconnecting();
+    }
+
+    /// Keeps trying to get back, with a backoff that levels off rather than
+    /// giving up: a window left open overnight should recover on its own.
+    fn start_reconnecting(self: &Arc<Self>) {
+        if self.reconnecting.swap(true, Ordering::SeqCst) {
+            return;
+        }
+
+        let shared = Arc::clone(self);
+        std::thread::Builder::new()
+            .name("daemon-reconnect".into())
+            .spawn(move || {
+                tracing::info!("lost the session daemon; trying to get back");
+
+                for attempt in 0.. {
+                    if shared.stopped.load(Ordering::SeqCst) {
+                        break;
+                    }
+
+                    let wait = RECONNECT_BACKOFF
+                        .get(attempt)
+                        .copied()
+                        .unwrap_or_else(|| *RECONNECT_BACKOFF.last().expect("not empty"));
+                    std::thread::sleep(wait);
+
+                    if shared.open().is_ok() {
+                        tracing::info!("back on the session daemon");
+                        // Possibly a different daemon, so nothing holding a
+                        // session id can assume it is still valid.
+                        shared.events.reattached();
+                        break;
+                    }
+                }
+
+                shared.reconnecting.store(false, Ordering::SeqCst);
+            })
+            .ok();
+    }
+
+    fn request(self: &Arc<Self>, request: Request) -> Result<Reply> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let (sender, receiver): (Sender<Outcome>, Receiver<Outcome>) = channel();
+        self.pending.lock_or_recover().insert(id, sender);
+
+        let line = serde_json::to_string(&Envelope { id, request })
+            .map_err(|err| CoreError::session("could not encode a daemon request", err))?;
+
+        {
+            let mut guard = self.stream.lock_or_recover();
+            let Some(stream) = guard.as_mut() else {
+                self.pending.lock_or_recover().remove(&id);
+                return Err(CoreError::invalid(
+                    "not connected to the session daemon; still trying",
+                ));
+            };
+
+            stream
+                .write_all(line.as_bytes())
+                .and_then(|_| stream.write_all(b"\n"))
+                .and_then(|_| stream.flush())
+                .map_err(|err| {
+                    self.pending.lock_or_recover().remove(&id);
+                    CoreError::session("could not reach the session daemon", err)
+                })?;
+        }
+
+        match receiver.recv_timeout(REQUEST_TIMEOUT) {
+            Ok(Outcome::Ok(reply)) => Ok(reply),
+            Ok(Outcome::Err(message)) => Err(CoreError::invalid(message)),
+            Err(_) => {
+                self.pending.lock_or_recover().remove(&id);
+                Err(CoreError::invalid("the session daemon did not answer"))
+            }
+        }
+    }
+}
+
 fn unexpected() -> CoreError {
     CoreError::invalid("the session daemon answered with something unexpected")
 }
 
-fn connect_once() -> Option<UnixStream> {
-    UnixStream::connect(socket_path()).ok()
+fn connect_once(socket: &Path) -> Option<UnixStream> {
+    UnixStream::connect(socket).ok()
 }
 
 /// Starts the daemon detached, so it is not a child that dies with us.
-fn spawn_daemon(binary: &Path) -> Result<()> {
+fn spawn_daemon(binary: &Path, socket: &Path) -> Result<()> {
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
 
@@ -283,8 +401,13 @@ fn spawn_daemon(binary: &Path) -> Result<()> {
         )));
     }
 
+    let directory = socket
+        .parent()
+        .ok_or_else(|| CoreError::invalid("the socket path has no directory"))?;
+
     let mut command = Command::new(binary);
     command
+        .arg(directory)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -317,10 +440,10 @@ fn libc_setsid() -> i32 {
     unsafe { setsid_raw() }
 }
 
-fn wait_for_daemon() -> Result<UnixStream> {
+fn wait_for_daemon(socket: &Path) -> Result<UnixStream> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     while Instant::now() < deadline {
-        if let Some(stream) = connect_once() {
+        if let Some(stream) = connect_once(socket) {
             return Ok(stream);
         }
         std::thread::sleep(Duration::from_millis(40));

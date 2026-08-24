@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use beacon_core::domain::ProjectId;
 use beacon_core::protocol::{
-    Envelope, Event, Greeting, Outcome, PROTOCOL_VERSION, Reply, Request, Response, socket_path,
+    Envelope, Event, Greeting, Outcome, PROTOCOL_VERSION, Reply, Request, Response,
 };
 use beacon_core::session::{SessionEvents, SessionId, SessionManager};
 
@@ -64,6 +64,7 @@ impl SessionEvents for Broadcaster {
 }
 
 struct Daemon {
+    socket: std::path::PathBuf,
     sessions: Arc<SessionManager>,
     clients: Clients,
     attached: AtomicUsize,
@@ -73,13 +74,14 @@ struct Daemon {
 }
 
 /// Accepts connections until asked to stop or left idle for long enough.
-pub fn serve(listener: UnixListener) {
+pub fn serve(listener: UnixListener, socket: std::path::PathBuf) {
     let clients: Clients = Arc::new(Mutex::new(Vec::new()));
     let events: Arc<dyn SessionEvents> = Arc::new(Broadcaster {
         clients: Arc::clone(&clients),
     });
 
     let daemon = Arc::new(Daemon {
+        socket: socket.clone(),
         sessions: Arc::new(SessionManager::new(events)),
         clients,
         attached: AtomicUsize::new(0),
@@ -110,7 +112,7 @@ pub fn serve(listener: UnixListener) {
         }
     }
 
-    let _ = std::fs::remove_file(socket_path());
+    let _ = std::fs::remove_file(&socket);
 }
 
 fn spawn_idle_watch(daemon: Arc<Daemon>) {
@@ -146,10 +148,9 @@ fn spawn_idle_watch(daemon: Arc<Daemon>) {
 /// Ends the accept loop by closing the socket it is blocked on.
 fn stop(daemon: &Daemon) {
     daemon.stopping.store(true, Ordering::SeqCst);
-    let path = socket_path();
-    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&daemon.socket);
     // Connecting wakes `incoming()`, which then sees the stopping flag.
-    let _ = UnixStream::connect(&path);
+    let _ = UnixStream::connect(&daemon.socket);
     std::process::exit(0);
 }
 

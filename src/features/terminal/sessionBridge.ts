@@ -36,6 +36,8 @@ export interface ActivityWatcher {
   onExit: (project: string, sessionId: string) => void
   /** The daemon connection dropped. Sessions are still running. */
   onDetached?: () => void
+  /** A connection is live again, possibly to a different daemon. */
+  onReattached?: () => void
 }
 
 const watchers = new Set<ActivityWatcher>()
@@ -96,6 +98,9 @@ function ensureListening(): Promise<void> {
     }),
     listen('session:detached', () => {
       for (const watcher of watchers) watcher.onDetached?.()
+    }),
+    listen('session:reattached', () => {
+      for (const watcher of watchers) watcher.onReattached?.()
     }),
   ]).then(() => undefined)
 

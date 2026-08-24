@@ -562,3 +562,46 @@ our window, a session stops being the shell they configured.
 
 **Consequence.** Anything their shell does, it does here too. Where that is
 undesirable it is theirs to change — `PROMPT_EOL_MARK=""` in this case.
+
+## ADR-032: The daemon connection repairs itself
+
+**Context.** `DaemonClient` connected once. If the daemon was restarted — for an
+upgrade, or because someone stopped it — the window went permanently deaf, and
+only restarting Beacon brought it back.
+
+**Decision.** The connection is replaceable. Losing it drains everything waiting
+for a reply rather than letting it time out, reports the detachment, and starts
+a reconnect loop with a backoff that levels off instead of giving up. Coming
+back raises a separate event, because the daemon on the other end may not be the
+one that issued the session ids the window is holding — so every terminal view
+is rebuilt and asks for its session again.
+
+**Why.** A daemon whose whole purpose is to outlive the window is worth little
+if the window cannot outlive the daemon. Retrying indefinitely is right for
+something that may sit open overnight; giving up after N attempts would mean a
+window that is alive but silently useless.
+
+**Consequence.** Reconnecting is not resuming: sessions the old daemon held are
+gone with it. What the window recovers is the ability to work, not the work. The
+status bar says so while it is trying.
+
+## ADR-033: The daemon socket is an argument, not a constant
+
+**Context.** One socket path per user meant the test suite talked to the same
+daemon as a running Beacon — and one test shuts the daemon down, so running the
+tests could stop somebody's real sessions. It also made the tests fight each
+other.
+
+**Decision.** The daemon takes its socket directory as an argument and the
+client takes a socket path. The defaults are unchanged, so nothing about normal
+use differs; tests give each case a socket of its own under a temporary
+directory.
+
+**Why.** A test that can reach production state is not isolated, however careful
+it is. Making the socket explicit fixes that at the root rather than by
+sequencing tests around each other, and it makes a second, independent Beacon
+possible — which is a reasonable thing to want.
+
+**Consequence.** One more argument on two functions, and a wrong socket now
+produces a second daemon rather than an error. That is the correct behaviour for
+a path that names which daemon you mean.

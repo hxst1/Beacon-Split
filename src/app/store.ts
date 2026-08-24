@@ -3,7 +3,13 @@ import { create } from 'zustand'
 import { useEditor } from '@/features/editor/openFiles'
 import { useTree } from '@/features/files/treeStore'
 import { useActivity } from '@/features/terminal/activity'
-import { disposeFor, disposeProject, refreshAccent } from '@/features/terminal/terminalHost'
+import { watchActivity } from '@/features/terminal/sessionBridge'
+import {
+  disposeAll,
+  disposeFor,
+  disposeProject,
+  refreshAccent,
+} from '@/features/terminal/terminalHost'
 import { errorMessage, ipc } from '@/ipc'
 import { applyAccent } from '@/lib/accent'
 import { setPlatform } from '@/lib/platform'
@@ -30,6 +36,16 @@ interface BeaconState {
   fullscreenPanel: PanelId | null
   /** Which overlay is open, if any. Never persisted. */
   overlay: 'palette' | 'quickOpen' | 'settings' | null
+  /**
+   * Bumped whenever the daemon connection is rebuilt.
+   *
+   * Terminal views key on it, so reattaching rebuilds every one of them and
+   * they ask for their sessions again — the daemon they are now talking to may
+   * not be the one that issued the ids they were holding.
+   */
+  attachEpoch: number
+  /** True while there is no connection to the daemon. */
+  detached: boolean
   /**
    * Bumped when a session is replaced, keyed `projectId:kind`.
    *
@@ -75,6 +91,24 @@ interface BeaconState {
 }
 
 export const useBeacon = create<BeaconState>((set, get) => {
+  /**
+   * Watches the daemon connection for the lifetime of the window.
+   *
+   * Subscribed here rather than in a component so that losing the connection is
+   * noticed even if nothing is currently rendering a terminal.
+   */
+  watchActivity({
+    onOutput: () => {},
+    onExit: () => {},
+    onDetached: () => set({ detached: true }),
+    onReattached: () => {
+      // The daemon on the other end may not be the one that issued the session
+      // ids these terminals hold, so none of them can be trusted.
+      disposeAll()
+      set((state) => ({ detached: false, attachEpoch: state.attachEpoch + 1 }))
+    },
+  })
+
   /** Applies a snapshot returned by any command and keeps the accent in sync. */
   const accept = (snapshot: Snapshot): void => {
     const active = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspace)
@@ -107,6 +141,8 @@ export const useBeacon = create<BeaconState>((set, get) => {
     snapshot: null,
     fullscreenPanel: null,
     overlay: null,
+    attachEpoch: 0,
+    detached: false,
     sessionEpoch: {},
 
     load: async () => {

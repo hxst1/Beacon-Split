@@ -9,12 +9,25 @@ mod server;
 use std::io::ErrorKind;
 use std::os::unix::net::UnixListener;
 
-use beacon_core::protocol::{socket_dir, socket_path};
+use beacon_core::protocol::socket_dir;
+
+/// Where to listen, when told.
+///
+/// An explicit socket makes a second, isolated Beacon possible — which is what
+/// the tests need, so that running them cannot reach into a daemon somebody is
+/// actually using.
+fn requested_dir() -> std::path::PathBuf {
+    std::env::args()
+        .nth(1)
+        .map(Into::into)
+        .unwrap_or_else(socket_dir)
+}
 
 fn main() {
     init_tracing();
 
-    let listener = match bind() {
+    let dir = requested_dir();
+    let listener = match bind(&dir) {
         Ok(listener) => listener,
         Err(err) => {
             tracing::error!(error = %err, "could not listen");
@@ -22,8 +35,9 @@ fn main() {
         }
     };
 
-    tracing::info!(socket = %socket_path().display(), pid = std::process::id(), "daemon started");
-    server::serve(listener);
+    let socket = dir.join("daemon.sock");
+    tracing::info!(socket = %socket.display(), pid = std::process::id(), "daemon started");
+    server::serve(listener, socket);
     tracing::info!("daemon stopped");
 }
 
@@ -31,12 +45,11 @@ fn main() {
 ///
 /// A unix socket file outlives the process that made it, so its presence proves
 /// nothing. Whether anything is listening is settled by trying to connect.
-fn bind() -> std::io::Result<UnixListener> {
-    let dir = socket_dir();
-    std::fs::create_dir_all(&dir)?;
-    restrict_to_owner(&dir)?;
+fn bind(dir: &std::path::Path) -> std::io::Result<UnixListener> {
+    std::fs::create_dir_all(dir)?;
+    restrict_to_owner(dir)?;
 
-    let path = socket_path();
+    let path = dir.join("daemon.sock");
     match UnixListener::bind(&path) {
         Ok(listener) => Ok(listener),
         Err(err) if err.kind() == ErrorKind::AddrInUse => {

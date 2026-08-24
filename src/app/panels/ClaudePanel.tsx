@@ -22,6 +22,7 @@ export function ClaudePanel({
 }): React.ReactElement {
   const restartSession = useBeacon((s) => s.restartSession)
   const epoch = useBeacon((s) => s.sessionEpoch[`${project.id}:claude`] ?? 0)
+  const attachEpoch = useBeacon((s) => s.attachEpoch)
 
   return (
     <Panel
@@ -40,7 +41,7 @@ export function ClaudePanel({
       }
     >
       <TerminalView
-        key={`${project.id}:${epoch}`}
+        key={`${project.id}:${epoch}:${attachEpoch}`}
         workspaceId={workspaceId}
         projectId={project.id}
         kind="claude"

@@ -128,6 +128,16 @@ export function disposeProject(project: string): void {
   }
 }
 
+/**
+ * Tears down every terminal.
+ *
+ * Used when the daemon connection is rebuilt: the new daemon may not be the old
+ * one, so every session id these were attached to has to be treated as gone.
+ */
+export function disposeAll(): void {
+  for (const sessionId of [...hosted.keys()]) dispose(sessionId)
+}
+
 /** Repaints cursors after a workspace accent change. */
 export function refreshAccent(): void {
   const cursor = readAccent()

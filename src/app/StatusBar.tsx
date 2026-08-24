@@ -13,6 +13,7 @@ export function StatusBar(): React.ReactElement {
   const notice = useBeacon((s) => s.notice)
   const dismissNotice = useBeacon((s) => s.dismissNotice)
   const bindings = useBeacon((s) => s.snapshot?.bindings ?? [])
+  const detached = useBeacon((s) => s.detached)
 
   /** Whatever the shortcut actually is now, not what it shipped as. */
   const hint = (action: string): string => {
@@ -23,6 +24,10 @@ export function StatusBar(): React.ReactElement {
   return (
     <footer className={styles['bar']}>
       <span className={styles['path']}>{project?.displayPath ?? ''}</span>
+
+      {detached ? (
+        <span className={styles['notice']}>Reconnecting to the session daemon…</span>
+      ) : null}
 
       {notice ? (
         <span className={styles['notice']}>

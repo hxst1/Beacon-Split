@@ -58,6 +58,9 @@ pub const EVENT_EXIT: &str = "session:exit";
 /// Raised when the connection drops. Sessions keep running; this window is no
 /// longer watching them.
 pub const EVENT_DETACHED: &str = "session:detached";
+/// Raised when a connection is live again — possibly to a different daemon, so
+/// every session id the window was holding has to be asked for afresh.
+pub const EVENT_REATTACHED: &str = "session:reattached";
 
 impl DaemonEvents for WebviewEvents {
     fn event(&self, event: Event) {
@@ -75,5 +78,10 @@ impl DaemonEvents for WebviewEvents {
     fn disconnected(&self) {
         tracing::warn!("the session daemon connection dropped");
         let _ = self.app.emit(EVENT_DETACHED, ());
+    }
+
+    fn reattached(&self) {
+        tracing::info!("reattached to the session daemon");
+        let _ = self.app.emit(EVENT_REATTACHED, ());
     }
 }

@@ -21,6 +21,7 @@ export function TerminalPanel({
 }): React.ReactElement {
   const restartSession = useBeacon((s) => s.restartSession)
   const epoch = useBeacon((s) => s.sessionEpoch[`${project.id}:shell`] ?? 0)
+  const attachEpoch = useBeacon((s) => s.attachEpoch)
 
   return (
     <Panel
@@ -39,7 +40,7 @@ export function TerminalPanel({
       }
     >
       <TerminalView
-        key={`${project.id}:${epoch}`}
+        key={`${project.id}:${epoch}:${attachEpoch}`}
         workspaceId={workspaceId}
         projectId={project.id}
         kind="shell"
