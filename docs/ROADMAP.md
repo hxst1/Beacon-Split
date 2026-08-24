@@ -118,11 +118,19 @@ Still to do here: go-to-line, and following file changes made outside Beacon.
 Not planned: branch switching, history, rebase, conflict resolution. The
 terminal panel is two keystrokes away and is better at all of them.
 
-## Milestone 6 — UX
+## Milestone 6 — UX ✅
 
-- Command palette (`⌘K`) and quick open (`⌘P`)
-- User-configurable keyboard bindings
-- Panel fullscreen, refined resizing, workspace accent polish
+- Command palette (`⌘K`): every command in one registry, filtered as you type,
+  built fresh on open so it reflects the current state
+- Quick open (`⌘P`): fuzzy file search, listed through `git ls-files` where
+  there is a repository so the project's own ignore rules apply
+- Both fully keyboard-driven, and reachable from inside each other
+- Git and the file tree keep up with changes made outside Beacon
+- `vitest` for the pure frontend logic — matching and layout maths
+
+Still to do here: user-editable keyboard bindings. Commands and bindings already
+resolve against one registry, so this is a settings surface rather than a
+rework. Cross-project search is still not planned for now.
 
 ## Milestone 6.5 — Detached panels
 

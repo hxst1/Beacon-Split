@@ -28,6 +28,8 @@ interface BeaconState {
   snapshot: Snapshot | null
   /** Panel temporarily expanded to fill the window. Never persisted. */
   fullscreenPanel: PanelId | null
+  /** Which overlay is open, if any. Never persisted. */
+  overlay: 'palette' | 'quickOpen' | null
   /**
    * Bumped when a session is replaced, keyed `projectId:kind`.
    *
@@ -59,6 +61,7 @@ interface BeaconState {
   /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
   showPanel: (panel: PanelId) => Promise<void>
   toggleFullscreen: (panel: PanelId) => void
+  setOverlay: (overlay: 'palette' | 'quickOpen' | null) => void
   dismissNotice: () => void
 }
 
@@ -94,6 +97,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     notice: null,
     snapshot: null,
     fullscreenPanel: null,
+    overlay: null,
     sessionEpoch: {},
 
     load: async () => {
@@ -205,6 +209,8 @@ export const useBeacon = create<BeaconState>((set, get) => {
 
     toggleFullscreen: (panel) =>
       set((state) => ({ fullscreenPanel: state.fullscreenPanel === panel ? null : panel })),
+
+    setOverlay: (overlay) => set({ overlay }),
 
     dismissNotice: () => set({ notice: null }),
   }

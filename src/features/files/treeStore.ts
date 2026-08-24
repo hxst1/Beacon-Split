@@ -17,6 +17,8 @@ interface TreeState {
   load: (workspaceId: string, projectId: string, path: string) => Promise<void>
   /** Re-reads a directory that is already open, after it changes on disk. */
   refresh: (workspaceId: string, projectId: string, path: string) => Promise<void>
+  /** Re-reads every directory currently loaded for a project. */
+  refreshAll: (workspaceId: string, projectId: string) => Promise<void>
   toggle: (workspaceId: string, projectId: string, path: string) => Promise<void>
   select: (projectId: string, path: string) => void
   setShowHidden: (show: boolean) => void
@@ -82,6 +84,17 @@ export const useTree = create<TreeState>((set, get) => ({
     } catch (error) {
       set({ error: errorMessage(error) })
     }
+  },
+
+  refreshAll: async (workspaceId, projectId) => {
+    const prefix = `${projectId}:`
+    const loaded = Object.keys(get().entries)
+      .filter((id) => id.startsWith(prefix))
+      .map((id) => id.slice(prefix.length))
+
+    // Sequential on purpose: a project with many open folders should not fire
+    // a burst of commands every time the window is focused.
+    for (const path of loaded) await get().refresh(workspaceId, projectId, path)
   },
 
   toggle: async (workspaceId, projectId, path) => {

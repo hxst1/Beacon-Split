@@ -15,7 +15,9 @@
     "rs:test": "cargo test --workspace",
     "rs:fmt": "cargo fmt --all -- --check",
     "rs:lint": "cargo clippy --workspace --all-targets -- -D warnings",
-    "check": "pnpm typecheck && pnpm rs:fmt && pnpm rs:lint && pnpm rs:test"
+    "check": "pnpm typecheck && pnpm test && pnpm rs:fmt && pnpm rs:lint && pnpm rs:test",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -48,7 +50,8 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@10.33.0"
 }

@@ -16,11 +16,21 @@ export function useShortcuts(): void {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!hasPrimaryModifier(event)) return
 
-      // Never steal keys from a field the user is typing in.
+      const store = useBeacon.getState()
+
+      // The palette and quick open are how you reach everything without the
+      // mouse, so they are the two bindings that work from anywhere — including
+      // from inside the other one.
+      const key = event.key.toLowerCase()
+      if (key === 'k' || key === 'p') {
+        event.preventDefault()
+        store.setOverlay(key === 'k' ? 'palette' : 'quickOpen')
+        return
+      }
+
+      // Everything else leaves a field the user is typing in alone.
       const target = event.target as HTMLElement | null
       if (target?.tagName === 'INPUT' || target?.isContentEditable) return
-
-      const store = useBeacon.getState()
 
       // ⌘1..⌘9 — jump straight to a project tab.
       if (/^[1-9]$/.test(event.key)) {

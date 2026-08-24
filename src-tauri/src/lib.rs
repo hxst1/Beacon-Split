@@ -54,6 +54,7 @@ pub fn run() {
             commands::copy_into,
             commands::trash_path,
             commands::reveal_path,
+            commands::list_project_files,
             commands::read_env_file,
             commands::git_status,
             commands::git_diff,

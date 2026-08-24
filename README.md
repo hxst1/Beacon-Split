@@ -22,8 +22,8 @@ accent, a file tree with an editor and a `.env` view, git status, diff, stage
 and commit, and — per project — a real shell and a real `claude` session, each
 in its own PTY.
 
-What is left is the parts that make it fast to drive: the command palette,
-quick open, and the session daemon.
+What is left is the session daemon: closing the window still ends the sessions
+it was showing.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 
@@ -44,7 +44,7 @@ pnpm app:dev      # Tauri dev build, hot-reloading frontend
 Other useful commands:
 
 ```sh
-pnpm check        # typecheck + rustfmt + clippy + cargo test
+pnpm check        # typecheck + vitest + rustfmt + clippy + cargo test
 pnpm typecheck    # TypeScript only
 pnpm rs:test      # Rust tests only
 pnpm app:build    # production bundle
@@ -96,9 +96,11 @@ the same configuration works on macOS and Linux.
 | `⌘O` | Toggle the editor |
 | `⌘J` | Toggle the terminal |
 | `⌘↩` | Fullscreen the focused panel |
+| `⌘K` | Command palette |
+| `⌘P` | Quick open |
 
-The command palette (`⌘K`) and quick open (`⌘P`) arrive in Milestone 6, along
-with user-configurable bindings.
+Bindings are not user-editable yet; commands and shortcuts already resolve
+against one registry, so that is a settings surface rather than a rework.
 
 ## A promise about your files
 

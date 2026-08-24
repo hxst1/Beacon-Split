@@ -311,6 +311,84 @@ pub fn move_to_trash(root: &Path, relative: &str) -> Result<()> {
     trash::delete(&path).map_err(|err| CoreError::session("could not move to trash", err))
 }
 
+/// Directories never worth walking for a file list.
+///
+/// Only consulted when the project is not a repository — a repository's own
+/// ignore rules are better than any list we could keep here.
+const SKIPPED_DIRS: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    ".nuxt",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "vendor",
+    ".cache",
+];
+
+/// Stops a walk of a pathological directory tree from becoming the whole app.
+pub const MAX_LISTED_FILES: usize = 50_000;
+
+/// Every file in a project, for quick open.
+///
+/// A repository is listed with `git ls-files`, which respects the user's own
+/// ignore rules and is far faster than walking. Anything else is walked with a
+/// fixed skip list, which is a poor substitute but only applies where there is
+/// nothing better to go on.
+pub fn list_project_files(root: &Path) -> Result<Vec<String>> {
+    if crate::git::is_repository(root) {
+        if let Ok(listed) = crate::git::list_files(root) {
+            return Ok(listed);
+        }
+        // A repository git refuses to read is still a folder we can walk.
+    }
+
+    let root = root
+        .canonicalize()
+        .map_err(|err| CoreError::io(root, err))?;
+    let mut found = Vec::new();
+    walk(&root, &root, &mut found);
+    found.sort();
+    Ok(found)
+}
+
+fn walk(root: &Path, dir: &Path, found: &mut Vec<String>) {
+    if found.len() >= MAX_LISTED_FILES {
+        return;
+    }
+    let Ok(reader) = std::fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in reader.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        if file_type.is_dir() {
+            if SKIPPED_DIRS.contains(&name.as_ref()) {
+                continue;
+            }
+            // Not followed: a symlinked directory can point back up the tree.
+            if file_type.is_symlink() {
+                continue;
+            }
+            walk(root, &entry.path(), found);
+        } else if file_type.is_file() {
+            found.push(relative_of(root, &entry.path()));
+            if found.len() >= MAX_LISTED_FILES {
+                return;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,6 +500,21 @@ mod tests {
     fn a_folder_cannot_be_pasted_into_itself() {
         let dir = project();
         assert!(copy_into(dir.path(), "src", "src").is_err());
+    }
+
+    #[test]
+    fn listing_a_plain_folder_skips_the_usual_noise() {
+        let dir = project();
+        std::fs::create_dir_all(dir.path().join("node_modules/pkg")).unwrap();
+        std::fs::write(dir.path().join("node_modules/pkg/index.js"), "").unwrap();
+
+        let listed = list_project_files(dir.path()).unwrap();
+        assert!(listed.contains(&"src/main.rs".to_string()));
+        assert!(listed.contains(&".env".to_string()));
+        assert!(
+            !listed.iter().any(|path| path.starts_with("node_modules")),
+            "got: {listed:?}"
+        );
     }
 
     #[test]

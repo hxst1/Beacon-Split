@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { errorMessage, ipc } from '@/ipc'
+import { useLiveRefresh } from '@/lib/useLiveRefresh'
 import type { FileState, GitEntry, GitStatus } from '@/types/beacon'
 import styles from './GitPane.module.css'
 
@@ -45,9 +46,18 @@ export function GitPane({
   const [selected, setSelected] = useState<Selection | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
 
+  // What the last poll saw, so an unchanged repository does not re-render the
+  // panel every couple of seconds and take the diff's scroll position with it.
+  const lastSeen = useRef<string | null>(null)
+
   const refresh = useCallback(async () => {
     try {
-      setStatus(await ipc.gitStatus(workspaceId, projectId))
+      const next = await ipc.gitStatus(workspaceId, projectId)
+      const fingerprint = JSON.stringify(next)
+      if (fingerprint !== lastSeen.current) {
+        lastSeen.current = fingerprint
+        setStatus(next)
+      }
       setError(null)
     } catch (err) {
       setError(errorMessage(err))
@@ -57,8 +67,18 @@ export function GitPane({
   useEffect(() => {
     setSelected(null)
     setDiff(null)
+    lastSeen.current = null
     void refresh()
   }, [refresh])
+
+  // `git status` is milliseconds on a normal repository, so a short poll while
+  // the window is focused is cheaper than making the user think about it.
+  useLiveRefresh(
+    useCallback(() => {
+      void refresh()
+    }, [refresh]),
+    2000,
+  )
 
   // The diff follows the selection rather than being fetched with the status:
   // most of the time nobody is looking at one.
@@ -79,14 +99,18 @@ export function GitPane({
     return () => {
       cancelled = true
     }
-  }, [selected, workspaceId, projectId])
+  }, [selected, workspaceId, projectId, status])
 
   const act = async (action: () => Promise<GitStatus | string>): Promise<void> => {
     setBusy(true)
     try {
       const result = await action()
-      if (typeof result === 'string') await refresh()
-      else setStatus(result)
+      if (typeof result === 'string') {
+        await refresh()
+      } else {
+        lastSeen.current = JSON.stringify(result)
+        setStatus(result)
+      }
       setError(null)
     } catch (err) {
       setError(errorMessage(err))
@@ -114,6 +138,15 @@ export function GitPane({
           </span>
         ) : null}
         <span className={styles['spacer']} />
+        <button
+          type="button"
+          className={styles['action']}
+          title="Refresh"
+          aria-label="Refresh"
+          onClick={() => void refresh()}
+        >
+          ↻
+        </button>
         <button
           type="button"
           className={styles['action']}

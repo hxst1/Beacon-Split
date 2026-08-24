@@ -136,6 +136,10 @@ export const ipc = {
   revealPath: (workspaceId: string, projectId: string, path: string) =>
     invoke<void>('reveal_path', { workspaceId, projectId, path }),
 
+  /** Listed on demand: a stale file list is worse than a fresh read. */
+  listProjectFiles: (workspaceId: string, projectId: string) =>
+    invoke<string[]>('list_project_files', { workspaceId, projectId }),
+
   /** Read fresh every time; values are never cached on this side either. */
   readEnvFile: (workspaceId: string, projectId: string, path: string) =>
     invoke<EnvEntry[]>('read_env_file', { workspaceId, projectId, path }),

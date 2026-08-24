@@ -223,6 +223,32 @@ fn parse_branch_header(header: &str, status: &mut GitStatus) {
     }
 }
 
+/// Every file git knows about or would add, honouring the ignore rules.
+///
+/// `--others --exclude-standard` includes untracked files that are not ignored,
+/// so a file created a moment ago is findable without a commit.
+pub fn list_files(root: &Path) -> Result<Vec<String>> {
+    let raw = run(
+        root,
+        &[
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ],
+    )?;
+
+    let mut files: Vec<String> = raw
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(str::to_string)
+        .collect();
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
 /// The diff for one path, staged or not.
 ///
 /// An untracked file has nothing to diff against, so it is compared with

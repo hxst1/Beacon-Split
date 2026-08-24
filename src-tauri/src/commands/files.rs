@@ -140,6 +140,20 @@ pub fn reveal_path(
         .map_err(|err| crate::error::CommandError::from(err.to_string()))
 }
 
+/// Every file in a project, for quick open.
+///
+/// Listed on demand rather than kept in memory: a project's file list changes
+/// under us constantly, and a stale one is worse than a fresh read.
+#[tauri::command]
+pub fn list_project_files(
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    project_id: ProjectId,
+) -> CommandResult<Vec<String>> {
+    let root = project_root!(state, workspace_id, project_id);
+    Ok(files::list_project_files(&root)?)
+}
+
 /// Reads a `.env` file into its assignments.
 ///
 /// Read fresh on every call and never cached: the file is the only place these

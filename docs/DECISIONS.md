@@ -425,3 +425,40 @@ to be.
 **Consequence.** A repository needing an interactive credential fails with git's
 own message instead of hanging, which is the right trade. A pull that is not a
 fast-forward is refused, and the terminal panel is where that gets sorted out.
+
+## ADR-025: Beacon polls instead of watching the filesystem
+
+**Context.** The Git panel and the file tree showed whatever was true when they
+mounted. A file created in a terminal did not appear.
+
+**Decision.** No filesystem watcher. Git status is re-read on a short interval
+while the window is focused, and the file tree re-reads its open directories
+when the window regains focus. Both have an explicit refresh.
+
+**Why.** A recursive watch is cheap on macOS and expensive on Linux, where
+inotify takes a watch per directory and a large `node_modules` can exhaust the
+system limit — on the machine this has to run on. `git status` is milliseconds
+on a normal repository, so polling it costs less than the machinery to avoid
+polling it. The tree is focus-only because re-reading on a timer would fight
+with scrolling and selection.
+
+**Consequence.** Up to a couple of seconds of lag on git, and none of it while
+the window is in the background. A watcher becomes worth revisiting if a
+repository large enough to make `git status` slow turns up.
+
+## ADR-026: Commands live in one registry
+
+**Context.** The palette needs a list of everything Beacon can do, and the
+keyboard layer needs the same list.
+
+**Decision.** One registry, built on demand. The palette renders it; bindings
+resolve against its ids.
+
+**Why.** Two lists drift. A command with a shortcut and no palette entry is
+undiscoverable; a palette entry that does something different from its shortcut
+is worse. Building it on demand rather than at startup is what lets an entry
+read "Hide Files" or "Show Files" depending on which is true right now.
+
+**Consequence.** Making bindings user-editable is a settings surface over the
+same registry rather than a rework, which is why it could be deferred without
+painting us into a corner.

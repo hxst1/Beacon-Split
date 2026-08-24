@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { Popover } from '@/app/ui/Popover'
 import { useBeacon } from '@/app/store'
+import { useLiveRefresh } from '@/lib/useLiveRefresh'
 import { useEditor } from '@/features/editor/openFiles'
 import type { DirEntry } from '@/types/beacon'
 import { FileMenu } from './FileMenu'
@@ -27,6 +28,7 @@ export function FileTree({
   projectId: string
 }): React.ReactElement {
   const load = useTree((s) => s.load)
+  const refreshAll = useTree((s) => s.refreshAll)
   const showHidden = useTree((s) => s.showHidden)
   const setShowHidden = useTree((s) => s.setShowHidden)
   const error = useTree((s) => s.error)
@@ -35,6 +37,14 @@ export function FileTree({
   useEffect(() => {
     void load(workspaceId, projectId, '')
   }, [load, workspaceId, projectId])
+
+  // Focus only: re-reading on a timer would fight with scrolling and selection.
+  useLiveRefresh(
+    useCallback(() => {
+      void refreshAll(workspaceId, projectId)
+    }, [refreshAll, workspaceId, projectId]),
+    null,
+  )
 
   return (
     <div className={styles['root']}>
