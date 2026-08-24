@@ -214,6 +214,9 @@ Done:
   for, and copyable install commands
 - A release build produces a signed-by-nobody `.app` and `.dmg`, and
   `docs/DISTRIBUTING.md` is honest about what Gatekeeper does with that
+- The release bundle actually runs. It did not: the minified frontend killed
+  WebKit's content process and left a blank window, which development never
+  showed because development does not minify
 
 Remaining:
 

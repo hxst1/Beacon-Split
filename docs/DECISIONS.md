@@ -727,3 +727,27 @@ for having written it.
 
 **Consequence.** One more line at startup, and subscriptions that can be torn
 down rather than lasting as long as the module system does.
+
+## ADR-040: The frontend is not minified
+
+**Context.** A release build opened a window that stayed blank. The backend was
+running fine behind it — it had attached to the daemon — and the log said `web
+content process terminated`.
+
+**Decision.** `minify: false`, unconditionally.
+
+**Why.** A controlled experiment: the same code, built twice, differing only in
+minification. Minified, WebKit's content process died and the window stayed
+empty. Unminified, it rendered — confirmed by the daemon receiving the requests
+only a mounted frontend sends.
+
+Minifying buys nothing here in any case. These assets are embedded in the
+binary and never travel over a network, so the entire benefit is disk space:
+two hundred kilobytes on an application of seven megabytes, in exchange for a
+build that opens.
+
+**Consequence.** If the minifier is fixed upstream this can be revisited, and
+the cost of not doing so is small enough that there is no hurry. Worth
+remembering that a release-only bug of this kind is invisible in development,
+which is the argument for building and running the bundle rather than trusting
+`tauri dev`.
