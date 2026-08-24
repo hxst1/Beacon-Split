@@ -156,6 +156,17 @@ impl Beacon {
             .resolve(&home))
     }
 
+    /// The projects a workspace holds, for callers that need to act on all of
+    /// them before the workspace goes away.
+    pub fn project_ids(&self, workspace: &WorkspaceId) -> Result<Vec<ProjectId>> {
+        Ok(self
+            .workspace(workspace)?
+            .projects
+            .iter()
+            .map(|project| project.id.clone())
+            .collect())
+    }
+
     fn workspace(&self, id: &WorkspaceId) -> Result<&Workspace> {
         self.workspaces
             .workspaces

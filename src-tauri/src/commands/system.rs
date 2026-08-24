@@ -3,7 +3,7 @@ use tauri::State;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::error::{CommandError, CommandResult};
-use crate::state::{AppState, lock};
+use crate::state::AppState;
 
 /// Reveals a project in Finder / the desktop file manager.
 #[tauri::command]
@@ -13,7 +13,9 @@ pub fn reveal_project(
     workspace_id: WorkspaceId,
     project_id: ProjectId,
 ) -> CommandResult<()> {
-    let path = lock(&state).resolve_project_path(&workspace_id, &project_id)?;
+    let path = state
+        .beacon()
+        .resolve_project_path(&workspace_id, &project_id)?;
     app.opener()
         .open_path(path.to_string_lossy(), None::<&str>)
         .map_err(|err| CommandError::from(err.to_string()))

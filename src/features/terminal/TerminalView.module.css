@@ -1,0 +1,35 @@
+.root {
+  position: relative;
+  height: 100%;
+  padding: 6px 4px 6px 10px;
+  /* xterm handles its own selection; this is the one place text is selectable. */
+  user-select: text;
+  cursor: text;
+}
+
+.root :global(.xterm-viewport) {
+  scrollbar-width: thin;
+  background: transparent !important;
+}
+
+.root :global(.xterm-viewport)::-webkit-scrollbar {
+  width: 8px;
+}
+
+.status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: var(--fg-4);
+  font-size: var(--text-sm);
+  text-align: center;
+  pointer-events: none;
+}
+
+.failed {
+  color: var(--danger);
+  user-select: text;
+  pointer-events: auto;
+}

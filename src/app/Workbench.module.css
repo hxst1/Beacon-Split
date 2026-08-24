@@ -26,22 +26,15 @@
 
 .side {
   grid-area: side;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: var(--files-height) auto 1fr;
   min-width: 0;
   min-height: 0;
   border-left: 1px solid var(--line-1);
 }
 
-.side > :first-child {
-  flex: 1.5;
+.side > * {
   min-height: 0;
-}
-
-.side > :last-child {
-  flex: 1;
-  min-height: 0;
-  border-top: 1px solid var(--line-1);
 }
 
 .terminal {

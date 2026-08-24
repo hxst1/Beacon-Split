@@ -45,6 +45,16 @@ pub enum CoreError {
 
     #[error("{0}")]
     Invalid(String),
+
+    #[error("no session with id {0}")]
+    SessionNotFound(String),
+
+    /// Wraps failures from the PTY layer, which reports `anyhow` errors.
+    #[error("{context}: {message}")]
+    Session {
+        context: &'static str,
+        message: String,
+    },
 }
 
 impl CoreError {
@@ -57,6 +67,13 @@ impl CoreError {
 
     pub fn invalid(message: impl Into<String>) -> Self {
         Self::Invalid(message.into())
+    }
+
+    pub fn session(context: &'static str, error: impl std::fmt::Display) -> Self {
+        Self::Session {
+            context,
+            message: error.to_string(),
+        }
     }
 }
 

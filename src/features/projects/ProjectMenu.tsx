@@ -26,6 +26,7 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
   const removeProject = useBeacon((s) => s.removeProject)
   const moveProject = useBeacon((s) => s.moveProject)
   const revealProject = useBeacon((s) => s.revealProject)
+  const stopProject = useBeacon((s) => s.stopProject)
 
   if (renaming) {
     return (
@@ -83,6 +84,14 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
       ) : null}
 
       <MenuSeparator />
+      <MenuItem
+        label="Stop processes"
+        hint="Terminal, Claude"
+        onSelect={() => {
+          void stopProject(project.id)
+          onDone()
+        }}
+      />
       <MenuItem
         label="Remove from workspace"
         hint="Files are kept"

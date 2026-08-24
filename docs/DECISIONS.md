@@ -138,3 +138,56 @@ cannot drift out of step with itself.
 **Consequence.** Depends on `color-mix`, which both target webviews support.
 Accents are validated as `#rrggbb` in the backend, because a malformed value
 would break every derived surface at once.
+
+## ADR-010: Sessions are owned by the backend and addressed by id
+
+**Context.** A session must survive switching projects, and eventually must
+survive the window closing and be renderable from a detached window.
+
+**Decision.** `SessionManager` in `beacon-core` owns every PTY. Views never hold
+a process — they attach to a session id, receive its retained output, and then
+follow the live stream. The event sink is a trait, so the manager does not know
+whether it is talking to a webview or a daemon transport.
+
+**Why.** Every requirement that is still ahead of us — the daemon, detached
+panels, more than one view of the same session — is the same requirement: the
+process must not belong to whoever is currently looking at it.
+
+**Consequence.** Output crosses a boundary as bytes and must be encoded (see
+ADR-011). A view is cheap to destroy and rebuild, which is what makes project
+switching and, later, popping a panel out, straightforward.
+
+## ADR-011: Session output carries stream offsets
+
+**Context.** Reattaching to a session means replaying a snapshot and then
+joining a live stream. Naively, chunks that arrive between taking the snapshot
+and subscribing are either lost or written twice — and a chunk can straddle the
+boundary, so accepting or dropping whole chunks is not enough either.
+
+**Decision.** The scrollback counts every byte it has ever seen. Each output
+event carries the offset where its chunk starts, and a snapshot carries the
+offset just past its contents. A client writes the snapshot, then trims each
+incoming chunk to the part it has not consumed.
+
+**Why.** It is the only version of this that is actually correct, and it costs a
+`u64` per event. The alternatives all reduce to hoping the race does not happen.
+
+**Consequence.** The offset is part of the event contract, so the daemon
+transport must preserve it. Output is base64-encoded rather than sent as a
+string: PTY bytes are not guaranteed to be valid UTF-8 at a chunk boundary, and
+coercing them would corrupt escape sequences.
+
+## ADR-012: Sessions are stopped by the backend, not by the UI
+
+**Context.** Removing a project or deleting a workspace leaves its processes
+with nothing to render them and no way to be reached again.
+
+**Decision.** The commands that remove a project or a workspace stop its
+sessions first, in the backend, before touching the configuration.
+
+**Why.** If the UI were responsible for this, every future caller — the command
+palette, a keyboard shortcut, the daemon's own cleanup — would have to remember.
+Putting it behind the boundary makes an orphaned PTY unreachable by construction.
+
+**Consequence.** Removal is no longer a pure configuration edit. That is the
+right trade: the alternative is a leaked process per removed project.

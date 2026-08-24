@@ -10,14 +10,12 @@
 }
 
 .vertical {
-  grid-area: vsplit;
   width: 1px;
   cursor: col-resize;
   background: var(--line-1);
 }
 
 .horizontal {
-  grid-area: hsplit;
   height: 1px;
   cursor: row-resize;
   background: var(--line-1);

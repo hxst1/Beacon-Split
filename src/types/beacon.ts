@@ -41,6 +41,8 @@ export interface Workspace {
 export interface PanelLayout {
   sideFraction: number
   terminalFraction: number
+  /** Share of the side column given to Files, measured from the top. */
+  filesFraction: number
   sideVisible: boolean
   terminalVisible: boolean
 }
@@ -55,3 +57,36 @@ export interface Snapshot {
 }
 
 export type HostPlatform = 'macos' | 'linux' | 'windows' | string
+
+// ---- sessions ---------------------------------------------------------------
+
+/** What runs inside a session. Both are real processes in a PTY. */
+export type SessionKind = 'shell' | 'claude'
+
+export interface SessionInfo {
+  id: string
+  project: string
+  kind: SessionKind
+  cwd: string
+  running: boolean
+}
+
+export interface ScrollbackSnapshot {
+  /** Base64-encoded bytes. */
+  data: string
+  /** Stream offset just past the snapshot. */
+  endOffset: number
+}
+
+export interface SessionOutput {
+  id: string
+  /** Where this chunk starts in the session's lifetime stream. */
+  offset: number
+  /** Base64-encoded bytes. */
+  data: string
+}
+
+export interface SessionExit {
+  id: string
+  code: number | null
+}

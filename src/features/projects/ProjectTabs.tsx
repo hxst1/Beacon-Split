@@ -33,7 +33,7 @@ export function ProjectTabs(): React.ReactElement {
   }
 
   return (
-    <div className={styles['strip']}>
+    <div className={styles['strip']} data-tauri-drag-region>
       {projects.map((project, index) => (
         <button
           key={project.id}

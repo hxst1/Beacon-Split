@@ -104,6 +104,7 @@ fn panel_layout_is_persisted_and_clamped() {
             .set_panels(PanelLayout {
                 side_fraction: 0.9,
                 terminal_fraction: 0.3,
+                files_fraction: 0.7,
                 side_visible: true,
                 terminal_visible: false,
             })
@@ -113,6 +114,7 @@ fn panel_layout_is_persisted_and_clamped() {
     let panels = Beacon::load(&config).unwrap().snapshot().panels;
     assert_eq!(panels.side_fraction, 0.45);
     assert_eq!(panels.terminal_fraction, 0.3);
+    assert_eq!(panels.files_fraction, 0.7);
     assert!(!panels.terminal_visible);
 }
 

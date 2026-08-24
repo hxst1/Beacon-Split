@@ -15,7 +15,7 @@ export function TitleBar(): React.ReactElement {
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null)
 
   return (
-    <header className={styles['bar']}>
+    <header className={styles['bar']} data-tauri-drag-region>
       <button
         type="button"
         className={styles['workspace']}
@@ -29,9 +29,9 @@ export function TitleBar(): React.ReactElement {
 
       <div className={styles['divider']} />
 
-      <div className={styles['tabsRegion']}>
-        <ProjectTabs />
-      </div>
+      <ProjectTabs />
+
+      <div className={styles['dragZone']} data-tauri-drag-region aria-hidden="true" />
 
       {menuAnchor ? (
         <Popover anchor={menuAnchor} onClose={() => setMenuAnchor(null)}>

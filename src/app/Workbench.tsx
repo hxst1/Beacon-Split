@@ -19,6 +19,7 @@ export function Workbench(): React.ReactElement {
   const panels = useBeacon((s) => s.snapshot?.panels)
   const setPanels = useBeacon((s) => s.setPanels)
   const project = useBeacon(selectActiveProject)
+  const workspaceId = useBeacon((s) => s.snapshot?.activeWorkspace)
   const fullscreen = useBeacon((s) => s.fullscreenPanel)
 
   const [draft, setDraft] = useState(panels)
@@ -36,9 +37,10 @@ export function Workbench(): React.ReactElement {
   const style = {
     '--side-width': `${(sideVisible ? draft.sideFraction : 0) * 100}%`,
     '--terminal-height': `${(terminalVisible ? draft.terminalFraction : 0) * 100}%`,
+    '--files-height': `${draft.filesFraction * 100}%`,
   } as React.CSSProperties
 
-  if (!project) {
+  if (!project || !workspaceId) {
     return (
       <div className={styles['workbench']} style={style}>
         <div className={styles['empty']}>
@@ -53,7 +55,9 @@ export function Workbench(): React.ReactElement {
       <div className={styles['workbench']} style={style}>
         <div className={styles['fullscreen']}>
           {fullscreen === 'claude' ? <ClaudePanel project={project} focused /> : null}
-          {fullscreen === 'terminal' ? <TerminalPanel project={project} focused /> : null}
+          {fullscreen === 'terminal' ? (
+            <TerminalPanel workspaceId={workspaceId} project={project} focused />
+          ) : null}
           {fullscreen === 'side' ? <FilesPanel project={project} /> : null}
         </div>
       </div>
@@ -74,6 +78,7 @@ export function Workbench(): React.ReactElement {
       {sideVisible ? (
         <Resizer
           orientation="vertical"
+          area="vsplit"
           onDrag={(fraction) => setDraft({ ...draft, sideFraction: clamp(fraction, 0.15, 0.45) })}
           onCommit={commit}
         />
@@ -82,6 +87,13 @@ export function Workbench(): React.ReactElement {
       {sideVisible ? (
         <aside className={styles['side']}>
           <FilesPanel project={project} />
+          <Resizer
+            orientation="horizontal"
+            from="start"
+            within="parent"
+            onDrag={(fraction) => setDraft({ ...draft, filesFraction: clamp(fraction, 0.2, 0.85) })}
+            onCommit={commit}
+          />
           <GitPanel />
         </aside>
       ) : null}
@@ -89,6 +101,7 @@ export function Workbench(): React.ReactElement {
       {terminalVisible ? (
         <Resizer
           orientation="horizontal"
+          area="hsplit"
           onDrag={(fraction) =>
             setDraft({ ...draft, terminalFraction: clamp(fraction, 0.12, 0.6) })
           }
@@ -98,7 +111,7 @@ export function Workbench(): React.ReactElement {
 
       {terminalVisible ? (
         <div className={styles['terminal']}>
-          <TerminalPanel project={project} focused={false} />
+          <TerminalPanel workspaceId={workspaceId} project={project} focused={false} />
         </div>
       ) : null}
     </div>

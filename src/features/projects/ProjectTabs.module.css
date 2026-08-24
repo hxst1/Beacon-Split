@@ -2,6 +2,9 @@
   display: flex;
   align-items: stretch;
   gap: 2px;
+  /* Shrinks and scrolls rather than eating the window's drag area. */
+  flex: 0 1 auto;
+  min-width: 0;
   height: 100%;
   overflow-x: auto;
   scrollbar-width: none;

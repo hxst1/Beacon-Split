@@ -13,8 +13,17 @@ pub struct PanelLayout {
     pub side_fraction: f32,
     /// Height of the terminal, 0..1 of the window height.
     pub terminal_fraction: f32,
+    /// Share of the side column given to Files, 0..1, measured from the top.
+    /// Defaulted so a `ui-state.json` written before this field existed still
+    /// loads rather than failing the whole document.
+    #[serde(default = "default_files_fraction")]
+    pub files_fraction: f32,
     pub side_visible: bool,
     pub terminal_visible: bool,
+}
+
+fn default_files_fraction() -> f32 {
+    0.6
 }
 
 impl Default for PanelLayout {
@@ -22,6 +31,7 @@ impl Default for PanelLayout {
         Self {
             side_fraction: 0.26,
             terminal_fraction: 0.28,
+            files_fraction: default_files_fraction(),
             side_visible: true,
             terminal_visible: true,
         }
@@ -35,6 +45,7 @@ impl PanelLayout {
         Self {
             side_fraction: self.side_fraction.clamp(0.15, 0.45),
             terminal_fraction: self.terminal_fraction.clamp(0.12, 0.6),
+            files_fraction: self.files_fraction.clamp(0.2, 0.85),
             side_visible: self.side_visible,
             terminal_visible: self.terminal_visible,
         }
@@ -80,12 +91,26 @@ mod tests {
         let wild = PanelLayout {
             side_fraction: 0.95,
             terminal_fraction: 0.0,
+            files_fraction: 1.4,
             side_visible: true,
             terminal_visible: false,
         };
         let safe = wild.clamped();
         assert_eq!(safe.side_fraction, 0.45);
         assert_eq!(safe.terminal_fraction, 0.12);
+        assert_eq!(safe.files_fraction, 0.85);
         assert!(!safe.terminal_visible);
+    }
+
+    #[test]
+    fn a_layout_saved_before_the_files_split_existed_still_loads() {
+        let older = r#"{
+            "sideFraction": 0.3,
+            "terminalFraction": 0.25,
+            "sideVisible": true,
+            "terminalVisible": true
+        }"#;
+        let layout: PanelLayout = serde_json::from_str(older).unwrap();
+        assert_eq!(layout.files_fraction, 0.6);
     }
 }

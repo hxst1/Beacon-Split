@@ -31,11 +31,39 @@ Remaining:
 - Workspace icons
 - A settings surface for `projectsHome`
 
-## Milestone 2 — Terminal / PTY
+## Milestone 2 — Terminal / PTY ✅
 
-- `portable-pty` behind a `SessionManager` in `beacon-core`
-- xterm.js, resize handling, one shell per project, opened at the project root
-- Output buffering so switching projects does not lose scrollback
+- `portable-pty` behind a `SessionManager` in `beacon-core`, with its event sink
+  as a trait so the daemon can host it unchanged
+- A real login shell per project, opened at the project root
+- xterm.js with live resize; the PTY grid follows the panel
+- Scrollback retained in the backend and replayed on reattach, with stream
+  offsets so nothing is lost or repeated
+- Terminal instances outlive their React components, so switching projects
+  reparents rather than rebuilds
+- Stop a project's processes; removing a project or workspace stops them first
+
+Still to do here: coalescing very fast output into fewer IPC events, and
+multiple terminals per project.
+
+## Milestone 2.5 — Settings and layouts
+
+Placed before Claude on purpose. Three of the four panels are still
+placeholders, so generalising the grid is cheap right now; every milestone after
+this one adds real content to a region and makes the change more expensive.
+
+- A settings surface, reached from a gear in the title bar
+- Layout presets, selectable per workspace or globally:
+  - Claude left (large), Files/Git right, Terminal bottom — today's layout
+  - Files/Git left, Claude right (large), Terminal bottom
+  - Terminal bottom-left, Files/Git above it, Claude right
+  - The mirror of that one
+- A custom layout: choose which panel occupies each region
+- `projectsHome`, and whatever else has accumulated by then
+
+This turns the hard-coded grid in `Workbench` into a described layout — a set of
+regions and an assignment of panels to them — which is the piece the presets and
+the custom option both need.
 
 ## Milestone 3 — Claude
 
@@ -62,6 +90,16 @@ Remaining:
 - Command palette (`⌘K`) and quick open (`⌘P`)
 - User-configurable keyboard bindings
 - Panel fullscreen, refined resizing, workspace accent polish
+
+## Milestone 6.5 — Detached panels
+
+- Pop a panel out of the window into its own floating window, and back
+- Multi-window Tauri, one webview per detached panel
+
+Milestone 2 already did the hard part: a session is addressed by id, its output
+is buffered in the backend, and any view can attach to it and replay losslessly.
+A detached window is another attachment, not another session — so this is window
+management, not a change to how sessions work.
 
 ## Milestone 7 — Session daemon
 

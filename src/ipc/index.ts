@@ -9,7 +9,14 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 
-import type { HostPlatform, PanelLayout, Snapshot } from '@/types/beacon'
+import type {
+  HostPlatform,
+  PanelLayout,
+  ScrollbackSnapshot,
+  SessionInfo,
+  SessionKind,
+  Snapshot,
+} from '@/types/beacon'
 
 export const ipc = {
   getSnapshot: () => invoke<Snapshot>('get_snapshot'),
@@ -50,6 +57,31 @@ export const ipc = {
     invoke<void>('reveal_project', { workspaceId, projectId }),
 
   hostPlatform: () => invoke<HostPlatform>('host_platform'),
+
+  // ---- sessions ----
+
+  openSession: (
+    workspaceId: string,
+    projectId: string,
+    kind: SessionKind,
+    cols: number,
+    rows: number,
+  ) => invoke<SessionInfo>('open_session', { workspaceId, projectId, kind, cols, rows }),
+
+  /** Keystrokes. Never logged, on either side of the boundary. */
+  writeSession: (id: string, data: string) => invoke<void>('write_session', { id, data }),
+
+  resizeSession: (id: string, cols: number, rows: number) =>
+    invoke<void>('resize_session', { id, cols, rows }),
+
+  sessionScrollback: (id: string) => invoke<ScrollbackSnapshot>('session_scrollback', { id }),
+
+  closeSession: (id: string) => invoke<void>('close_session', { id }),
+
+  restartSession: (id: string, cols: number, rows: number) =>
+    invoke<SessionInfo>('restart_session', { id, cols, rows }),
+
+  stopProject: (projectId: string) => invoke<void>('stop_project', { projectId }),
 }
 
 /** Native folder picker. Resolves to `null` when the user cancels. */

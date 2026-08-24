@@ -4,11 +4,11 @@ use beacon_core::ui_state::PanelLayout;
 use tauri::State;
 
 use crate::error::CommandResult;
-use crate::state::{AppState, lock};
+use crate::state::AppState;
 
 #[tauri::command]
 pub fn get_snapshot(state: State<'_, AppState>) -> Snapshot {
-    lock(&state).snapshot()
+    state.beacon().snapshot()
 }
 
 #[tauri::command]
@@ -17,7 +17,7 @@ pub fn create_workspace(
     name: String,
     accent: String,
 ) -> CommandResult<Snapshot> {
-    let mut beacon = lock(&state);
+    let mut beacon = state.beacon();
     beacon.create_workspace(&name, &accent)?;
     Ok(beacon.snapshot())
 }
@@ -29,7 +29,7 @@ pub fn update_workspace(
     name: Option<String>,
     accent: Option<String>,
 ) -> CommandResult<Snapshot> {
-    let mut beacon = lock(&state);
+    let mut beacon = state.beacon();
     beacon.update_workspace(&id, name.as_deref(), accent.as_deref(), None)?;
     Ok(beacon.snapshot())
 }
@@ -37,7 +37,7 @@ pub fn update_workspace(
 /// Removes a workspace from Beacon. Project folders are never touched.
 #[tauri::command]
 pub fn delete_workspace(state: State<'_, AppState>, id: WorkspaceId) -> CommandResult<Snapshot> {
-    let mut beacon = lock(&state);
+    let mut beacon = state.beacon();
     beacon.delete_workspace(&id)?;
     Ok(beacon.snapshot())
 }
@@ -47,14 +47,14 @@ pub fn set_active_workspace(
     state: State<'_, AppState>,
     id: WorkspaceId,
 ) -> CommandResult<Snapshot> {
-    let mut beacon = lock(&state);
+    let mut beacon = state.beacon();
     beacon.set_active_workspace(&id)?;
     Ok(beacon.snapshot())
 }
 
 #[tauri::command]
 pub fn set_panels(state: State<'_, AppState>, panels: PanelLayout) -> CommandResult<Snapshot> {
-    let mut beacon = lock(&state);
+    let mut beacon = state.beacon();
     beacon.set_panels(panels)?;
     Ok(beacon.snapshot())
 }

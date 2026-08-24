@@ -24,7 +24,7 @@ pub fn run() {
                 tracing::error!(error = %err, "could not load Beacon state");
                 err
             })?;
-            app.manage(AppState::new(beacon));
+            app.manage(AppState::new(beacon, app.handle().clone()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -41,6 +41,13 @@ pub fn run() {
             commands::set_active_project,
             commands::reveal_project,
             commands::host_platform,
+            commands::open_session,
+            commands::write_session,
+            commands::resize_session,
+            commands::session_scrollback,
+            commands::close_session,
+            commands::restart_session,
+            commands::stop_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Beacon");

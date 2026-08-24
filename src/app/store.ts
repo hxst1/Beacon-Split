@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 
+import { disposeProject, refreshAccent } from '@/features/terminal/terminalHost'
 import { errorMessage, ipc } from '@/ipc'
 import { applyAccent } from '@/lib/accent'
 import { setPlatform } from '@/lib/platform'
@@ -27,6 +28,8 @@ interface BeaconState {
   addProject: (path: string) => Promise<void>
   renameProject: (projectId: string, name: string) => Promise<void>
   removeProject: (projectId: string) => Promise<void>
+  /** Stops the project's processes without removing the project. */
+  stopProject: (projectId: string) => Promise<void>
   moveProject: (projectId: string, targetWorkspaceId: string) => Promise<void>
   selectProject: (projectId: string) => Promise<void>
   selectProjectAt: (index: number) => Promise<void>
@@ -41,7 +44,10 @@ export const useBeacon = create<BeaconState>((set, get) => {
   /** Applies a snapshot returned by any command and keeps the accent in sync. */
   const accept = (snapshot: Snapshot): void => {
     const active = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspace)
-    if (active) applyAccent(active.accent)
+    if (active) {
+      applyAccent(active.accent)
+      refreshAccent()
+    }
     set({ snapshot, status: 'ready' })
   }
 
@@ -99,7 +105,18 @@ export const useBeacon = create<BeaconState>((set, get) => {
     removeProject: async (projectId) => {
       const workspaceId = requireWorkspace()
       if (!workspaceId) return
+      // The backend stops the processes; this drops the views that showed them.
       await run(() => ipc.removeProject(workspaceId, projectId))
+      disposeProject(projectId)
+    },
+
+    stopProject: async (projectId) => {
+      try {
+        await ipc.stopProject(projectId)
+        disposeProject(projectId)
+      } catch (error) {
+        set({ notice: errorMessage(error) })
+      }
     },
 
     moveProject: async (projectId, targetWorkspaceId) => {

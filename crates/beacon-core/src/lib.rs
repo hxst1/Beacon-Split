@@ -10,10 +10,13 @@ pub mod detect;
 pub mod domain;
 pub mod error;
 pub mod paths;
+pub mod scrollback;
+pub mod session;
 pub mod settings;
 pub mod state;
 pub mod store;
 pub mod ui_state;
 
 pub use error::{CoreError, Result};
+pub use session::{SessionEvents, SessionId, SessionInfo, SessionKind, SessionManager};
 pub use state::{Beacon, ProjectView, Snapshot, WorkspaceView};

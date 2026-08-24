@@ -7,8 +7,6 @@
   border-bottom: 1px solid var(--line-1);
   background: var(--surface-1);
   backdrop-filter: var(--blur-panel);
-  /* The bar itself drags the window; interactive children opt out. */
-  -webkit-app-region: drag;
 }
 
 .workspace {
@@ -23,7 +21,6 @@
   font-size: var(--text-sm);
   font-weight: 500;
   white-space: nowrap;
-  -webkit-app-region: no-drag;
   transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
 }
 
@@ -54,8 +51,20 @@
   flex: none;
 }
 
-.tabsRegion {
-  flex: 1;
+/*
+ * A guaranteed place to grab the window.
+ *
+ * Tabs shrink and scroll before this does, so there is always a comfortable
+ * strip to drag by — the thin sliver left over between controls is not a drag
+ * handle anyone can hit.
+ */
+.dragZone {
+  flex: 1 0 150px;
+  align-self: stretch;
   min-width: 0;
-  -webkit-app-region: no-drag;
 }
+
+/* Cross-platform drag is driven by `data-tauri-drag-region`, not by
+   `-webkit-app-region`: the latter only works on macOS WebKit, and Beacon has
+   to behave the same on WebKitGTK. Tauri also gives us double-click-to-zoom
+   on these elements for free. */
