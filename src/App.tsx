@@ -5,6 +5,7 @@ import { Boot } from '@/app/Boot'
 import { Welcome } from '@/features/workspaces/Welcome'
 import { startConnectionTracking, startSystemThemeTracking, useBeacon } from '@/app/store'
 import { startActivityTracking } from '@/features/terminal/activity'
+import { checkForUpdate } from '@/features/releases/updates'
 import { startNotifications } from '@/features/terminal/notify'
 import { startUsageTracking } from '@/features/usage/usage'
 
@@ -25,6 +26,9 @@ export function App(): React.ReactElement {
       startNotifications(),
     ]
     void load()
+    // Once, on start. Nothing here nags: an update that is not urgent should
+    // not interrupt, and one that is will still be there tomorrow.
+    void checkForUpdate()
 
     return () => stop.forEach((unsubscribe) => unsubscribe())
   }, [load])

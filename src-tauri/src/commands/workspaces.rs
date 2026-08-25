@@ -103,6 +103,28 @@ pub fn set_appearance(
     Ok(beacon.snapshot())
 }
 
+/// Records that the user has been shown what is new in this version.
+#[tauri::command]
+pub fn mark_releases_seen(state: State<'_, AppState>) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.mark_releases_seen()?;
+    Ok(beacon.snapshot())
+}
+
+/// Whether a new version announces itself on start, or waits to be asked.
+#[tauri::command]
+pub fn set_release_notices(state: State<'_, AppState>, enabled: bool) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_release_notices(enabled)?;
+    Ok(beacon.snapshot())
+}
+
+/// Everything this build has ever shipped, newest first.
+#[tauri::command]
+pub fn release_notes() -> CommandResult<Vec<beacon_core::releases::Release>> {
+    Ok(beacon_core::releases::all()?)
+}
+
 /// Whether Beacon may interrupt with a system notification.
 #[tauri::command]
 pub fn set_notifications(state: State<'_, AppState>, enabled: bool) -> CommandResult<Snapshot> {

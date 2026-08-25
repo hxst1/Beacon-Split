@@ -54,6 +54,12 @@ pub struct Snapshot {
     /// `None` means the account's own shell, started as a login shell.
     pub shell: Option<crate::settings::ShellSpec>,
     pub notifications: bool,
+    /// What this build is.
+    pub version: String,
+    /// Releases the user has not been shown, newest first.
+    pub unseen_releases: Vec<crate::releases::Release>,
+    /// Whether a new version announces itself, rather than waiting to be asked.
+    pub release_notices: bool,
     pub projects_home: String,
 }
 
@@ -177,6 +183,12 @@ impl Beacon {
             appearance: self.settings.appearance.clamped(),
             shell: self.settings.shell.clone(),
             notifications: self.settings.notifications,
+            version: crate::releases::current_version().to_string(),
+            // Best effort: notes that will not parse are a broken build, not a
+            // reason to refuse to open.
+            unseen_releases: crate::releases::unseen(self.settings.last_seen_version.as_deref())
+                .unwrap_or_default(),
+            release_notices: self.settings.release_notices,
             projects_home: home.to_string_lossy().into_owned(),
         }
     }
@@ -509,6 +521,22 @@ impl Beacon {
     /// Stores how the window should look.
     pub fn set_appearance(&mut self, appearance: Appearance) -> Result<()> {
         self.settings.appearance = appearance.validated()?;
+        self.save_settings()
+    }
+
+    /// Records that the user has been shown what is new.
+    ///
+    /// Always the running version rather than the newest release listed: a
+    /// build that shipped without its own notes should not mark newer ones as
+    /// read.
+    pub fn mark_releases_seen(&mut self) -> Result<()> {
+        self.settings.last_seen_version = Some(crate::releases::current_version().to_string());
+        self.save_settings()
+    }
+
+    /// Whether a new version announces itself on start.
+    pub fn set_release_notices(&mut self, enabled: bool) -> Result<()> {
+        self.settings.release_notices = enabled;
         self.save_settings()
     }
 

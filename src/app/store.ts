@@ -112,6 +112,8 @@ interface BeaconState {
   /** `null` goes back to the account's own shell. */
   setShell: (shell: ShellSpec | null) => Promise<void>
   setNotifications: (enabled: boolean) => Promise<void>
+  markReleasesSeen: () => Promise<void>
+  setReleaseNotices: (enabled: boolean) => Promise<void>
   setBinding: (action: string, binding: string | null) => Promise<string | null>
   resetBindings: () => Promise<void>
   /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
@@ -288,6 +290,10 @@ export const useBeacon = create<BeaconState>((set, get) => {
     setShell: (shell) => run(() => ipc.setShell(shell)),
 
     setNotifications: (enabled) => run(() => ipc.setNotifications(enabled)),
+
+    markReleasesSeen: () => run(() => ipc.markReleasesSeen()),
+
+    setReleaseNotices: (enabled) => run(() => ipc.setReleaseNotices(enabled)),
 
     setBinding: async (action, binding) => {
       try {

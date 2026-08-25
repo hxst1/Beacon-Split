@@ -16,9 +16,19 @@ use tauri::Manager;
 pub fn run() {
     init_tracing();
 
-    tauri::Builder::default()
+    // Registered only when this build was configured to update itself.
+    //
+    // The plugin refuses to initialise without an update key, and refusing to
+    // initialise is refusing to start — so a copy somebody compiled themselves
+    // would not open at all. Those update by pulling, which is the right answer
+    // for them and no reason to break the application.
+    let context = tauri::generate_context!();
+    let updates_itself = context.config().plugins.0.contains_key("updater");
+
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let beacon = Beacon::load_default().map_err(|err| {
@@ -48,6 +58,9 @@ pub fn run() {
             commands::reorder_project,
             commands::set_shell,
             commands::set_notifications,
+            commands::mark_releases_seen,
+            commands::set_release_notices,
+            commands::release_notes,
             commands::set_active_project,
             commands::reveal_project,
             commands::host_platform,
@@ -93,9 +106,16 @@ pub fn run() {
             commands::claude_hook_command,
             commands::install_claude_hooks,
             commands::remove_claude_hooks,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running Beacon");
+        ]);
+
+    let builder = if updates_itself {
+        builder.plugin(tauri_plugin_updater::Builder::new().build())
+    } else {
+        tracing::info!("no update key in this build; it updates by pulling");
+        builder
+    };
+
+    builder.run(context).expect("error while running Beacon");
 }
 
 /// Logs to stderr, filtered by `RUST_LOG` (default: our crates at `info`).

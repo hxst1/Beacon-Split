@@ -56,6 +56,19 @@ pub struct Settings {
     /// window you are not looking at.
     #[serde(default = "yes")]
     pub notifications: bool,
+    /// The last version whose notes were shown.
+    ///
+    /// Absent means this install has never shown any, which is a first run —
+    /// and a first run should not be met with a history of releases the user
+    /// was not here for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen_version: Option<String>,
+    /// Whether a new version announces itself on start.
+    ///
+    /// Muting silences the announcement, not the information: the bell still
+    /// shows there is something to read, and reading it is a click away.
+    #[serde(default = "yes")]
+    pub release_notices: bool,
     /// How the window looks. Stored whole rather than only when changed: unlike
     /// a shortcut, every field here is always in effect.
     #[serde(default)]
@@ -81,6 +94,8 @@ impl Default for Settings {
             bindings: BTreeMap::new(),
             shell: None,
             notifications: true,
+            last_seen_version: None,
+            release_notices: true,
             appearance: Appearance::default(),
         }
     }

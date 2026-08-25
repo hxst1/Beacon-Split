@@ -14,6 +14,7 @@ import type {
   DirEntry,
   ShellSpec,
   HookStatus,
+  Release,
   Requirement,
   Integration,
   UsageReport,
@@ -91,6 +92,15 @@ export const ipc = {
   setShell: (shell: ShellSpec | null) => invoke<Snapshot>('set_shell', { shell }),
 
   setNotifications: (enabled: boolean) => invoke<Snapshot>('set_notifications', { enabled }),
+
+  /** Records that the user has been shown what is new in this version. */
+  markReleasesSeen: () => invoke<Snapshot>('mark_releases_seen'),
+
+  setReleaseNotices: (enabled: boolean) =>
+    invoke<Snapshot>('set_release_notices', { enabled }),
+
+  /** Everything this build has ever shipped, newest first. */
+  releaseNotes: () => invoke<Release[]>('release_notes'),
 
   setActiveProject: (workspaceId: string, projectId: string) =>
     invoke<Snapshot>('set_active_project', { workspaceId, projectId }),

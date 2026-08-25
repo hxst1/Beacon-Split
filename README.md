@@ -36,6 +36,13 @@ What is left is a few smaller things listed in the roadmap.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
 
+## Publishing
+
+`docs/PUBLISHING.md` covers releasing: what to do once (an update signing key,
+which only you should generate), and what happens every time (write the notes,
+move the version, push a tag). The workflow builds, checks, signs and opens a
+draft release; publishing it is what makes every running Beacon find it.
+
 ## Giving it to someone else
 
 `pnpm app:build` produces a `.app` and a `.dmg`. They are ad-hoc signed, so

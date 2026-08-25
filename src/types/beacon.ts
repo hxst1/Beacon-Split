@@ -90,6 +90,12 @@ export interface Snapshot {
   shell: ShellSpec | null
   /** Whether Beacon may raise a system notification when a project waits. */
   notifications: boolean
+  /** What this build is. */
+  version: string
+  /** Releases the user has not been shown, newest first. */
+  unseenReleases: Release[]
+  /** Whether a new version announces itself, rather than waiting to be asked. */
+  releaseNotices: boolean
   projectsHome: string
 }
 
@@ -183,6 +189,14 @@ export interface Appearance {
   windowOpacity: number
   /** Backdrop blur in pixels, 0..40. Zero turns it off. */
   blur: number
+}
+
+/** What changed in a version, shipped inside the build. */
+export interface Release {
+  version: string
+  date: string
+  summary?: string
+  changes: string[]
 }
 
 export type Importance = 'required' | 'recommended'

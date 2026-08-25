@@ -1,0 +1,18 @@
+[
+  {
+    "version": "0.1.0",
+    "date": "2026-08-25",
+    "summary": "The first build worth handing to somebody else.",
+    "changes": [
+      "Workspaces group projects, each with its own colour and icon, so you know where you are before reading anything.",
+      "A real claude session and a real shell per project, in their own PTYs. Beacon runs the CLI you already use rather than reimplementing it.",
+      "Sessions outlive the window: close Beacon and they keep running, open it again and it reattaches to them.",
+      "Layouts are a tree of splits with four presets, and every divider is draggable.",
+      "A file tree with an editor, a .env view that keeps values hidden until asked, and git status, diff, stage and commit.",
+      "Command palette on ⌘K, quick open on ⌘P, and every shortcut is editable.",
+      "Tabs say what Claude is doing — working, finished, or waiting for you — reported by Claude Code rather than guessed from output.",
+      "The title bar shows how much of the five-hour allowance is left and how full each project's context is.",
+      "Light and dark themes, and sliders for how translucent and how blurred the window is."
+    ]
+  }
+]

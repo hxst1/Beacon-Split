@@ -19,6 +19,7 @@ pub mod keymap;
 pub mod layout;
 pub mod paths;
 pub mod protocol;
+pub mod releases;
 pub mod requirements;
 pub mod scrollback;
 pub mod session;

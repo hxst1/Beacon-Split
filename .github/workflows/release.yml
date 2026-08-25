@@ -1,0 +1,83 @@
+# Builds and publishes a release when a version tag is pushed.
+#
+# Two things have to be true for an update to reach anyone: the artefact is
+# built for their machine, and it is signed with the key their copy already
+# trusts. Both happen here, so neither depends on somebody remembering.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# The workflow writes releases; nothing else.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - run: pnpm install --frozen-lockfile
+
+      # The daemon ships beside the application. Staged before bundling, and
+      # named for the target it was built for, so a bundle can never pick up a
+      # binary meant for another machine.
+      - name: Build and stage the session daemon
+        run: |
+          cargo build --release -p beacon-daemon --target ${{ matrix.target }}
+          mkdir -p src-tauri/binaries
+          cp "target/${{ matrix.target }}/release/beacon-daemon" \
+             "src-tauri/binaries/beacon-daemon-${{ matrix.target }}"
+
+      # Everything must pass before anything is published: a release is the one
+      # build nobody gets to try again.
+      - name: Check
+        run: pnpm check
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update so an installed Beacon will accept it. Without
+          # this the release still installs by hand, but nothing updates
+          # itself.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --target ${{ matrix.target }}
+          tagName: ${{ github.ref_name }}
+          releaseName: Beacon ${{ github.ref_name }}
+          # Written from the notes that ship in the build, so the release page
+          # and the panel inside the application cannot disagree.
+          releaseBody: ${{ github.event.head_commit.message }}
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true

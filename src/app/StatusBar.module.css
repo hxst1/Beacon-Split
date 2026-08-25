@@ -45,3 +45,69 @@
   opacity: 0.8;
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * The bell.
+ *
+ * Bottom right, where a thing that occasionally has news belongs — near enough
+ * to notice, far enough from anything you press by accident.
+ */
+.bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  color: var(--fg-4);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.bell:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
+/* Unread is a mark on the bell, not a colour change: muted or not, there is
+   something to read, and that fact does not depend on the setting. */
+.bell[data-unread='true']::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 6px 0 var(--accent-glow);
+}
+
+.bell[data-muted='true'] {
+  opacity: 0.65;
+}
+
+/* An update is news, not a problem, so it takes the accent rather than a
+   warning colour — and it sits beside the bell, which is where news lives. */
+.update {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 1px 9px;
+  flex: none;
+  border-radius: 99px;
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.update:hover {
+  background: color-mix(in oklab, var(--accent) 24%, transparent);
+}
+
+.update:disabled {
+  opacity: 0.7;
+}
