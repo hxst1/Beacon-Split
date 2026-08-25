@@ -4,7 +4,7 @@
 //! it belongs. Frosting is not: `backdrop-filter` composites what is behind an
 //! element *within the page*, and behind Beacon's chrome is a flat colour, so
 //! it produced the same flat colour back. Blurring the desktop is something
-//! only the window server can do, through a window effect.
+//! only the window server can do.
 
 use beacon_core::appearance::Appearance;
 use tauri::{Manager, Runtime};
@@ -14,35 +14,59 @@ const MAIN_WINDOW: &str = "main";
 
 /// Puts the window effect in the state this appearance asks for.
 ///
-/// Best-effort by design. A window effect is decoration: a platform that has
-/// none, or a call that fails, should leave a perfectly usable window rather
-/// than stopping anything.
+/// Best-effort: a window effect is decoration, and a platform without one
+/// should still get a perfectly usable window.
 pub fn apply<R: Runtime>(app: &tauri::AppHandle<R>, appearance: &Appearance) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+        tracing::warn!("no main window to put the frosting on");
         return;
     };
+    set_frosted(&window, appearance.frosted);
+}
 
-    let effects = appearance.frosted.then(|| {
-        use tauri::utils::WindowEffect;
-        use tauri::utils::config::WindowEffectsConfig;
-        use tauri::window::EffectState;
+/// Adds or removes the frosted material behind the window.
+///
+/// `WebviewWindow::set_effects` would be the obvious way to do this and is the
+/// wrong one twice over. On macOS it only ever *adds*: handing it `None` runs
+/// a branch that exists for Windows alone, so the effect applied at startup
+/// could never be taken off again and the switch appeared dead. And it drops
+/// the result inside a closure it schedules on the main thread, so what comes
+/// back says the work was queued, not that it worked — which is why an earlier
+/// look at the log seemed to confirm something it had never been asked.
+///
+/// So: the underlying calls, both directions, and the outcome written down.
+#[cfg(target_os = "macos")]
+fn set_frosted<R: Runtime>(window: &tauri::WebviewWindow<R>, frosted: bool) {
+    use window_vibrancy::{NSVisualEffectMaterial, NSVisualEffectState};
 
-        WindowEffectsConfig {
-            // Frosts what is behind the whole window rather than tinting it as
-            // a panel material would, which is what leaves the opacity setting
-            // still meaning something: how much of that frosted desktop the
-            // window's own background lets through.
-            effects: vec![WindowEffect::UnderWindowBackground],
+    let outcome = if frosted {
+        window_vibrancy::apply_vibrancy(
+            window,
+            // Frosts what is behind the window without tinting it the way a
+            // panel material would, which is what leaves opacity still meaning
+            // something: how much of that frosted desktop shows through.
+            NSVisualEffectMaterial::UnderWindowBackground,
             // Frosted whether or not Beacon is the focused application. The
-            // alternative follows focus, and a window that changes how it
-            // looks every time you glance at another one is a distraction.
-            state: Some(EffectState::Active),
-            radius: None,
-            color: None,
-        }
-    });
+            // alternative follows focus, and a window that changes how it looks
+            // every time you glance at another one is a distraction.
+            Some(NSVisualEffectState::Active),
+            None,
+        )
+        .map(|()| true)
+    } else {
+        window_vibrancy::clear_vibrancy(window)
+    };
 
-    if let Err(err) = window.set_effects(effects) {
-        tracing::warn!(error = %err, frosted = appearance.frosted, "could not set the window effect");
+    match outcome {
+        Ok(changed) => tracing::info!(frosted, changed, "window frosting set"),
+        Err(err) => tracing::warn!(error = %err, frosted, "could not set the window frosting"),
+    }
+}
+
+/// No window server here offers this yet.
+#[cfg(not(target_os = "macos"))]
+fn set_frosted<R: Runtime>(_window: &tauri::WebviewWindow<R>, frosted: bool) {
+    if frosted {
+        tracing::info!("frosting is not available on this platform; leaving the window sharp");
     }
 }

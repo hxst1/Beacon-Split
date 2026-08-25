@@ -967,6 +967,15 @@ above zero means it was meant to be on. Linux has no window effects, so the
 switch will do nothing there until it is given something to do — which is worth
 knowing before it is shipped, and is why the field says so.
 
+**Applied without `WebviewWindow::set_effects`,** which is wrong for this twice
+over. On macOS it only ever adds: handing it `None` runs a branch that exists
+for Windows alone, so an effect applied at startup can never be taken off and
+the switch is dead in one direction. And it drops the result inside a closure
+it schedules on the main thread, so the `Result` it returns says the work was
+queued rather than that it worked — which is how a log with no warning in it
+was read as confirmation of something it had never been asked. `window-vibrancy`
+is called directly instead, in both directions, and the outcome is logged.
+
 ## ADR-051: A terminal and its process are resized together, or neither is
 
 **Context.** The Claude panel would collapse into a narrow, garbled column and

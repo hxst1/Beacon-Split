@@ -278,6 +278,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tracing",
  "tracing-subscriber",
+ "window-vibrancy",
 ]
 
 [[package]]

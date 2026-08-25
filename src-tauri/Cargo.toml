@@ -28,3 +28,10 @@ tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Called directly rather than through `WebviewWindow::set_effects`, which on
+# macOS can only ever add an effect — passing it `None` removes nothing — and
+# which discards the result, so a failure is silent. Both matter for a setting
+# the user toggles.
+[target.'cfg(target_os = "macos")'.dependencies]
+window-vibrancy = "0.6"
