@@ -187,8 +187,14 @@ export interface Appearance {
   theme: Theme
   /** 0.5..1. Never lower: a window you cannot read is not a preference. */
   windowOpacity: number
-  /** Backdrop blur in pixels, 0..40. Zero turns it off. */
-  blur: number
+  /**
+   * Whether what shows through the window is frosted rather than sharp.
+   *
+   * Applied by the shell as a window effect, not by CSS: a backdrop filter can
+   * only blur what is behind an element within the page, and it never reaches
+   * the desktop. macOS Only.
+   */
+  frosted: boolean
 }
 
 /** What changed in a version, shipped inside the build. */

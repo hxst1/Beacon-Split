@@ -10,18 +10,21 @@
  * tinted derives from it with `color-mix`, so a workspace only ever declares
  * one colour and neither palette needs to know about it.
  *
- * `--window-alpha` and `--blur-px` come from settings. They are the two things
- * about the look that are taste rather than design, so they are the two the
- * user can move — and they are the only thing between the window and the
- * desktop, which is why the native vibrancy layer is gone: behind a translucent
- * window it put a frosted sheet of its own, so lowering the opacity revealed
- * that rather than anything, and the slider looked broken.
+ * `--window-alpha` comes from settings: how much of the desktop shows through,
+ * the one part of the look that is taste rather than design. Whether what shows
+ * through is frosted is a window effect applied by the shell, not a variable
+ * here — a backdrop filter composites what is behind an element within the
+ * page, so it can soften one surface against another but can never reach the
+ * desktop.
+ *
+ * The blur values below are fixed for that reason: they exist to separate
+ * surfaces that genuinely overlap, and an amount the user sets would have
+ * changed nothing they could see.
  */
 
 :root {
   /* ---- set from settings; these are the shipped defaults ---- */
   --window-alpha: 0.86;
-  --blur-px: 18px;
 
   /* ---- shape and motion, shared by both palettes ---- */
   --radius-xs: 5px;
@@ -49,8 +52,8 @@
   /* Room for the macOS traffic lights under an overlay title bar. */
   --titlebar-inset: 78px;
 
-  --blur-panel: blur(var(--blur-px)) saturate(150%);
-  --blur-float: blur(calc(var(--blur-px) * 1.6)) saturate(160%);
+  /* For surfaces that sit over other surfaces. Not settings-driven: see above. */
+  --blur-float: blur(28px) saturate(160%);
 }
 
 /* ---- dark ---------------------------------------------------------------- */

@@ -928,6 +928,64 @@ webview, so making the webview more transparent revealed *that* rather than
 anything underneath — a control with nothing to control. Having made
 translucency a setting, it has to be the setting that decides it.
 
-**Consequence.** Beacon draws its own blur rather than borrowing the system's,
-which is also what makes the result the same on Linux. A window at full opacity
-looks the same as before; below that it now behaves the way the slider claims.
+**Consequence.** A window at full opacity looks the same as before; below that
+it now behaves the way the slider claims.
+
+**Superseded in part by [ADR-050](#adr-050-frosting-is-a-window-effect-and-therefore-a-switch).**
+The claim that Beacon could draw its own blur instead was wrong, and removing
+the window effect left the blur setting with nothing to act on. Translucency
+still belongs to `--window-alpha`; frosting has gone back to the window server,
+where it is the only place it could ever have worked.
+
+## ADR-050: Frosting is a window effect, and therefore a switch
+
+**Context.** The blur slider did nothing at any position. Opacity worked.
+
+**Decision.** `Appearance.blur`, a radius in pixels, becomes
+`Appearance.frosted`, a boolean. It is applied by the shell as a macOS window
+effect rather than by CSS, and the three `backdrop-filter` rules that used to
+read the old setting are gone.
+
+**Why.** A backdrop filter composites what is behind an element *within the
+page*. Behind Beacon's chrome is `--surface-1`, a flat colour, and blurring a
+flat colour returns the same flat colour. It could never have reached the
+desktop: the backdrop is built from the document, and a transparent window is
+not a hole the filter can see through. Only the window server can blur what is
+behind a window, and it does not expose a radius — it picks the material. An
+amount was therefore a control with one working position and forty that lied,
+and a switch is the shape the platform actually offers.
+
+**Why it composes with opacity, which [ADR-049](#adr-049-no-native-vibrancy-behind-the-window)
+said it would not.** `underWindowBackground` frosts what is behind the window
+without tinting it as a panel material would, so the two settings answer
+different questions: opacity is how much comes through, frosting is whether it
+arrives sharp. The mistake in ADR-049 was treating the effect as a competitor
+to translucency rather than as what translucency reveals.
+
+**Consequence.** An old configuration's `blur` number still loads, and anything
+above zero means it was meant to be on. Linux has no window effects, so the
+switch will do nothing there until it is given something to do — which is worth
+knowing before it is shipped, and is why the field says so.
+
+## ADR-051: A terminal and its process are resized together, or neither is
+
+**Context.** The Claude panel would collapse into a narrow, garbled column and
+stay there. The daemon's log said the process had the right size, and it did:
+142 columns, correct, at the same moment the panel was unreadable.
+
+**Decision.** `nextGrid` decides on a measurement before anything is applied,
+using the fit addon's `proposeDimensions` rather than `fit`. Either both the
+grid and the process are resized, or neither is.
+
+**Why.** `fit()` resizes the terminal and *then* reports what it chose. The
+guard against implausible measurements ran after that, so a panel caught
+mid-layout left xterm two cells wide while the process kept its real width. The
+process was never told anything had changed, so no redraw ever came to repair
+it, and full-width output went on being folded into two columns until the
+terminal was rebuilt from scratch. The guard was protecting the wrong side of a
+pair that has to agree.
+
+**Consequence.** The policy is a pure function in `features/terminal/grid.ts`
+and is tested against every way a measurement has gone wrong so far — a
+collapsing panel, a hidden one, and a cell measured as zero, which divides into
+infinity rather than into something small and so slips past a range check.

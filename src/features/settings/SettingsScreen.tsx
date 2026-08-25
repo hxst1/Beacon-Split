@@ -178,9 +178,9 @@ function AppearanceSection(): React.ReactElement {
       <section className={styles['section']}>
         <h2 className={styles['sectionTitle']}>Material</h2>
         <p className={styles['sectionNote']}>
-          How much of what is behind the window comes through, and how far it is pushed out of
-          focus. Drag to see it; it is saved when you let go. Opacity stops at half — below that
-          the desktop starts competing with the text.
+          How much of what is behind the window comes through, and whether it arrives sharp or
+          frosted. Drag to see it; it is saved when you let go. Opacity stops at half — below
+          that the desktop starts competing with the text.
         </p>
 
         <div className={styles['rows']}>
@@ -204,29 +204,27 @@ function AppearanceSection(): React.ReactElement {
             </span>
           </div>
 
-          <div className={styles['slider']}>
-            <span className={styles['sliderLabel']}>Blur</span>
-            <input
-              type="range"
-              className={styles['sliderInput']}
-              min={0}
-              max={40}
-              step={1}
-              value={Math.round(current.blur)}
-              onChange={(event) => preview({ ...current, blur: Number(event.target.value) })}
-              onPointerUp={() => commit(current)}
-              onKeyUp={() => commit(current)}
+          {/* A switch rather than an amount. The window server picks the
+              radius, so every position between off and on would have looked
+              identical — which is what a blur slider here used to do. */}
+          <div className={styles['row']}>
+            <span className={styles['rowLabel']}>Frost what shows through</span>
+            <button
+              type="button"
+              className={styles['toggle']}
+              data-on={current.frosted}
+              role="switch"
+              aria-checked={current.frosted}
+              aria-label="Frost what shows through"
+              onClick={() => commit({ ...current, frosted: !current.frosted })}
             />
-            <span className={styles['sliderValue']}>
-              {current.blur === 0 ? 'off' : `${Math.round(current.blur)}px`}
-            </span>
           </div>
         </div>
 
         <button
           type="button"
           className={styles['resetAll']}
-          onClick={() => commit({ theme: current.theme, windowOpacity: 0.86, blur: 18 })}
+          onClick={() => commit({ theme: current.theme, windowOpacity: 0.86, frosted: true })}
         >
           Back to the defaults
         </button>

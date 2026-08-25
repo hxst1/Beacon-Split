@@ -53,8 +53,8 @@ trash. Nothing here is trying to become an IDE.
 rebind. Layouts are a tree of splits with four presets, and every divider
 drags.
 
-**Yours to look at.** Light and dark, and sliders for how translucent and how
-blurred the window is.
+**Yours to look at.** Light and dark, how much of the desktop shows through the
+window, and whether what shows through is frosted.
 
 ## Install
 

@@ -4,6 +4,7 @@
 //! that moving session management into a daemon later is a change of transport,
 //! not a rewrite.
 
+mod appearance;
 mod commands;
 mod error;
 mod state;
@@ -35,6 +36,9 @@ pub fn run() {
                 tracing::error!(error = %err, "could not load Beacon state");
                 err
             })?;
+            // Before the state is handed over, while the appearance is still
+            // to hand.
+            appearance::apply(app.handle(), &beacon.appearance());
             app.manage(AppState::new(beacon, app.handle().clone()));
             Ok(())
         })

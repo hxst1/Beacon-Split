@@ -5,8 +5,12 @@
   padding-left: var(--titlebar-inset);
   padding-right: 8px;
   border-bottom: 1px solid var(--line-1);
+  /* No backdrop filter here. It blurred a flat colour, so it changed nothing
+     visible — while making this element the containing block for fixed-position
+     descendants and a stacking context of its own, which trapped every menu
+     opened from the title bar inside a 42-pixel strip and painted the panels
+     over it. Menus are portalled now, but the filter still bought nothing. */
   background: var(--surface-1);
-  backdrop-filter: var(--blur-panel);
 }
 
 .workspace {

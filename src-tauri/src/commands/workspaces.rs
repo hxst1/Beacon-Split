@@ -92,14 +92,18 @@ pub fn set_layout_preset(
     Ok(beacon.snapshot())
 }
 
-/// Stores how the window should look — theme, translucency, blur.
+/// Stores how the window should look — theme, translucency, frosting.
 #[tauri::command]
 pub fn set_appearance(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     appearance: Appearance,
 ) -> CommandResult<Snapshot> {
     let mut beacon = state.beacon();
     beacon.set_appearance(appearance)?;
+    // From what was stored rather than from the argument: it has been clamped,
+    // and the window should agree with the setting the user will see.
+    crate::appearance::apply(&app, &beacon.appearance());
     Ok(beacon.snapshot())
 }
 

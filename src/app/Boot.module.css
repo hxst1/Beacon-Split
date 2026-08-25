@@ -21,7 +21,6 @@
   border: 1px solid var(--line-2);
   border-radius: var(--radius-md);
   background: var(--surface-2);
-  backdrop-filter: var(--blur-panel);
   color: var(--fg-2);
   font-size: var(--text-sm);
   user-select: text;

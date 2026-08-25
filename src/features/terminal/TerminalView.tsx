@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { errorMessage, ipc } from '@/ipc'
 import type { SessionKind } from '@/types/beacon'
 import { useActivity } from './activity'
+import { estimateGrid, nextGrid } from './grid'
 import { acquire } from './terminalHost'
 import styles from './TerminalView.module.css'
 import '@xterm/xterm/css/xterm.css'
@@ -47,7 +48,7 @@ export function TerminalView({
 
       // Size the PTY from the panel before spawning, so the first prompt is
       // already laid out correctly rather than reflowing a moment later.
-      const probe = estimateGrid(container)
+      const probe = estimateGrid(container.getBoundingClientRect())
       const session = await ipc.openSession(
         workspaceId,
         projectId,
@@ -65,24 +66,19 @@ export function TerminalView({
       container.append(terminal.element)
 
       /**
-       * Measures the panel and tells the process what size it is.
+       * Measures the panel and resizes the grid and the process together.
        *
-       * Guarded, because a panel caught mid-layout — hidden, collapsing, or not
-       * yet placed — measures as almost nothing. Fitting to that and sending it
-       * on tells the process it has two columns, and everything it prints until
-       * the next resize is wrapped at two columns. That damage is already in the
-       * scrollback by the time the real size arrives, which is why it looked
-       * like a rendering bug that a restart fixed.
+       * `proposeDimensions` rather than `fit`, because the decision of whether
+       * to resize at all has to be made before anything moves; `nextGrid`
+       * carries that decision and why it is shaped this way.
        */
       const apply = (): void => {
-        const box = container.getBoundingClientRect()
-        if (box.width < MIN_USABLE_PX || box.height < MIN_USABLE_PX) return
+        const { term, fit } = terminal
+        const grid = nextGrid(container.getBoundingClientRect(), fit.proposeDimensions(), term)
+        if (!grid) return
 
-        terminal.fit.fit()
-        const { cols, rows } = terminal.term
-        if (cols < MIN_COLS || rows < MIN_ROWS) return
-
-        void ipc.resizeSession(session.id, cols, rows)
+        term.resize(grid.cols, grid.rows)
+        void ipc.resizeSession(session.id, grid.cols, grid.rows)
       }
 
       // Cell metrics depend on the font, so fitting before it loads measures
@@ -126,26 +122,4 @@ export function TerminalView({
       ) : null}
     </div>
   )
-}
-
-/** Below this, a panel is mid-layout rather than genuinely small. */
-const MIN_USABLE_PX = 60
-const MIN_COLS = 20
-const MIN_ROWS = 4
-
-/**
- * A first guess at the PTY grid, from the panel size and xterm's default cell.
- *
- * Only used for the initial spawn; the real measurement follows once the font
- * has loaded. An unmeasurable panel falls back to a conventional terminal size,
- * which is wrong by a little rather than catastrophically.
- */
-function estimateGrid(container: HTMLElement): { cols: number; rows: number } {
-  const { width, height } = container.getBoundingClientRect()
-  if (width < MIN_USABLE_PX || height < MIN_USABLE_PX) return { cols: 80, rows: 24 }
-
-  return {
-    cols: Math.max(MIN_COLS, Math.floor(width / 7.2)),
-    rows: Math.max(MIN_ROWS, Math.floor(height / 16.2)),
-  }
 }

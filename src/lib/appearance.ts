@@ -11,10 +11,13 @@ export function resolveTheme(theme: Theme): 'dark' | 'light' {
 /**
  * Puts the look on the document.
  *
- * Everything visual reads these: the palette from `data-theme`, translucency
- * and blur from two variables. Changing any of them is a repaint, not a reload
- * — which is what makes dragging a slider feel like adjusting the window rather
- * than configuring it.
+ * Everything visual reads these: the palette from `data-theme` and translucency
+ * from one variable. Changing either is a repaint, not a reload — which is what
+ * makes dragging the slider feel like adjusting the window rather than
+ * configuring it.
+ *
+ * Frosting is not here. It is a window effect the shell applies, because
+ * nothing inside the page can blur what is behind the window.
  */
 export function applyAppearance(appearance: Appearance): 'dark' | 'light' {
   const resolved = resolveTheme(appearance.theme)
@@ -22,10 +25,9 @@ export function applyAppearance(appearance: Appearance): 'dark' | 'light' {
 
   root.dataset['theme'] = resolved
   root.style.setProperty('--window-alpha', String(appearance.windowOpacity))
-  root.style.setProperty('--blur-px', `${appearance.blur}px`)
 
-  // The window frame is drawn by the system, not by us — traffic lights, the
-  // vibrancy behind a translucent window. Left alone it follows the operating
+  // The window frame is drawn by the system, not by us — traffic lights, and
+  // the material behind a frosted window. Left alone it follows the operating
   // system, which is wrong the moment someone picks a theme that does not.
   void getCurrentWindow()
     .setTheme(resolved)

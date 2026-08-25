@@ -518,6 +518,14 @@ impl Beacon {
         self.save_settings()
     }
 
+    /// How the window should look, in range.
+    ///
+    /// Needed outside the snapshot because part of the appearance is a window
+    /// effect the shell applies, not a CSS variable the frontend sets.
+    pub fn appearance(&self) -> Appearance {
+        self.settings.appearance.clamped()
+    }
+
     /// Stores how the window should look.
     pub fn set_appearance(&mut self, appearance: Appearance) -> Result<()> {
         self.settings.appearance = appearance.validated()?;
