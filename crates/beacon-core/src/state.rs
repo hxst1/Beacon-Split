@@ -53,6 +53,7 @@ pub struct Snapshot {
     pub appearance: Appearance,
     /// `None` means the account's own shell, started as a login shell.
     pub shell: Option<crate::settings::ShellSpec>,
+    pub notifications: bool,
     pub projects_home: String,
 }
 
@@ -175,6 +176,7 @@ impl Beacon {
             bindings: keymap::resolve(&self.settings.bindings),
             appearance: self.settings.appearance.clamped(),
             shell: self.settings.shell.clone(),
+            notifications: self.settings.notifications,
             projects_home: home.to_string_lossy().into_owned(),
         }
     }
@@ -507,6 +509,12 @@ impl Beacon {
     /// Stores how the window should look.
     pub fn set_appearance(&mut self, appearance: Appearance) -> Result<()> {
         self.settings.appearance = appearance.validated()?;
+        self.save_settings()
+    }
+
+    /// Whether Beacon may interrupt with a system notification.
+    pub fn set_notifications(&mut self, enabled: bool) -> Result<()> {
+        self.settings.notifications = enabled;
         self.save_settings()
     }
 

@@ -1,6 +1,6 @@
 use beacon_core::domain::{ProjectId, WorkspaceId};
 use beacon_core::dotenv::{self, EnvEntry};
-use beacon_core::files::{self, DirEntry, FileContents};
+use beacon_core::files::{self, DirEntry, FileContents, FileRead, WriteOutcome};
 use tauri::State;
 
 use crate::error::CommandResult;
@@ -34,11 +34,30 @@ pub fn read_file(
     workspace_id: WorkspaceId,
     project_id: ProjectId,
     path: String,
-) -> CommandResult<FileContents> {
+) -> CommandResult<FileRead> {
     let root = project_root!(state, workspace_id, project_id);
     Ok(files::read_file(&root, &path)?)
 }
 
+/// What the file's revision is now, without reading it.
+///
+/// Used to notice that something else — usually Claude — changed a file that
+/// is open.
+#[tauri::command]
+pub fn file_revision(
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    project_id: ProjectId,
+    path: String,
+) -> CommandResult<Option<u64>> {
+    let root = project_root!(state, workspace_id, project_id);
+    Ok(files::revision(&root, &path)?)
+}
+
+/// Writes a file back, refusing if it changed since it was read.
+///
+/// `expectedRevision` is what the editor was working from. Absent means an
+/// overwrite that was explicitly asked for.
 #[tauri::command]
 pub fn write_file(
     state: State<'_, AppState>,
@@ -46,10 +65,11 @@ pub fn write_file(
     project_id: ProjectId,
     path: String,
     text: String,
-) -> CommandResult<()> {
+    expected_revision: Option<u64>,
+) -> CommandResult<WriteOutcome> {
     let root = project_root!(state, workspace_id, project_id);
     // Never log `text`: this is the user's file, and one of them is `.env`.
-    Ok(files::write_file(&root, &path, &text)?)
+    Ok(files::write_file(&root, &path, &text, expected_revision)?)
 }
 
 #[tauri::command]
@@ -166,7 +186,7 @@ pub fn read_env_file(
     path: String,
 ) -> CommandResult<Vec<EnvEntry>> {
     let root = project_root!(state, workspace_id, project_id);
-    match files::read_file(&root, &path)? {
+    match files::read_file(&root, &path)?.contents {
         FileContents::Text { text } => Ok(dotenv::parse(&text)),
         _ => Ok(Vec::new()),
     }

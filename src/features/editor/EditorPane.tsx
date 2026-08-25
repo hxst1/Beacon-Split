@@ -1,5 +1,7 @@
 import { useCallback, useRef } from 'react'
 
+import { useLiveRefresh } from '@/lib/useLiveRefresh'
+
 import { useBeacon } from '@/app/store'
 import { EnvView } from '@/features/env/EnvView'
 import { CodeEditor } from './CodeEditor'
@@ -32,10 +34,23 @@ export function EditorPane({
   const close = useEditor((s) => s.close)
   const markDirty = useEditor((s) => s.markDirty)
   const save = useEditor((s) => s.save)
+  const overwrite = useEditor((s) => s.overwrite)
+  const reload = useEditor((s) => s.reload)
+  const checkForChanges = useEditor((s) => s.checkForChanges)
   const theme = useBeacon((s) => s.resolvedTheme)
 
   // The live buffer, so the tab's save button writes what is on screen.
   const buffer = useRef<string>('')
+
+  // Claude edits files while they are open, so an open buffer can be stale
+  // within seconds. Checked when the window comes back rather than on a timer:
+  // the moment you look at it is the moment it matters.
+  useLiveRefresh(
+    useCallback(() => {
+      void checkForChanges(workspaceId, projectId)
+    }, [checkForChanges, workspaceId, projectId]),
+    null,
+  )
 
   const active = files?.find((file) => file.path === activePath) ?? files?.at(-1)
 
@@ -73,6 +88,7 @@ export function EditorPane({
               type="button"
               className={styles['tab']}
               data-active={file.path === active?.path}
+              data-changed={file.changedOnDisk === true}
               title={file.path}
               onClick={() => activate(projectId, file.path)}
             >
@@ -95,9 +111,33 @@ export function EditorPane({
       </div>
 
       <div className={styles['body']}>
+        {active?.changedOnDisk ? (
+          <div className={styles['conflict']}>
+            <span className={styles['conflictText']}>
+              {active.name} changed on disk while you were editing it — probably Claude.
+            </span>
+            <button
+              type="button"
+              className={styles['conflictAction']}
+              onClick={() => void reload(workspaceId, projectId, active.path)}
+            >
+              Take theirs
+            </button>
+            <button
+              type="button"
+              className={styles['conflictAction']}
+              onClick={() => void overwrite(workspaceId, projectId, active.path, buffer.current)}
+            >
+              Keep mine
+            </button>
+          </div>
+        ) : null}
+
         {error ? <div className={`${styles['notice']} ${styles['error']}`}>{error}</div> : null}
         {active ? <ActiveView
-          key={active.path}
+          // The revision is in the key so a reload rebuilds the editor with
+          // what is now on disk: the initial text is read once, at mount.
+          key={`${active.path}:${active.revision ?? 0}`}
           theme={theme}
           workspaceId={workspaceId}
           projectId={projectId}

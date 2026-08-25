@@ -110,3 +110,44 @@
   color: var(--danger);
   user-select: text;
 }
+
+/*
+ * Shown when a file changed underneath an unsaved buffer.
+ *
+ * A bar rather than a dialog: the change is not an emergency, and taking the
+ * window away to announce it would be worse than the problem. It stays until
+ * one of the two things is chosen, because either is better than forgetting.
+ */
+.conflict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line-1);
+  background: color-mix(in oklab, var(--warn) 14%, transparent);
+  color: var(--warn);
+  font-size: var(--text-xs);
+}
+
+.conflictText {
+  flex: 1;
+  min-width: 0;
+}
+
+.conflictAction {
+  padding: 3px 9px;
+  border-radius: var(--radius-xs);
+  border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent);
+  color: var(--warn);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.conflictAction:hover {
+  background: color-mix(in oklab, var(--warn) 18%, transparent);
+}
+
+/* A tab whose file moved underneath it. */
+.tab[data-changed='true'] {
+  color: var(--warn);
+}

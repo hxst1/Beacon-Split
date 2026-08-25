@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::appearance::Appearance;
 use crate::paths::default_projects_home;
 
+fn yes() -> bool {
+    true
+}
+
 /// A shell and how to start it.
 ///
 /// Arguments are configurable because "login shell" is spelled differently
@@ -44,6 +48,14 @@ pub struct Settings {
     /// and not another emulator. `None` means `$SHELL`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shell: Option<ShellSpec>,
+    /// Whether Beacon may raise a system notification when a project stops and
+    /// waits for an answer.
+    ///
+    /// On by default: knowing which of several projects needs you is the whole
+    /// reason the activity states exist, and it is no use if it stays inside a
+    /// window you are not looking at.
+    #[serde(default = "yes")]
+    pub notifications: bool,
     /// How the window looks. Stored whole rather than only when changed: unlike
     /// a shortcut, every field here is always in effect.
     #[serde(default)]
@@ -68,6 +80,7 @@ impl Default for Settings {
             projects_home: None,
             bindings: BTreeMap::new(),
             shell: None,
+            notifications: true,
             appearance: Appearance::default(),
         }
     }

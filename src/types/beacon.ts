@@ -88,6 +88,8 @@ export interface Snapshot {
   appearance: Appearance
   /** `null` means the account's own shell, started as a login shell. */
   shell: ShellSpec | null
+  /** Whether Beacon may raise a system notification when a project waits. */
+  notifications: boolean
   projectsHome: string
 }
 
@@ -246,6 +248,17 @@ export type FileContents =
   | { kind: 'text'; text: string }
   | { kind: 'binary'; size: number }
   | { kind: 'tooLarge'; size: number }
+
+/**
+ * A file as it was when Beacon read it.
+ *
+ * The revision is what makes writing it back safe: Claude edits files that are
+ * open, so saving a buffer is a request to overwrite whatever happened in
+ * between, and nobody means that.
+ */
+export type FileRead = FileContents & { revision?: number }
+
+export type WriteOutcome = 'written' | 'stale' 
 
 /**
  * One assignment in a `.env` file.

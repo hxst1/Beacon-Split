@@ -850,3 +850,45 @@ restarted — and the daemon is deliberately long-lived, so that could be days.
 **Consequence.** The protocol carries a little more, and the daemon stays free
 of any opinion about where configuration lives, which is what lets it be the
 thing that outlives everything else.
+
+## ADR-046: A save is refused if the file moved underneath it
+
+**Context.** Beacon exists to work beside Claude, and Claude edits files that
+are open in the editor. Saving a buffer was an unconditional write, so it would
+overwrite Claude's work with text read minutes earlier and say nothing.
+
+**Decision.** Reading a file returns a revision — modification time mixed with
+size — and writing sends back the one it was working from. A file that has
+moved since is refused, and the editor says so with both ways out: take theirs,
+or keep mine. An explicit overwrite sends no revision at all.
+
+**Why.** This is the likeliest data loss in the application, and it is silent.
+Of the two things it could do without asking, reloading loses your typing and
+overwriting loses Claude's — so it asks, and only when there is something to
+lose: a clean buffer just reloads.
+
+**Consequence.** Time and size together rather than time alone: filesystem
+timestamps have a granularity, and a same-length edit inside that window is
+exactly what an editor must not miss. After a successful write the revision is
+re-read, since otherwise the next save would be refused against a stamp we made
+obsolete ourselves. A file deleted underneath counts as changed — recreating it
+silently is not what saving meant either.
+
+## ADR-047: A notification is an interruption, so it is narrow
+
+**Context.** Knowing that Claude is waiting is worth little if it stays inside a
+window nobody is looking at.
+
+**Decision.** A system notification when a project starts waiting, once per
+wait, and not when that project is already on screen in a focused window. It can
+be turned off, and permission is asked the first time there is something to say
+rather than at startup.
+
+**Why.** An interruption that was not worth it teaches people to dismiss the
+next one without reading, and the next one might be the one that mattered. The
+tab is already pulsing for the project you are looking at; the notification is
+for the two you are not.
+
+**Consequence.** Anything other than `waiting` clears the record, so a second
+wait notifies again. A permission prompt before the application has done
+anything is a prompt about nothing, so it waits.

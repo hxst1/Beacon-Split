@@ -5,6 +5,7 @@ import { Boot } from '@/app/Boot'
 import { Welcome } from '@/features/workspaces/Welcome'
 import { startConnectionTracking, startSystemThemeTracking, useBeacon } from '@/app/store'
 import { startActivityTracking } from '@/features/terminal/activity'
+import { startNotifications } from '@/features/terminal/notify'
 import { startUsageTracking } from '@/features/usage/usage'
 
 export function App(): React.ReactElement {
@@ -21,6 +22,7 @@ export function App(): React.ReactElement {
       startActivityTracking(),
       startUsageTracking(),
       startSystemThemeTracking(),
+      startNotifications(),
     ]
     void load()
 

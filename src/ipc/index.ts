@@ -19,7 +19,8 @@ import type {
   UsageReport,
   GitStatus,
   EnvEntry,
-  FileContents,
+  FileRead,
+  WriteOutcome,
   HostPlatform,
   LayoutNode,
   LayoutPreset,
@@ -88,6 +89,8 @@ export const ipc = {
 
   /** `null` goes back to the account's own shell. */
   setShell: (shell: ShellSpec | null) => invoke<Snapshot>('set_shell', { shell }),
+
+  setNotifications: (enabled: boolean) => invoke<Snapshot>('set_notifications', { enabled }),
 
   setActiveProject: (workspaceId: string, projectId: string) =>
     invoke<Snapshot>('set_active_project', { workspaceId, projectId }),
@@ -172,10 +175,20 @@ export const ipc = {
     invoke<DirEntry[]>('list_dir', { workspaceId, projectId, path }),
 
   readFile: (workspaceId: string, projectId: string, path: string) =>
-    invoke<FileContents>('read_file', { workspaceId, projectId, path }),
+    invoke<FileRead>('read_file', { workspaceId, projectId, path }),
 
-  writeFile: (workspaceId: string, projectId: string, path: string, text: string) =>
-    invoke<void>('write_file', { workspaceId, projectId, path, text }),
+  /** Whether a file has changed, without reading it. */
+  fileRevision: (workspaceId: string, projectId: string, path: string) =>
+    invoke<number | null>('file_revision', { workspaceId, projectId, path }),
+
+  /** Refuses if the file changed since it was read, unless `expected` is null. */
+  writeFile: (
+    workspaceId: string,
+    projectId: string,
+    path: string,
+    text: string,
+    expectedRevision: number | null,
+  ) => invoke<WriteOutcome>('write_file', { workspaceId, projectId, path, text, expectedRevision }),
 
   createFile: (workspaceId: string, projectId: string, path: string) =>
     invoke<void>('create_file', { workspaceId, projectId, path }),

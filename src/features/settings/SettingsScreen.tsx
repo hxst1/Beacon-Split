@@ -26,6 +26,7 @@ type SectionId =
   | 'panels'
   | 'workspace'
   | 'keyboard'
+  | 'terminal'
   | 'claude'
   | 'about'
 
@@ -36,6 +37,7 @@ const SECTIONS: Array<{ id: SectionId; label: string }> = [
   { id: 'panels', label: 'Panels' },
   { id: 'workspace', label: 'Workspace' },
   { id: 'keyboard', label: 'Keyboard' },
+  { id: 'terminal', label: 'Terminal' },
   { id: 'claude', label: 'Claude Code' },
   { id: 'about', label: 'About' },
 ]
@@ -102,6 +104,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }): React.Reac
           {section === 'panels' ? <PanelsSection /> : null}
           {section === 'workspace' ? <WorkspaceSection /> : null}
           {section === 'keyboard' ? <KeyboardSection /> : null}
+          {section === 'terminal' ? <TerminalSection /> : null}
           {section === 'claude' ? <ClaudeSection /> : null}
           {section === 'about' ? <AboutSection /> : null}
         </div>
@@ -579,6 +582,87 @@ function KeyboardSection(): React.ReactElement {
         Reset all shortcuts
       </button>
     </section>
+  )
+}
+
+/**
+ * What a terminal runs, and whether Beacon may interrupt you.
+ *
+ * The shell is a shell, not another terminal emulator: Beacon already is one,
+ * and running kitty inside it would be an emulator inside an emulator. What
+ * people want from that question is fish instead of zsh, which is this.
+ */
+function TerminalSection(): React.ReactElement {
+  const shell = useBeacon((s) => s.snapshot?.shell ?? null)
+  const notifications = useBeacon((s) => s.snapshot?.notifications ?? true)
+  const setShell = useBeacon((s) => s.setShell)
+  const setNotifications = useBeacon((s) => s.setNotifications)
+  const [draft, setDraft] = useState<string | null>(null)
+
+  const value = draft ?? (shell ? [shell.program, ...shell.args].join(' ') : '')
+
+  const commit = (): void => {
+    const parts = value.trim().split(/\s+/).filter(Boolean)
+    const [program, ...args] = parts
+    void setShell(program ? { program, args } : null)
+    setDraft(null)
+  }
+
+  return (
+    <>
+      <section className={styles['section']}>
+        <h2 className={styles['sectionTitle']}>Shell</h2>
+        <p className={styles['sectionNote']}>
+          Beacon is the terminal emulator, so this is a shell — zsh, fish, nu — and not another
+          one. Leave it empty for your account's shell, started as a login shell, which is what
+          every terminal does. Arguments go after the program.
+        </p>
+
+        <input
+          className={styles['command']}
+          style={{ width: '100%' }}
+          placeholder={`Default: ${'$SHELL'} -l`}
+          spellCheck={false}
+          value={value}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commit()
+            if (event.key === 'Escape') setDraft(null)
+          }}
+        />
+
+        <p className={styles['sectionNote']} style={{ marginTop: 10 }}>
+          Anything specific to another emulator — kitty's graphics or keyboard protocols — is not
+          available here, and will not be: those belong to the emulator, which is the part Beacon
+          replaces. Terminals already running keep the shell they started with.
+        </p>
+      </section>
+
+      <section className={styles['section']}>
+        <h2 className={styles['sectionTitle']}>Interruptions</h2>
+        <p className={styles['sectionNote']}>
+          With several projects open, the expensive thing is not switching tabs — it is a
+          permission prompt in one of them going unseen. Beacon can say so, and only when you are
+          not already looking at that project.
+        </p>
+
+        <div className={styles['rows']}>
+          <div className={styles['row']}>
+            <span className={styles['rowLabel']}>Notify me when Claude is waiting</span>
+            <button
+              type="button"
+              className={styles['toggle']}
+              data-on={notifications}
+              role="switch"
+              aria-checked={notifications}
+              aria-label="Notify me when Claude is waiting"
+              onClick={() => void setNotifications(!notifications)}
+            />
+          </div>
+        </div>
+      </section>
+    </>
   )
 }
 

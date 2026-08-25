@@ -103,6 +103,14 @@ pub fn set_appearance(
     Ok(beacon.snapshot())
 }
 
+/// Whether Beacon may interrupt with a system notification.
+#[tauri::command]
+pub fn set_notifications(state: State<'_, AppState>, enabled: bool) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_notifications(enabled)?;
+    Ok(beacon.snapshot())
+}
+
 /// Binds an action to a shortcut, or clears it back to the default.
 #[tauri::command]
 pub fn set_binding(

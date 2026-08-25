@@ -18,6 +18,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let beacon = Beacon::load_default().map_err(|err| {
@@ -46,12 +47,14 @@ pub fn run() {
             commands::move_project,
             commands::reorder_project,
             commands::set_shell,
+            commands::set_notifications,
             commands::set_active_project,
             commands::reveal_project,
             commands::host_platform,
             commands::report_frontend_error,
             commands::list_dir,
             commands::read_file,
+            commands::file_revision,
             commands::write_file,
             commands::create_file,
             commands::create_dir,

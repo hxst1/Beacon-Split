@@ -31,6 +31,22 @@ pub struct DirEntry {
     pub hidden: bool,
 }
 
+/// A file as it was when Beacon read it.
+///
+/// The revision is what makes it safe to write back. Beacon exists to work
+/// alongside Claude, and Claude edits files that are open — so "save what is in
+/// the buffer" is a request to overwrite whatever happened in between, and
+/// nobody means that.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileRead {
+    #[serde(flatten)]
+    pub contents: FileContents,
+    /// Changes whenever the file does. `None` when the filesystem would not say.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u64>,
+}
+
 /// What came back from opening a file.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -142,26 +158,68 @@ fn directory_rank(entry: &DirEntry) -> u8 {
     }
 }
 
-pub fn read_file(root: &Path, relative: &str) -> Result<FileContents> {
+pub fn read_file(root: &Path, relative: &str) -> Result<FileRead> {
     let path = resolve_within(root, relative)?;
     let metadata = std::fs::metadata(&path).map_err(|err| CoreError::io(&path, err))?;
     let size = metadata.len();
+    let revision = revision_of(&metadata);
 
     if size > MAX_EDITABLE_BYTES {
-        return Ok(FileContents::TooLarge { size });
+        return Ok(FileRead {
+            contents: FileContents::TooLarge { size },
+            revision,
+        });
     }
 
     let bytes = std::fs::read(&path).map_err(|err| CoreError::io(&path, err))?;
     if looks_binary(&bytes) {
-        return Ok(FileContents::Binary { size });
+        return Ok(FileRead {
+            contents: FileContents::Binary { size },
+            revision,
+        });
     }
 
-    match String::from_utf8(bytes) {
-        Ok(text) => Ok(FileContents::Text { text }),
+    let contents = match String::from_utf8(bytes) {
+        Ok(text) => FileContents::Text { text },
         // Valid bytes that are not UTF-8: treat as binary rather than lose them
         // to replacement characters on the way back out.
-        Err(_) => Ok(FileContents::Binary { size }),
+        Err(_) => FileContents::Binary { size },
+    };
+    Ok(FileRead { contents, revision })
+}
+
+/// A stamp that changes whenever the file does.
+///
+/// Modification time and size together: time alone can repeat within a
+/// filesystem's granularity, and a same-length edit inside that window is
+/// exactly the kind of change an editor must not miss.
+fn revision_of(metadata: &std::fs::Metadata) -> Option<u64> {
+    let modified = metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    Some(modified.as_nanos() as u64 ^ (metadata.len().rotate_left(17)))
+}
+
+/// What the file's revision is now, without reading it.
+pub fn revision(root: &Path, relative: &str) -> Result<Option<u64>> {
+    let path = resolve_within(root, relative)?;
+    match std::fs::metadata(&path) {
+        Ok(metadata) => Ok(revision_of(&metadata)),
+        // A file that is gone has no revision, which is itself worth knowing.
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(CoreError::io(&path, err)),
     }
+}
+
+/// Why a write was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WriteOutcome {
+    Written,
+    /// The file changed since it was read. Nothing was written.
+    Stale,
 }
 
 /// A NUL byte near the start is the usual signal, and the cheapest one.
@@ -169,9 +227,29 @@ fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(SNIFF_BYTES).any(|byte| *byte == 0)
 }
 
-pub fn write_file(root: &Path, relative: &str, text: &str) -> Result<()> {
+/// Writes a file back, refusing if it changed since it was read.
+///
+/// `expected` is the revision the editor was working from. Passing `None` means
+/// "write regardless", which is what an explicit overwrite asks for.
+pub fn write_file(
+    root: &Path,
+    relative: &str,
+    text: &str,
+    expected: Option<u64>,
+) -> Result<WriteOutcome> {
     let path = resolve_within(root, relative)?;
-    std::fs::write(&path, text).map_err(|err| CoreError::io(&path, err))
+
+    if let Some(expected) = expected {
+        let current = revision(root, relative)?;
+        // A file that has since been deleted counts as changed: recreating it
+        // silently is not what saving meant either.
+        if current != Some(expected) {
+            return Ok(WriteOutcome::Stale);
+        }
+    }
+
+    std::fs::write(&path, text).map_err(|err| CoreError::io(&path, err))?;
+    Ok(WriteOutcome::Written)
 }
 
 pub fn create_file(root: &Path, relative: &str) -> Result<()> {
@@ -460,13 +538,80 @@ mod tests {
         std::fs::write(dir.path().join("blob.bin"), [0u8, 1, 2, 3]).unwrap();
 
         assert!(matches!(
-            read_file(dir.path(), "README.md").unwrap(),
+            read_file(dir.path(), "README.md").unwrap().contents,
             FileContents::Text { .. }
         ));
         assert!(matches!(
-            read_file(dir.path(), "blob.bin").unwrap(),
+            read_file(dir.path(), "blob.bin").unwrap().contents,
             FileContents::Binary { .. }
         ));
+    }
+
+    #[test]
+    fn a_write_is_refused_when_the_file_changed_underneath_it() {
+        // The case this exists for: Claude edits a file while it is open, and
+        // saving the buffer would throw that away without saying so.
+        let dir = project();
+        let read = read_file(dir.path(), "README.md").unwrap();
+
+        std::fs::write(dir.path().join("README.md"), "# changed by something else").unwrap();
+
+        let outcome = write_file(dir.path(), "README.md", "# my edit", read.revision).unwrap();
+        assert_eq!(outcome, WriteOutcome::Stale);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("README.md")).unwrap(),
+            "# changed by something else",
+            "nothing should have been written"
+        );
+    }
+
+    #[test]
+    fn a_write_goes_through_when_nothing_moved() {
+        let dir = project();
+        let read = read_file(dir.path(), "README.md").unwrap();
+
+        let outcome = write_file(dir.path(), "README.md", "# mine", read.revision).unwrap();
+        assert_eq!(outcome, WriteOutcome::Written);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("README.md")).unwrap(),
+            "# mine"
+        );
+    }
+
+    #[test]
+    fn passing_no_revision_overwrites_deliberately() {
+        let dir = project();
+        std::fs::write(dir.path().join("README.md"), "# theirs").unwrap();
+
+        let outcome = write_file(dir.path(), "README.md", "# mine", None).unwrap();
+        assert_eq!(outcome, WriteOutcome::Written);
+    }
+
+    #[test]
+    fn a_file_deleted_underneath_counts_as_changed() {
+        let dir = project();
+        let read = read_file(dir.path(), "README.md").unwrap();
+        std::fs::remove_file(dir.path().join("README.md")).unwrap();
+
+        // Recreating it silently is not what saving meant.
+        assert_eq!(
+            write_file(dir.path(), "README.md", "# mine", read.revision).unwrap(),
+            WriteOutcome::Stale
+        );
+    }
+
+    #[test]
+    fn a_same_length_edit_still_changes_the_revision() {
+        let dir = project();
+        std::fs::write(dir.path().join("same.txt"), "aaaa").unwrap();
+        let first = revision(dir.path(), "same.txt").unwrap();
+
+        // Same size, and possibly the same second, which is why size alone and
+        // time alone are both insufficient.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(dir.path().join("same.txt"), "bbbb").unwrap();
+
+        assert_ne!(revision(dir.path(), "same.txt").unwrap(), first);
     }
 
     #[test]

@@ -20,6 +20,7 @@ import type {
   Appearance,
   LayoutNode,
   Requirement,
+  ShellSpec,
   LayoutPreset,
   PanelId,
   Project,
@@ -108,6 +109,9 @@ interface BeaconState {
    * conflicting action is named.
    */
   setAppearance: (appearance: Appearance) => Promise<void>
+  /** `null` goes back to the account's own shell. */
+  setShell: (shell: ShellSpec | null) => Promise<void>
+  setNotifications: (enabled: boolean) => Promise<void>
   setBinding: (action: string, binding: string | null) => Promise<string | null>
   resetBindings: () => Promise<void>
   /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
@@ -280,6 +284,10 @@ export const useBeacon = create<BeaconState>((set, get) => {
     togglePanel: (panel) => run(() => ipc.togglePanel(panel)),
 
     setAppearance: (appearance) => run(() => ipc.setAppearance(appearance)),
+
+    setShell: (shell) => run(() => ipc.setShell(shell)),
+
+    setNotifications: (enabled) => run(() => ipc.setNotifications(enabled)),
 
     setBinding: async (action, binding) => {
       try {

@@ -107,8 +107,10 @@ reading output and guessing.
 - A `.env` view: values masked, show or copy one at a time, copy `KEY=value`.
   Read fresh each time and kept nowhere else
 
-Still to do here: following file changes made outside Beacon in an open buffer.
-The tree notices on focus; a buffer does not.
+An open buffer notices when its file changes underneath it — which, in this
+application, usually means Claude — and refuses to overwrite it. A clean buffer
+reloads; a dirty one asks, since one choice loses your typing and the other
+loses Claude's.
 
 ## Milestone 5 — Git ✅
 
@@ -198,8 +200,8 @@ Reports expire. If Claude Code stops reporting — signed out mid-session,
 crashed, hooks removed — a stale "working" falls back to inference and stale
 numbers are dimmed and labelled rather than left standing as current.
 
-Still to do: notifying the system when a project starts waiting, so it reaches
-you when Beacon is not the window you are looking at.
+A project that starts waiting raises a system notification, once per wait, and
+only when it is not already on screen in a focused window.
 
 ## Milestone 9 — Handing it to someone else 🚧
 
