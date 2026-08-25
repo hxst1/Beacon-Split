@@ -5,7 +5,7 @@
   display: grid;
   place-items: center;
   padding: 5vh 5vw;
-  background: rgb(0 0 0 / 0.5);
+  background: var(--scrim);
   animation: fade var(--dur-2) var(--ease);
 }
 
@@ -18,11 +18,11 @@
   overflow: hidden;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-lg);
-  background: #15151b;
+  background: var(--solid-1);
   box-shadow:
-    0 1px 0 0 rgb(255 255 255 / 0.06) inset,
+    0 1px 0 0 var(--edge-light) inset,
     0 0 0 1px var(--accent-line),
-    0 40px 90px -25px rgb(0 0 0 / 0.8);
+    var(--shadow-screen);
   animation: rise var(--dur-2) var(--ease);
 }
 
@@ -187,7 +187,7 @@
   padding: 1px 6px;
   border: 1px solid var(--line-2);
   border-radius: 4px;
-  background: rgb(255 255 255 / 0.03);
+  background: var(--surface-1);
   color: var(--fg-3);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
@@ -200,7 +200,7 @@
   height: 17px;
   flex: none;
   border-radius: 99px;
-  background: rgb(255 255 255 / 0.09);
+  background: var(--surface-3);
   transition: background var(--dur-2) var(--ease);
 }
 
@@ -216,7 +216,8 @@
   width: 13px;
   height: 13px;
   border-radius: 99px;
-  background: rgb(255 255 255 / 0.9);
+  background: var(--solid-1);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
   transition: transform var(--dur-2) var(--ease);
 }
 
@@ -244,7 +245,7 @@
 .swatch[data-selected='true'] {
   opacity: 1;
   transform: scale(1.12);
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.55) inset;
+  box-shadow: 0 0 0 1px var(--ring) inset;
 }
 
 @keyframes fade {
@@ -267,7 +268,7 @@
   padding: 2px 8px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xs);
-  background: rgb(255 255 255 / 0.03);
+  background: var(--surface-1);
   color: var(--fg-2);
   font-size: var(--text-xs);
   min-width: 88px;
@@ -338,7 +339,7 @@
   padding: 8px 10px;
   border: 1px solid var(--line-1);
   border-radius: var(--radius-sm);
-  background: rgb(0 0 0 / 0.3);
+  background: var(--field);
   color: var(--fg-3);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -363,8 +364,8 @@
   flex: none;
 }
 
-.stateDot[data-state='installed'] { background: #8fd18a; }
-.stateDot[data-state='stale'] { background: #e0a76a; }
+.stateDot[data-state='installed'] { background: var(--ok); }
+.stateDot[data-state='stale'] { background: var(--warn); }
 
 .primary {
   padding: 5px 12px;
@@ -448,7 +449,7 @@
   padding: 5px 9px;
   border: 1px solid var(--line-1);
   border-radius: var(--radius-sm);
-  background: rgb(0 0 0 / 0.3);
+  background: var(--field);
   color: var(--fg-2);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -461,4 +462,97 @@
 .installCommand:hover {
   border-color: var(--accent-line);
   color: var(--fg-1);
+}
+
+.themes {
+  display: flex;
+  gap: 7px;
+}
+
+.themeOption {
+  flex: 1;
+  padding: 9px 8px 10px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-md);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+.themeOption:hover {
+  background: var(--surface-1);
+  color: var(--fg-2);
+}
+
+.themeOption[data-selected='true'] {
+  color: var(--fg-1);
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+}
+
+/* A miniature window, so the choice is shown rather than named. */
+.themeSwatch {
+  height: 34px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-1);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 9px 1fr;
+}
+
+.themeSwatch > :first-child {
+  border-bottom: 1px solid var(--line-1);
+}
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  font-size: var(--text-sm);
+  color: var(--fg-2);
+}
+
+.slider + .slider {
+  border-top: 1px solid var(--line-1);
+}
+
+.sliderLabel {
+  width: 116px;
+  flex: none;
+}
+
+.sliderInput {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  appearance: none;
+  border-radius: 99px;
+  background: var(--surface-3);
+  outline: none;
+}
+
+.sliderInput::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+  cursor: grab;
+}
+
+.sliderInput:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.sliderValue {
+  width: 52px;
+  flex: none;
+  text-align: right;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
 }

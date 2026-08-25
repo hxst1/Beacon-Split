@@ -25,7 +25,7 @@
   padding: 6px 11px;
   border: 1px solid var(--line-1);
   border-radius: var(--radius-sm);
-  background: rgb(0 0 0 / 0.3);
+  background: var(--field);
   color: var(--fg-2);
   font-family: var(--font-mono);
   font-size: var(--text-xs);

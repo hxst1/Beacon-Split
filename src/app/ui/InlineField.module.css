@@ -18,7 +18,7 @@
   padding: 6px 8px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-sm);
-  background: rgb(0 0 0 / 0.28);
+  background: var(--field);
   color: var(--fg-1);
   font-size: var(--text-sm);
   outline: none;
@@ -50,7 +50,7 @@
 
 .swatch[data-selected='true'] {
   opacity: 1;
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.5) inset;
+  box-shadow: 0 0 0 1px var(--ring) inset;
 }
 
 .actions {

@@ -10,6 +10,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
+  Appearance,
   DirEntry,
   HookStatus,
   Requirement,
@@ -53,6 +54,8 @@ export const ipc = {
     invoke<Array<{ preset: LayoutPreset; layout: LayoutNode }>>('layout_presets'),
 
   togglePanel: (panel: PanelId) => invoke<Snapshot>('toggle_panel', { panel }),
+
+  setAppearance: (appearance: Appearance) => invoke<Snapshot>('set_appearance', { appearance }),
 
   /** `null` clears the binding back to its default. */
   setBinding: (action: string, binding: string | null) =>

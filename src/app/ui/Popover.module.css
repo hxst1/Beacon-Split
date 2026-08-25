@@ -13,10 +13,10 @@
   /* Opaque, not translucent. A menu is small text you have to read quickly,
      and whatever is behind it only makes that harder. Blur is for surfaces you
      look past, not ones you look at. */
-  background: #15151b;
+  background: var(--solid-1);
   box-shadow:
-    0 1px 0 0 rgb(255 255 255 / 0.05) inset,
-    0 18px 44px -12px rgb(0 0 0 / 0.7);
+    0 1px 0 0 var(--edge-light) inset,
+    var(--shadow-float);
   animation: rise var(--dur-2) var(--ease);
 }
 

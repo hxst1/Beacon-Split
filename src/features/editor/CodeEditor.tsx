@@ -21,6 +21,11 @@ import styles from './CodeEditor.module.css'
 interface CodeEditorProps {
   /** Identifies the buffer; changing it swaps the document. */
   path: string
+  /**
+   * The palette in force. CodeMirror compiles a theme into a stylesheet when
+   * the view is created, so changing it means rebuilding the view.
+   */
+  theme: 'dark' | 'light'
   initialText: string
   onChange: (text: string) => void
   onSave: (text: string) => void
@@ -35,6 +40,7 @@ interface CodeEditorProps {
  */
 export function CodeEditor({
   path,
+  theme,
   initialText,
   onChange,
   onSave,
@@ -68,7 +74,7 @@ export function CodeEditor({
           highlightSelectionMatches(),
           EditorState.allowMultipleSelections.of(true),
           language.of([]),
-          beaconTheme,
+          beaconTheme(),
           keymap.of([
             // Save before the defaults, so Cmd/Ctrl+S is ours everywhere.
             {
@@ -107,9 +113,10 @@ export function CodeEditor({
       viewRef.current = null
     }
     // Rebuilding on `path` is deliberate: a different file is a different
-    // document and a different history.
+    // document and a different history. `theme` is here because the stylesheet
+    // is compiled once, not read live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path])
+  }, [path, theme])
 
   return <div className={styles['root']} ref={hostRef} />
 }

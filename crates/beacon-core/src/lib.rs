@@ -6,6 +6,7 @@
 //! not kill live Claude sessions, and everything here is meant to move there
 //! unchanged.
 
+pub mod appearance;
 pub mod claude_hooks;
 pub mod client;
 pub mod detect;

@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react'
 
+import { useBeacon } from '@/app/store'
 import { EnvView } from '@/features/env/EnvView'
 import { CodeEditor } from './CodeEditor'
 import { useEditor } from './openFiles'
@@ -31,6 +32,7 @@ export function EditorPane({
   const close = useEditor((s) => s.close)
   const markDirty = useEditor((s) => s.markDirty)
   const save = useEditor((s) => s.save)
+  const theme = useBeacon((s) => s.resolvedTheme)
 
   // The live buffer, so the tab's save button writes what is on screen.
   const buffer = useRef<string>('')
@@ -96,6 +98,7 @@ export function EditorPane({
         {error ? <div className={`${styles['notice']} ${styles['error']}`}>{error}</div> : null}
         {active ? <ActiveView
           key={active.path}
+          theme={theme}
           workspaceId={workspaceId}
           projectId={projectId}
           path={active.path}
@@ -114,6 +117,7 @@ function ActiveView({
   projectId,
   path,
   name,
+  theme,
   contents,
   onChange,
   onSave,
@@ -122,6 +126,7 @@ function ActiveView({
   projectId: string
   path: string
   name: string
+  theme: 'dark' | 'light'
   contents: import('@/types/beacon').FileContents
   onChange: (text: string) => void
   onSave: (text: string) => void
@@ -142,6 +147,12 @@ function ActiveView({
   }
 
   return (
-    <CodeEditor path={path} initialText={contents.text} onChange={onChange} onSave={onSave} />
+    <CodeEditor
+      path={path}
+      theme={theme}
+      initialText={contents.text}
+      onChange={onChange}
+      onSave={onSave}
+    />
   )
 }

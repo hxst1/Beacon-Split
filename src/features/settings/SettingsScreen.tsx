@@ -3,11 +3,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { selectActiveWorkspace, selectBindings, selectHidden, useBeacon } from '@/app/store'
 import { errorMessage, ipc } from '@/ipc'
 import { ACCENT_PRESETS } from '@/lib/accent'
+import { applyAppearance } from '@/lib/appearance'
 import { PANEL_LABELS } from '@/lib/layout'
 import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
 import { modifierLabel } from '@/lib/platform'
 import type {
+  Appearance,
   Integration,
+  Theme,
   LayoutNode,
   LayoutPreset,
   PanelId,
@@ -17,6 +20,7 @@ import { LayoutThumb } from './LayoutThumb'
 import styles from './SettingsScreen.module.css'
 
 type SectionId =
+  | 'appearance'
   | 'requirements'
   | 'layout'
   | 'panels'
@@ -26,6 +30,7 @@ type SectionId =
   | 'about'
 
 const SECTIONS: Array<{ id: SectionId; label: string }> = [
+  { id: 'appearance', label: 'Appearance' },
   { id: 'requirements', label: 'Requirements' },
   { id: 'layout', label: 'Layout' },
   { id: 'panels', label: 'Panels' },
@@ -53,7 +58,7 @@ const TOGGLEABLE: PanelId[] = ['editor', 'files', 'git', 'terminal']
  * four of them, and a settings surface that grows will not fit beside a button.
  */
 export function SettingsScreen({ onClose }: { onClose: () => void }): React.ReactElement {
-  const [section, setSection] = useState<SectionId>('layout')
+  const [section, setSection] = useState<SectionId>('appearance')
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -91,6 +96,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }): React.Reac
         </nav>
 
         <div className={styles['content']}>
+          {section === 'appearance' ? <AppearanceSection /> : null}
           {section === 'requirements' ? <RequirementsSection /> : null}
           {section === 'layout' ? <LayoutSection /> : null}
           {section === 'panels' ? <PanelsSection /> : null}
@@ -101,6 +107,128 @@ export function SettingsScreen({ onClose }: { onClose: () => void }): React.Reac
         </div>
       </div>
     </div>
+  )
+}
+
+const THEMES: Array<{ theme: Theme; label: string; swatch: [string, string] }> = [
+  { theme: 'system', label: 'System', swatch: ['#1c1c23', '#f2f2f5'] },
+  { theme: 'dark', label: 'Dark', swatch: ['#15151b', '#08080b'] },
+  { theme: 'light', label: 'Light', swatch: ['#ffffff', '#f6f6f8'] },
+]
+
+/**
+ * The two things about the look that are taste rather than design.
+ *
+ * Applied as you drag rather than on release: how translucent a window should
+ * be is not a number anyone knows in advance, it is something you find by
+ * moving it and looking. Only the value you settle on is written to disk.
+ */
+function AppearanceSection(): React.ReactElement {
+  const appearance = useBeacon((s) => s.snapshot?.appearance)
+  const setAppearance = useBeacon((s) => s.setAppearance)
+
+  // Local while dragging: a slider that waits for a round trip stutters.
+  const [draft, setDraft] = useState<Appearance | null>(null)
+  const current = draft ?? appearance ?? null
+
+  useEffect(() => setDraft(null), [appearance])
+
+  if (!current) return <section className={styles['section']}>Loading…</section>
+
+  const preview = (next: Appearance): void => {
+    setDraft(next)
+    applyAppearance(next)
+  }
+
+  const commit = (next: Appearance): void => {
+    void setAppearance(next)
+  }
+
+  return (
+    <>
+      <section className={styles['section']}>
+        <h2 className={styles['sectionTitle']}>Theme</h2>
+        <p className={styles['sectionNote']}>
+          Beacon is dark by default and follows the system unless you say otherwise. The workspace
+          accent works the same in either — it is the one colour a workspace declares, and
+          everything tinted is mixed from it.
+        </p>
+        <div className={styles['themes']}>
+          {THEMES.map(({ theme, label, swatch }) => (
+            <button
+              key={theme}
+              type="button"
+              className={styles['themeOption']}
+              data-selected={theme === current.theme}
+              onClick={() => commit({ ...current, theme })}
+            >
+              <span className={styles['themeSwatch']}>
+                <span style={{ background: swatch[0] }} />
+                <span style={{ background: swatch[1] }} />
+              </span>
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className={styles['section']}>
+        <h2 className={styles['sectionTitle']}>Material</h2>
+        <p className={styles['sectionNote']}>
+          How much of what is behind the window comes through, and how far it is pushed out of
+          focus. Drag to see it; it is saved when you let go. Opacity stops at half — below that
+          the desktop starts competing with the text.
+        </p>
+
+        <div className={styles['rows']}>
+          <div className={styles['slider']}>
+            <span className={styles['sliderLabel']}>Opacity</span>
+            <input
+              type="range"
+              className={styles['sliderInput']}
+              min={50}
+              max={100}
+              step={1}
+              value={Math.round(current.windowOpacity * 100)}
+              onChange={(event) =>
+                preview({ ...current, windowOpacity: Number(event.target.value) / 100 })
+              }
+              onPointerUp={() => commit(current)}
+              onKeyUp={() => commit(current)}
+            />
+            <span className={styles['sliderValue']}>
+              {Math.round(current.windowOpacity * 100)}%
+            </span>
+          </div>
+
+          <div className={styles['slider']}>
+            <span className={styles['sliderLabel']}>Blur</span>
+            <input
+              type="range"
+              className={styles['sliderInput']}
+              min={0}
+              max={40}
+              step={1}
+              value={Math.round(current.blur)}
+              onChange={(event) => preview({ ...current, blur: Number(event.target.value) })}
+              onPointerUp={() => commit(current)}
+              onKeyUp={() => commit(current)}
+            />
+            <span className={styles['sliderValue']}>
+              {current.blur === 0 ? 'off' : `${Math.round(current.blur)}px`}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className={styles['resetAll']}
+          onClick={() => commit({ theme: current.theme, windowOpacity: 0.86, blur: 18 })}
+        >
+          Back to the defaults
+        </button>
+      </section>
+    </>
   )
 }
 

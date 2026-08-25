@@ -27,7 +27,7 @@
   width: 44px;
   height: 4px;
   border-radius: 99px;
-  background: rgb(255 255 255 / 0.09);
+  background: var(--surface-3);
   overflow: hidden;
   flex: none;
 }
@@ -52,11 +52,11 @@
 
 /* Colour only once it means something; below three quarters it is noise. */
 .fill[data-level='warn'] {
-  background: #e0a76a;
+  background: var(--warn);
 }
 
 .fill[data-level='low'] {
-  background: #ff8a8a;
+  background: var(--danger);
 }
 
 .muted {

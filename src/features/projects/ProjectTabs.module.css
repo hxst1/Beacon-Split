@@ -78,7 +78,7 @@
 
 /* Claude finished and has something for you. Present, not urgent. */
 .status[data-state='done'] {
-  background: #8fd18a;
+  background: var(--ok);
 }
 
 /*
@@ -87,8 +87,8 @@
  * not switching tabs, it is not knowing which one needs you.
  */
 .status[data-state='waiting'] {
-  background: #e0a76a;
-  box-shadow: 0 0 10px 1px color-mix(in oklab, #e0a76a 55%, transparent);
+  background: var(--warn);
+  box-shadow: 0 0 10px 1px color-mix(in oklab, var(--warn) 55%, transparent);
   animation: waiting 1s var(--ease) infinite;
 }
 

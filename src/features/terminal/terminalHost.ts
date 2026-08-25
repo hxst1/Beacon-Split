@@ -1,6 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 
+import { cssValue } from '@/lib/appearance'
 import { ipc } from '@/ipc'
 import type { SessionKind } from '@/types/beacon'
 import { attach, replayed } from './sessionBridge'
@@ -25,9 +26,21 @@ export interface HostedTerminal {
  */
 const hosted = new Map<string, HostedTerminal>()
 
-function readAccent(): string {
-  const value = getComputedStyle(document.documentElement).getPropertyValue('--accent')
-  return value.trim() || '#6b7cff'
+/**
+ * xterm draws to a canvas and cannot read CSS, so its theme is built from the
+ * same variables everything else uses and rebuilt when they change.
+ */
+function terminalTheme(): Record<string, string> {
+  const light = document.documentElement.dataset['theme'] === 'light'
+  return {
+    // Transparent, so the panel's surface shows through instead of a flat
+    // rectangle in the wrong colour for the palette.
+    background: 'rgba(0, 0, 0, 0)',
+    foreground: light ? 'rgba(20, 20, 26, 0.92)' : 'rgba(255, 255, 255, 0.88)',
+    cursor: cssValue('--accent', '#6b7cff'),
+    cursorAccent: light ? '#ffffff' : '#08080b',
+    selectionBackground: light ? 'rgba(0, 0, 0, 0.14)' : 'rgba(255, 255, 255, 0.16)',
+  }
 }
 
 function create(project: string, kind: SessionKind): HostedTerminal {
@@ -39,13 +52,7 @@ function create(project: string, kind: SessionKind): HostedTerminal {
     // Transparent, so the panel's blurred surface shows through instead of a
     // flat black rectangle.
     allowTransparency: true,
-    theme: {
-      background: 'rgba(0, 0, 0, 0)',
-      foreground: 'rgba(255, 255, 255, 0.88)',
-      cursor: readAccent(),
-      cursorAccent: '#08080b',
-      selectionBackground: 'rgba(255, 255, 255, 0.16)',
-    },
+    theme: terminalTheme(),
     fontFamily: "'SF Mono', 'JetBrains Mono', Menlo, 'DejaVu Sans Mono', monospace",
     fontSize: 12,
     lineHeight: 1.35,
@@ -140,10 +147,10 @@ export function disposeAll(): void {
   for (const sessionId of [...hosted.keys()]) dispose(sessionId)
 }
 
-/** Repaints cursors after a workspace accent change. */
+/** Repaints every terminal after the palette or the accent changes. */
 export function refreshAccent(): void {
-  const cursor = readAccent()
+  const theme = terminalTheme()
   for (const { term } of hosted.values()) {
-    term.options.theme = { ...term.options.theme, cursor }
+    term.options.theme = theme
   }
 }

@@ -115,7 +115,7 @@
   padding: 0 4px;
   border: 1px solid var(--accent-line);
   border-radius: 3px;
-  background: rgb(0 0 0 / 0.35);
+  background: var(--field);
   color: var(--fg-1);
   font: inherit;
   outline: none;

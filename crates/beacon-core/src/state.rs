@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::appearance::Appearance;
 use crate::detect::{ProjectKind, detect_kinds, suggest_name};
 use crate::domain::{Project, ProjectId, Workspace, WorkspaceId, WorkspacesFile, normalize_accent};
 use crate::error::{CoreError, Result};
@@ -49,6 +50,7 @@ pub struct Snapshot {
     pub hidden: Vec<PanelId>,
     /// Every bindable action with the shortcut it currently answers to.
     pub bindings: Vec<ActionBinding>,
+    pub appearance: Appearance,
     pub projects_home: String,
 }
 
@@ -153,6 +155,7 @@ impl Beacon {
             preset: self.ui.preset,
             hidden: self.ui.hidden.clone(),
             bindings: keymap::resolve(&self.settings.bindings),
+            appearance: self.settings.appearance.clamped(),
             projects_home: home.to_string_lossy().into_owned(),
         }
     }
@@ -450,6 +453,12 @@ impl Beacon {
                 .bindings
                 .insert(action.to_string(), normalized);
         }
+        self.save_settings()
+    }
+
+    /// Stores how the window should look.
+    pub fn set_appearance(&mut self, appearance: Appearance) -> Result<()> {
+        self.settings.appearance = appearance.validated()?;
         self.save_settings()
     }
 

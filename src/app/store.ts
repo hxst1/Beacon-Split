@@ -13,9 +13,11 @@ import {
 } from '@/features/terminal/terminalHost'
 import { errorMessage, ipc } from '@/ipc'
 import { applyAccent } from '@/lib/accent'
+import { applyAppearance, watchSystemTheme } from '@/lib/appearance'
 import { setPlatform } from '@/lib/platform'
 import type {
   ActionBinding,
+  Appearance,
   LayoutNode,
   Requirement,
   LayoutPreset,
@@ -49,6 +51,14 @@ interface BeaconState {
   attachEpoch: number
   /** True while there is no connection to the daemon. */
   detached: boolean
+  /**
+   * What `system` currently resolves to.
+   *
+   * Kept in state because two things draw their own colours — xterm on a canvas
+   * and CodeMirror in a compiled stylesheet — and both need rebuilding when it
+   * changes, which means something has to be able to notice.
+   */
+  resolvedTheme: 'dark' | 'light'
   /**
    * Things Beacon needs that this machine does not have.
    *
@@ -91,6 +101,7 @@ interface BeaconState {
    * a rejected shortcut belongs beside the row it was rejected for, where the
    * conflicting action is named.
    */
+  setAppearance: (appearance: Appearance) => Promise<void>
   setBinding: (action: string, binding: string | null) => Promise<string | null>
   resetBindings: () => Promise<void>
   /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
@@ -103,12 +114,17 @@ interface BeaconState {
 export const useBeacon = create<BeaconState>((set, get) => {
   /** Applies a snapshot returned by any command and keeps the accent in sync. */
   const accept = (snapshot: Snapshot): void => {
+    // The palette before the accent: the accent's derived tints are mixed
+    // against palette colours, so applying them the other way round would
+    // compute one frame of the wrong thing.
+    const resolvedTheme = applyAppearance(snapshot.appearance)
+
     const active = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspace)
-    if (active) {
-      applyAccent(active.accent)
-      refreshAccent()
-    }
-    set({ snapshot, status: 'ready' })
+    if (active) applyAccent(active.accent)
+    // Terminals draw to a canvas and cannot read CSS, so they are told.
+    refreshAccent()
+
+    set({ snapshot, status: 'ready', resolvedTheme })
   }
 
   /**
@@ -135,6 +151,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     overlay: null,
     attachEpoch: 0,
     detached: false,
+    resolvedTheme: 'dark',
     missing: [],
     sessionEpoch: {},
 
@@ -250,6 +267,8 @@ export const useBeacon = create<BeaconState>((set, get) => {
 
     togglePanel: (panel) => run(() => ipc.togglePanel(panel)),
 
+    setAppearance: (appearance) => run(() => ipc.setAppearance(appearance)),
+
     setBinding: async (action, binding) => {
       try {
         accept(await ipc.setBinding(action, binding))
@@ -295,6 +314,21 @@ export function selectProjects(state: BeaconState): Project[] {
  * Not on import: a store that subscribes to a transport as a side effect of
  * existing cannot be used anywhere that transport is absent.
  */
+/**
+ * Repaints when the operating system changes palette.
+ *
+ * Only has an effect while the theme is `system`, but subscribing
+ * unconditionally is simpler than following the setting around.
+ */
+export function startSystemThemeTracking(): () => void {
+  return watchSystemTheme(() => {
+    const appearance = useBeacon.getState().snapshot?.appearance
+    if (!appearance) return
+    useBeacon.setState({ resolvedTheme: applyAppearance(appearance) })
+    refreshAccent()
+  })
+}
+
 export function startConnectionTracking(): () => void {
   return watchActivity({
     onOutput: () => {},

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::appearance::Appearance;
 use crate::paths::default_projects_home;
 
 /// Application-wide preferences. Deliberately small: anything that belongs to a
@@ -24,6 +25,10 @@ pub struct Settings {
     /// no stale entry is left behind pointing at an action that moved on.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub bindings: BTreeMap<String, String>,
+    /// How the window looks. Stored whole rather than only when changed: unlike
+    /// a shortcut, every field here is always in effect.
+    #[serde(default)]
+    pub appearance: Appearance,
 }
 
 impl Settings {
@@ -43,6 +48,7 @@ impl Default for Settings {
             schema_version: Self::SCHEMA_VERSION,
             projects_home: None,
             bindings: BTreeMap::new(),
+            appearance: Appearance::default(),
         }
     }
 }

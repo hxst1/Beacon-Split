@@ -154,6 +154,26 @@ export function buildCommands(): Command[] {
     run: () => store.toggleFullscreen(store.fullscreenPanel ?? 'claude'),
   })
 
+  // ---- appearance ----
+
+  if (snapshot) {
+    const themes: Array<{ theme: 'system' | 'dark' | 'light'; label: string }> = [
+      { theme: 'system', label: 'System' },
+      { theme: 'dark', label: 'Dark' },
+      { theme: 'light', label: 'Light' },
+    ]
+
+    for (const { theme, label } of themes) {
+      if (theme === snapshot.appearance.theme) continue
+      commands.push({
+        id: `appearance.theme.${theme}`,
+        title: `Theme: ${label}`,
+        group: 'Appearance',
+        run: () => store.setAppearance({ ...snapshot.appearance, theme }),
+      })
+    }
+  }
+
   // ---- layout ----
 
   const presets: Array<{ preset: LayoutPreset; label: string }> = [

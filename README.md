@@ -43,6 +43,9 @@ macOS will refuse a downloaded copy with a misleading "damaged" message — see
 [`docs/DISTRIBUTING.md`](docs/DISTRIBUTING.md) for the three ways round that and
 what a colleague needs installed.
 
+Light and dark themes, and sliders for how translucent and how blurred the
+window is, live in Settings → Appearance.
+
 Beacon checks for what it needs on startup and explains anything missing in
 Settings → Requirements, and in the panel that is affected.
 

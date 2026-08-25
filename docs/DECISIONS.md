@@ -757,3 +757,42 @@ log. A release build has no inspector to open, and a tree that unmounts itself
 says nothing about why — this is the difference between a blank window and one
 that names its own error.
 
+
+## ADR-041: Two palettes, one design
+
+**Context.** Beacon shipped dark-only, with colours written into forty places
+across the stylesheets.
+
+**Decision.** Every surface, line and text colour is a token, defined twice —
+once per palette — with everything else shared. A light theme is not a second
+design: the material inverts, so surfaces darken the window instead of
+lightening it, and the structure is untouched.
+
+**Why.** The whole look is built out of translucency over the window rather than
+flat fills, which is exactly what makes inverting it work. Had the palette been
+opaque blocks, a light theme would have meant redrawing the interface.
+
+**Consequence.** Two things draw their own colours and cannot read CSS: xterm
+paints to a canvas, and CodeMirror compiles a theme into a stylesheet when a
+view is created. Both are rebuilt when the palette changes, which means the
+resolved theme has to be state something can watch — hence `resolvedTheme` in
+the store rather than only on the document.
+
+## ADR-042: Translucency and blur are settings, not decisions
+
+**Context.** How much of the desktop shows through a window is taste. Beacon had
+one answer baked in.
+
+**Decision.** Two numbers in settings, applied as CSS variables: the window's
+own opacity and the backdrop blur. They move live as the slider is dragged and
+are written to disk when it is released.
+
+**Why.** Nobody knows what translucency they want in the abstract — you find it
+by moving it and looking. A control that only shows its result after a round
+trip is a control you have to guess with. Writing on release keeps the file
+quiet: a drag is one save, not sixty.
+
+**Consequence.** Opacity is floored at a half and blur capped, in the backend
+rather than only in the slider: a window nobody can read is not a preference,
+and a settings file is editable by hand. `clamp` alone returns NaN unchanged, so
+non-finite values are refused before they can reach `blur(NaNpx)`.

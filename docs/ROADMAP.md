@@ -225,6 +225,16 @@ Remaining:
 - Linux: build it, condition the window configuration by platform — vibrancy and
   the overlay title bar are macOS-only — and document the system dependencies
 
+## Milestone 10 — Appearance ✅
+
+- A light theme. Every colour is a token defined once per palette; the material
+  inverts rather than the design changing
+- `system` follows the operating system and repaints when it changes
+- Translucency and blur are sliders that move the window as you drag them, and
+  save when you let go
+- The terminal and the editor follow the palette too — both draw their own
+  colours and are rebuilt when it changes
+
 ## Later — not scheduled
 
 Both of these were on the original "do not build" list. They are here because
@@ -237,6 +247,25 @@ Connect to the Docker the user already runs — its unix socket speaks an HTTP
 API — and show containers for the current project: what is up, logs, and
 starting or stopping them. Beacon would not manage Docker, only give the
 containers a place beside the work. Hidden by default, like the editor.
+
+### Working from a phone or an iPad
+
+A remote of the whole application, not just Claude. The architecture is already
+most of the way there: the daemon owns the sessions, speaks a versioned protocol,
+and buffers output with stream offsets so any view can attach losslessly — which
+was built for detached windows and works just as well for another device.
+
+What is missing is a transport and, more seriously, an access model. Both
+machines sit behind NAT, so there is no way to connect them without a rendezvous
+point: either an existing mesh like Tailscale, or a small relay of our own that
+only forwards bytes it cannot read. Everything is end-to-end encrypted between
+paired devices; the relay holds nothing.
+
+Worth doing in two steps. First the same network only — pairing, encryption and
+a mobile shell, with no server involved — which proves the whole stack and is
+useful at home. Then the relay, which turns "at home" into "anywhere".
+
+This is larger than the daemon was. The hard part is not the interface.
 
 ### A small database viewer
 

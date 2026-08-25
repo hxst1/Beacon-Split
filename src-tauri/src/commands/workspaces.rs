@@ -1,4 +1,5 @@
 use beacon_core::Snapshot;
+use beacon_core::appearance::Appearance;
 use beacon_core::domain::WorkspaceId;
 use beacon_core::layout::{LayoutNode, LayoutPreset, PanelId};
 use tauri::State;
@@ -68,6 +69,17 @@ pub fn set_layout_preset(
 ) -> CommandResult<Snapshot> {
     let mut beacon = state.beacon();
     beacon.set_preset(preset)?;
+    Ok(beacon.snapshot())
+}
+
+/// Stores how the window should look — theme, translucency, blur.
+#[tauri::command]
+pub fn set_appearance(
+    state: State<'_, AppState>,
+    appearance: Appearance,
+) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_appearance(appearance)?;
     Ok(beacon.snapshot())
 }
 

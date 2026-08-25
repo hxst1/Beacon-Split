@@ -85,6 +85,7 @@ export interface Snapshot {
   hidden: PanelId[]
   /** Every bindable action with the shortcut it answers to. */
   bindings: ActionBinding[]
+  appearance: Appearance
   projectsHome: string
 }
 
@@ -147,6 +148,23 @@ export interface SessionActivity {
 
 /** Whether Beacon's hooks are registered with Claude Code. */
 export type HookStatus = 'installed' | 'stale' | 'notInstalled'
+
+/** Which palette the window uses. `system` follows the operating system. */
+export type Theme = 'system' | 'dark' | 'light'
+
+/**
+ * How the window looks.
+ *
+ * Theme is a design choice; the other two are taste — how much of the desktop
+ * shows through, and how far it is pushed out of focus.
+ */
+export interface Appearance {
+  theme: Theme
+  /** 0.5..1. Never lower: a window you cannot read is not a preference. */
+  windowOpacity: number
+  /** Backdrop blur in pixels, 0..40. Zero turns it off. */
+  blur: number
+}
 
 export type Importance = 'required' | 'recommended'
 

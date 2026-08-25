@@ -6,7 +6,7 @@
   justify-items: center;
   align-content: start;
   padding-top: 12vh;
-  background: rgb(0 0 0 / 0.36);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
   animation: fade var(--dur-2) var(--ease);
 }
@@ -19,11 +19,11 @@
   overflow: hidden;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-lg);
-  background: #15151b;
+  background: var(--solid-1);
   box-shadow:
-    0 1px 0 0 rgb(255 255 255 / 0.06) inset,
+    0 1px 0 0 var(--edge-light) inset,
     0 0 0 1px var(--accent-line),
-    0 30px 70px -20px rgb(0 0 0 / 0.75),
+    var(--shadow-float),
     0 0 60px -30px var(--accent-glow);
   animation: rise var(--dur-2) var(--ease);
 }

@@ -1,46 +1,26 @@
 /*
  * Beacon's design tokens.
  *
- * The palette is built out of translucency rather than flat greys: surfaces are
- * white at very low alpha over a near-black window, so panels read as layers of
- * the same material instead of separate boxes. `--accent` is rewritten at
- * runtime from the active workspace; everything tinted derives from it with
- * `color-mix` so a workspace only ever has to declare one colour.
+ * Two palettes, one structure. Every surface is built out of translucency
+ * rather than flat colour — layers of the same material over the window — so a
+ * light theme is not a different design, it is the same one with the material
+ * inverted: dark surfaces lighten the window, light surfaces darken it.
+ *
+ * `--accent` is rewritten at runtime from the active workspace, and everything
+ * tinted derives from it with `color-mix`, so a workspace only ever declares
+ * one colour and neither palette needs to know about it.
+ *
+ * `--window-alpha` and `--blur-px` come from settings. They are the two things
+ * about the look that are taste rather than design, so they are the two the
+ * user can move.
  */
 
 :root {
-  /* Window base. Kept slightly translucent so macOS vibrancy shows through;
-     on Linux it degrades to this near-black, which is the intended look anyway. */
-  --window: 8 8 11;
+  /* ---- set from settings; these are the shipped defaults ---- */
   --window-alpha: 0.86;
+  --blur-px: 18px;
 
-  /* Layered surfaces */
-  --surface-1: rgb(255 255 255 / 0.022);
-  --surface-2: rgb(255 255 255 / 0.042);
-  --surface-3: rgb(255 255 255 / 0.068);
-
-  /* Hairlines. Nothing in Beacon uses a border heavier than 1px. */
-  --line-1: rgb(255 255 255 / 0.055);
-  --line-2: rgb(255 255 255 / 0.09);
-
-  /* Text, by descending importance */
-  --fg-1: rgb(255 255 255 / 0.94);
-  --fg-2: rgb(255 255 255 / 0.6);
-  --fg-3: rgb(255 255 255 / 0.36);
-  --fg-4: rgb(255 255 255 / 0.2);
-
-  /* Workspace identity — replaced at runtime */
-  --accent: #6b7cff;
-  --accent-line: color-mix(in oklab, var(--accent) 42%, transparent);
-  --accent-wash: color-mix(in oklab, var(--accent) 14%, transparent);
-  --accent-glow: color-mix(in oklab, var(--accent) 30%, transparent);
-  --accent-text: color-mix(in oklab, var(--accent) 72%, white 28%);
-
-  --danger: #ff6b6b;
-
-  --blur-panel: blur(18px) saturate(150%);
-  --blur-float: blur(30px) saturate(160%);
-
+  /* ---- shape and motion, shared by both palettes ---- */
   --radius-xs: 5px;
   --radius-sm: 7px;
   --radius-md: 10px;
@@ -65,6 +45,119 @@
   --panel-header-height: 30px;
   /* Room for the macOS traffic lights under an overlay title bar. */
   --titlebar-inset: 78px;
+
+  --blur-panel: blur(var(--blur-px)) saturate(150%);
+  --blur-float: blur(calc(var(--blur-px) * 1.6)) saturate(160%);
+}
+
+/* ---- dark ---------------------------------------------------------------- */
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --window: 8 8 11;
+
+  /* Layered surfaces: white at very low alpha over a near-black window. */
+  --surface-1: rgb(255 255 255 / 0.022);
+  --surface-2: rgb(255 255 255 / 0.042);
+  --surface-3: rgb(255 255 255 / 0.068);
+
+  /* Hairlines. Nothing in Beacon uses a border heavier than 1px. */
+  --line-1: rgb(255 255 255 / 0.055);
+  --line-2: rgb(255 255 255 / 0.09);
+
+  /* Text, by descending importance */
+  --fg-1: rgb(255 255 255 / 0.94);
+  --fg-2: rgb(255 255 255 / 0.6);
+  --fg-3: rgb(255 255 255 / 0.36);
+  --fg-4: rgb(255 255 255 / 0.2);
+
+  /* Opaque surfaces, for things you read rather than look past: a menu is
+     small text, and whatever is behind it only makes that harder. */
+  --solid-1: #15151b;
+  --solid-2: #1c1c23;
+
+  --selection: rgb(255 255 255 / 0.14);
+  --scrollbar: rgb(255 255 255 / 0.09);
+  --scrollbar-hover: rgb(255 255 255 / 0.16);
+
+  --ok: #8fd18a;
+  --warn: #e0a76a;
+  --danger: #ff6b6b;
+  --info: #69b7ff;
+  --purple: #a48cff;
+
+  /* An inset field: darker than its surroundings in either palette. */
+  --field: rgb(0 0 0 / 0.28);
+  /* What a floating surface is dimmed against, and its shadow. */
+  --scrim: rgb(0 0 0 / 0.42);
+  --shadow-float: 0 30px 70px -20px rgb(0 0 0 / 0.7);
+  --shadow-screen: 0 40px 90px -25px rgb(0 0 0 / 0.75);
+  /* The hairline of light along the top edge of a raised surface. */
+  --edge-light: rgb(255 255 255 / 0.06);
+  /* A selected swatch's ring, which has to read against any colour under it. */
+  --ring: rgb(255 255 255 / 0.55);
+}
+
+/* ---- light --------------------------------------------------------------- */
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --window: 246 246 248;
+
+  /* Inverted material: surfaces darken the window instead of lightening it. */
+  --surface-1: rgb(0 0 0 / 0.026);
+  --surface-2: rgb(0 0 0 / 0.05);
+  --surface-3: rgb(0 0 0 / 0.08);
+
+  --line-1: rgb(0 0 0 / 0.08);
+  --line-2: rgb(0 0 0 / 0.14);
+
+  --fg-1: rgb(20 20 26 / 0.94);
+  --fg-2: rgb(20 20 26 / 0.66);
+  --fg-3: rgb(20 20 26 / 0.44);
+  --fg-4: rgb(20 20 26 / 0.28);
+
+  --solid-1: #ffffff;
+  --solid-2: #f2f2f5;
+
+  --selection: rgb(0 0 0 / 0.1);
+  --scrollbar: rgb(0 0 0 / 0.14);
+  --scrollbar-hover: rgb(0 0 0 / 0.24);
+
+  /* Darkened so they carry on a light ground; the hues are the same. */
+  --ok: #3f8f45;
+  --warn: #9a6413;
+  --danger: #c02828;
+  --info: #1b6fc4;
+  --purple: #6b4fd8;
+
+  --field: rgb(0 0 0 / 0.045);
+  --scrim: rgb(0 0 0 / 0.24);
+  --shadow-float: 0 20px 50px -18px rgb(0 0 0 / 0.28);
+  --shadow-screen: 0 30px 70px -22px rgb(0 0 0 / 0.3);
+  --edge-light: rgb(255 255 255 / 0.8);
+  --ring: rgb(0 0 0 / 0.4);
+}
+
+/* ---- the workspace accent, in both ---------------------------------------- */
+
+:root {
+  --accent: #6b7cff;
+  --accent-line: color-mix(in oklab, var(--accent) 42%, transparent);
+  --accent-wash: color-mix(in oklab, var(--accent) 14%, transparent);
+  --accent-glow: color-mix(in oklab, var(--accent) 30%, transparent);
+  --accent-text: color-mix(in oklab, var(--accent) 72%, white 28%);
+}
+
+/* On a light ground the accent has to darken to stay legible as text, and the
+   washes need more of it to be visible at all. */
+:root[data-theme='light'] {
+  --accent-wash: color-mix(in oklab, var(--accent) 12%, transparent);
+  --accent-glow: color-mix(in oklab, var(--accent) 22%, transparent);
+  --accent-text: color-mix(in oklab, var(--accent) 78%, black 22%);
 }
 
 :root[data-platform='linux'],

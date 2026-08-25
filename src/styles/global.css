@@ -47,7 +47,7 @@ input {
 }
 
 ::selection {
-  background: var(--accent-wash);
+  background: var(--selection);
 }
 
 /* Thin, unobtrusive scrollbars that only appear over content. */
@@ -59,12 +59,12 @@ input {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.09);
+  background: var(--scrollbar);
   border: 2px solid transparent;
   background-clip: content-box;
   border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(255 255 255 / 0.16);
+  background: var(--scrollbar-hover);
   background-clip: content-box;
 }

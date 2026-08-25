@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { AppShell } from '@/app/AppShell'
 import { Boot } from '@/app/Boot'
 import { Welcome } from '@/features/workspaces/Welcome'
-import { startConnectionTracking, useBeacon } from '@/app/store'
+import { startConnectionTracking, startSystemThemeTracking, useBeacon } from '@/app/store'
 import { startActivityTracking } from '@/features/terminal/activity'
 import { startUsageTracking } from '@/features/usage/usage'
 
@@ -16,7 +16,12 @@ export function App(): React.ReactElement {
   useEffect(() => {
     // One place where the window starts listening to the daemon, rather than
     // several modules doing it as a side effect of being imported.
-    const stop = [startConnectionTracking(), startActivityTracking(), startUsageTracking()]
+    const stop = [
+      startConnectionTracking(),
+      startActivityTracking(),
+      startUsageTracking(),
+      startSystemThemeTracking(),
+    ]
     void load()
 
     return () => stop.forEach((unsubscribe) => unsubscribe())

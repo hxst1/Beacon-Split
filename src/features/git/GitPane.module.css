@@ -101,12 +101,12 @@
   text-align: center;
 }
 
-.code[data-state='modified'] { color: #e0a76a; }
-.code[data-state='added'] { color: #8fd18a; }
-.code[data-state='untracked'] { color: #69b7ff; }
-.code[data-state='deleted'] { color: #ff6b6b; }
-.code[data-state='renamed'] { color: #a48cff; }
-.code[data-state='conflicted'] { color: #ff6b6b; }
+.code[data-state='modified'] { color: var(--warn); }
+.code[data-state='added'] { color: var(--ok); }
+.code[data-state='untracked'] { color: var(--info); }
+.code[data-state='deleted'] { color: var(--danger); }
+.code[data-state='renamed'] { color: var(--purple); }
+.code[data-state='conflicted'] { color: var(--danger); }
 
 .path {
   flex: 1;
@@ -150,7 +150,7 @@
   padding: 4px 8px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-sm);
-  background: rgb(0 0 0 / 0.28);
+  background: var(--field);
   color: var(--fg-1);
   font-size: var(--text-xs);
   outline: none;
@@ -212,7 +212,7 @@
   white-space: pre;
 }
 
-.added { color: #8fd18a; background: color-mix(in oklab, #8fd18a 8%, transparent); }
-.removed { color: #ff8a8a; background: color-mix(in oklab, #ff6b6b 8%, transparent); }
-.hunk { color: var(--fg-4); background: rgb(255 255 255 / 0.03); }
+.added { color: var(--ok); background: color-mix(in oklab, var(--ok) 8%, transparent); }
+.removed { color: var(--danger); background: color-mix(in oklab, var(--danger) 8%, transparent); }
+.hunk { color: var(--fg-4); background: var(--surface-1); }
 .meta { color: var(--fg-4); }
