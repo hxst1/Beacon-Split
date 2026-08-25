@@ -23,7 +23,6 @@
         "transparent": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "theme": "Dark",
         "windowEffects": {
           "effects": ["underWindowBackground"],
           "state": "followsWindowActiveState",

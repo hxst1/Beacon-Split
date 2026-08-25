@@ -252,20 +252,48 @@ containers a place beside the work. Hidden by default, like the editor.
 
 A remote of the whole application, not just Claude. The architecture is already
 most of the way there: the daemon owns the sessions, speaks a versioned protocol,
-and buffers output with stream offsets so any view can attach losslessly — which
-was built for detached windows and works just as well for another device.
+and buffers output with stream offsets so any view can attach losslessly — built
+for detached windows, and just as true of another device.
 
-What is missing is a transport and, more seriously, an access model. Both
-machines sit behind NAT, so there is no way to connect them without a rendezvous
-point: either an existing mesh like Tailscale, or a small relay of our own that
-only forwards bytes it cannot read. Everything is end-to-end encrypted between
-paired devices; the relay holds nothing.
+**The constraint that decides the shape.** Both machines sit behind NAT. Neither
+can be reached from outside, so they cannot find each other without a rendezvous
+point. There is no fourth option:
 
-Worth doing in two steps. First the same network only — pairing, encryption and
-a mobile shell, with no server involved — which proves the whole stack and is
-useful at home. Then the relay, which turns "at home" into "anywhere".
+| | What it costs | What it gives away |
+| --- | --- | --- |
+| Same network only | Nothing | Only works at home |
+| A relay of our own | A small VPS, a few euros a month | Nothing, if it cannot read the traffic |
+| Cloudflare Tunnel | Nothing to run | Connection metadata, to Cloudflare |
+| Tailscale | Nothing to run | Coordination, to Tailscale |
+| Forwarding a port | Nothing | A shell, to the internet — not an option |
 
-This is larger than the daemon was. The hard part is not the interface.
+**The relay is a dumb pipe.** It matches "device A wants device B" and forwards
+bytes it cannot decrypt. Pairing happens once, out of band — a code shown on the
+machine, scanned by the phone — and everything after is end to end between those
+two devices. The relay holds no keys and sees no content.
+
+**Its address is a setting, not a constant.** That is what makes the table above
+a choice rather than a decision baked in: run your own, point at somebody else's,
+use a tunnel, or skip the whole question with an existing mesh.
+
+**Sharing a relay works, and costs a commitment.** A relay that cannot read
+traffic can safely carry a friend's, and the traffic is tiny — a terminal is a
+few kilobytes a second. What is shared is uptime: whoever runs it becomes
+everyone else's dependency, and sees when they connect and from where even
+without seeing what. Fine between friends, and worth saying out loud rather than
+discovering later. Per-pairing rate limits, so one busy session cannot take the
+rest down with it.
+
+**In two steps.** Same network first — pairing, encryption, and a mobile shell,
+with no server anywhere — which proves the whole stack and is useful at home on
+its own. Then the relay, which turns "at home" into "anywhere" without changing
+any of it.
+
+Access is off by default and revocable per device. Every session is a shell:
+whoever gets in, gets the machine. That deserves a deliberate gesture rather
+than a checkbox.
+
+This is larger than the daemon was, and the hard part is not the interface.
 
 ### A small database viewer
 

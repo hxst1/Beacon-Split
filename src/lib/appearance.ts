@@ -1,3 +1,5 @@
+import { getCurrentWindow } from '@tauri-apps/api/window'
+
 import type { Appearance, Theme } from '@/types/beacon'
 
 /** What `system` resolves to right now. */
@@ -21,6 +23,15 @@ export function applyAppearance(appearance: Appearance): 'dark' | 'light' {
   root.dataset['theme'] = resolved
   root.style.setProperty('--window-alpha', String(appearance.windowOpacity))
   root.style.setProperty('--blur-px', `${appearance.blur}px`)
+
+  // The window frame is drawn by the system, not by us — traffic lights, the
+  // vibrancy behind a translucent window. Left alone it follows the operating
+  // system, which is wrong the moment someone picks a theme that does not.
+  void getCurrentWindow()
+    .setTheme(resolved)
+    .catch(() => {
+      // Not worth an error in the way: the palette is already applied.
+    })
 
   return resolved
 }
