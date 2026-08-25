@@ -47,7 +47,13 @@ have to download a new copy by hand, once, to start trusting a new key.
 }
 ```
 
-Until that is filled in, Beacon simply never finds an update — the check fails
+Before the first release exists, a build with a key logs `update endpoint did
+not respond with a successful status code` on every start. That is accurate —
+there is nothing at the endpoint yet — and it stops once a release is published.
+It is left visible rather than silenced, because the same message is how a real
+update failure would announce itself.
+
+Without a key at all, Beacon simply never finds an update — the check fails
 quietly, which is right for a copy somebody built themselves. They update by
 pulling.
 

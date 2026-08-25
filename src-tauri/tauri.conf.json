@@ -31,7 +31,9 @@
   },
   "bundle": {
     "active": true,
-    "externalBin": ["binaries/beacon-daemon"],
+    "externalBin": [
+      "binaries/beacon-daemon"
+    ],
     "targets": "all",
     "category": "DeveloperTool",
     "icon": [
@@ -41,5 +43,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg5NUY1NDYzNzBEMjk1OTkKUldTWmxkSndZMVJmaVVtU29rdm1XSEliSXFXRnJmMkZId1RtWEhpQzdzQXRkYytmOFROdjQ3eTIK",
+      "endpoints": [
+        "https://github.com/hxst1/Beacon-Split/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
