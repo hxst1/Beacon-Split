@@ -1,153 +1,190 @@
+<div align="center">
+
 # Beacon Split
 
-An agent-first development workspace.
+**An agent-first development workspace.**
 
 Beacon is not another code editor. It is the surface you work *from* when your
-main collaborator is Claude Code and you have several projects open at once. The
-unit of the application is not a file — it is:
+main collaborator is Claude Code and you have several projects open at once.
+
+[Install](#install) · [What it does](#what-it-does) · [Building it](#building-it) · [Contributing](CONTRIBUTING.md) · [Architecture](docs/ARCHITECTURE.md)
+
+</div>
+
+---
+
+The unit of the application is not a file. It is:
 
 ```
 Workspace → Project → Claude session
 ```
 
-The whole design is pointed at one goal: **flow, speed, and as little context
+Everything is pointed at one goal: **flow, speed, and as little context
 switching as possible.** Every frequent action is a keystroke, or at most a
-click or two.
+click or two. If something you do daily takes a trip through three menus, that
+is a bug.
 
-## Status
+## What it does
 
-Milestones 0 and 2 through 5 are complete, and Milestone 1 is nearly there.
-Today Beacon gives you workspaces, projects, tabs, layout presets, the workspace
-accent, a file tree with an editor and a `.env` view, git status, diff, stage
-and commit, and — per project — a real shell and a real `claude` session, each
-in its own PTY.
+**Runs the real thing.** A `claude` session and a shell per project, each in its
+own PTY. Beacon does not reimplement Claude Code — colours, prompts,
+permissions, selection and scrolling are whatever the CLI does, because it *is*
+the CLI.
 
-Sessions outlive the window: closing Beacon leaves them running, and opening it
-again reattaches to them.
+**Sessions outlive the window.** A background daemon owns them. Close Beacon and
+your work keeps running; open it again and it reattaches, scrollback intact.
 
-Tabs can also say what Claude is doing — working, finished, or stopped and
-waiting for you — and the title bar can show how much of the five-hour allowance
-is left and how full each project's context is. Both are opt-in from
-Settings → Claude Code, show what they will add first, and remove cleanly.
-Neither invents a number: when Claude Code stops reporting, Beacon stops
-claiming to know.
+**Tells you which project needs you.** With three projects open, the expensive
+thing is not switching tabs — it is a permission prompt going unseen for twenty
+minutes. Tabs report what Claude is actually doing, from Claude Code's own
+hooks rather than guessed from terminal output, and a project that stops and
+waits can say so with a system notification.
 
-What is left is a few smaller things listed in the roadmap.
+**Shows what a session is costing.** How much of the five-hour allowance is
+left, and how full each project's context is — enough to decide which project
+to spend the rest of it on, and when a conversation is worth clearing.
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands when.
+**Files, editor and git, at the size they deserve.** A file tree with the
+operations you expect, a light editor, a `.env` view that keeps values hidden
+until asked, and git status, diff, stage and commit. Deleting moves to the
+trash. Nothing here is trying to become an IDE.
 
-## Publishing
+**Keyboard first.** A command palette, quick open, and shortcuts you can
+rebind. Layouts are a tree of splits with four presets, and every divider
+drags.
 
-`docs/PUBLISHING.md` covers releasing: what to do once (an update signing key,
-which only you should generate), and what happens every time (write the notes,
-move the version, push a tag). The workflow builds, checks, signs and opens a
-draft release; publishing it is what makes every running Beacon find it.
+**Yours to look at.** Light and dark, and sliders for how translucent and how
+blurred the window is.
 
-## Giving it to someone else
+## Install
 
-`pnpm app:build` produces a `.app` and a `.dmg`. They are ad-hoc signed, so
-macOS will refuse a downloaded copy with a misleading "damaged" message — see
-[`docs/DISTRIBUTING.md`](docs/DISTRIBUTING.md) for the three ways round that and
-what a colleague needs installed.
+Beacon is macOS Apple Silicon today. Linux is next; Windows is not planned.
 
-Light and dark themes, and sliders for how translucent and how blurred the
-window is, live in Settings → Appearance.
+**From a release** — [download the latest][releases], open the `.dmg`, drag
+Beacon to Applications.
 
-Beacon checks for what it needs on startup and explains anything missing in
-Settings → Requirements, and in the panel that is affected.
-
-## Requirements
-
-- Node 20+ and pnpm 10+
-- Rust 1.85+ (edition 2024)
-- macOS: Xcode Command Line Tools
-- Linux: the usual Tauri v2 system dependencies (webkit2gtk-4.1, libayatana-appindicator3)
-
-## Running it
+macOS will refuse it the first time with *"Beacon Split is damaged and can't be
+opened"*. It is not damaged: the build is not signed with an Apple Developer ID.
+Clear the quarantine flag once:
 
 ```sh
+xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"
+```
+
+That removes a check macOS applies to software it cannot verify. It is a
+reasonable thing to do for a build you chose to download; it is not something to
+do casually. See [`docs/DISTRIBUTING.md`](docs/DISTRIBUTING.md) for the
+alternatives.
+
+**From source** — see [Building it](#building-it). A build made on the machine
+it runs on is never quarantined.
+
+### What you need installed
+
+Beacon runs the tools you already have rather than bundling its own, and checks
+for them on first run. Anything missing is explained in the panel it affects,
+and in Settings → Requirements.
+
+| | Needed for | Install |
+| --- | --- | --- |
+| [Claude Code][claude] | The Claude panel — the point of the application | `curl -fsSL https://claude.ai/install.sh \| bash` |
+| Git | The Git panel, and Quick Open honouring your ignore rules | `xcode-select --install` |
+
+Claude Code needs a Pro, Max, Team or Enterprise account, and you sign in by
+running `claude` once in a terminal. Beacon does not handle signing in — it runs
+the CLI you already use.
+
+## Keyboard
+
+`⌘` on macOS, `Ctrl` on Linux. All of these are editable in Settings → Keyboard.
+
+| | |
+| --- | --- |
+| `⌘K` | Command palette |
+| `⌘P` | Quick open |
+| `⌘1` … `⌘9` | Switch to project tab |
+| `⌘E` / `⌘G` / `⌘O` / `⌘J` | Toggle Files, Git, the editor, the terminal |
+| `⌘↩` | Fullscreen the focused panel |
+| `⌘⇧R` | Restart Claude |
+| `⌘S` / `⌘G` | Save / go to line, in the editor |
+
+## Building it
+
+You need Node 20+, pnpm 10+, Rust 1.85+, and the Xcode command line tools.
+
+```sh
+git clone https://github.com/hxst1/Beacon-Split.git
+cd Beacon-Split
 pnpm install
-pnpm app:dev      # Tauri dev build, hot-reloading frontend
+pnpm app:dev
 ```
 
-Other useful commands:
-
-```sh
-pnpm check        # typecheck + vitest + rustfmt + clippy + cargo test
-pnpm typecheck    # TypeScript only
-pnpm rs:test      # Rust tests only
-pnpm app:build    # production bundle, daemon included
-```
+| | |
+| --- | --- |
+| `pnpm app:dev` | Run it, with the frontend hot-reloading |
+| `pnpm app:build` | Produce a `.app` and a `.dmg` |
+| `pnpm check` | Typecheck, tests, rustfmt, clippy — what CI runs |
 
 ## Where things live
 
 ```
-crates/beacon-core/   Domain model, config, persistence, sessions, git.
-crates/beacon-daemon/ Owns the PTYs, so sessions outlive the window.
-src-tauri/            Desktop shell: window setup and the IPC surface.
-src/                  React frontend.
-  ipc/                The only module that talks to Tauri.
-  app/                Window shell: title bar, workbench, panels, shortcuts.
-  features/           Workspaces and projects.
-  styles/             Design tokens and global styles.
-docs/                 Architecture, roadmap, decisions.
+crates/beacon-core/    Domain model, config, sessions, git, files. No Tauri, no UI.
+crates/beacon-daemon/  Owns the PTYs, so sessions outlive the window.
+src-tauri/             Desktop shell: window setup and the IPC surface.
+src/                   React frontend.
+  ipc/                 The only module that talks to Tauri.
+  app/                 Window shell: title bar, workbench, panels, shortcuts.
+  features/            Everything else, one directory per thing.
+docs/                  Architecture, roadmap, and every decision worth recording.
 ```
 
-`beacon-core` has no dependency on Tauri, which is what let session management
-move into `beacon-daemon` without touching the UI. The window is a client: it
-attaches to the daemon, renders what it has, and detaches. Closing it ends
-nothing.
+Two rules hold the shape:
 
-The daemon listens on a unix socket in the per-user temporary directory, starts
-on demand, and stops itself after five minutes with no sessions and nobody
-attached.
+1. **`beacon-core` never depends on Tauri.** It is why session management could
+   move into a daemon without touching the UI.
+2. **The UI never imports `@tauri-apps/api` outside `src/ipc/`.** When the
+   transport changes, one directory changes.
 
-## Configuration
-
-Beacon stores its state as JSON:
-
-- macOS: `~/Library/Application Support/beacon-split/`
-- Linux: `$XDG_CONFIG_HOME/beacon-split/` (usually `~/.config/beacon-split/`)
-
-| File | Contents |
-| --- | --- |
-| `settings.json` | Application preferences, including `projectsHome` |
-| `workspaces.json` | Workspaces and their projects |
-| `ui-state.json` | Active tabs and panel sizes |
-
-Project paths under your projects home are stored **relative** to it
-(`Personal/beacon-split`, not `/Users/you/projects/Personal/beacon-split`), so
-the same configuration works on macOS and Linux.
-
-## Keyboard
-
-`⌘` on macOS, `Ctrl` on Linux.
-
-| Shortcut | Action |
-| --- | --- |
-| `⌘1` … `⌘9` | Switch to project tab |
-| `⌘E` | Toggle Files |
-| `⌘G` | Toggle Git |
-| `⌘O` | Toggle the editor |
-| `⌘J` | Toggle the terminal |
-| `⌘↩` | Fullscreen the focused panel |
-| `⌘K` | Command palette |
-| `⌘P` | Quick open |
-| `⌘G` | Go to line, in the editor |
-
-Every shortcut is editable in Settings → Keyboard: click one and press the new
-one. Only the ones you change are stored, so later changes to a default still
-reach you. Numbered project tabs are fixed, since the binding is the number.
-
-## A promise about your files
+## Your files
 
 Removing a project from Beacon removes it from Beacon. It never deletes a
-repository, and it never touches the folder on disk. Anything that genuinely
-destroys data will be visibly separated from everything that does not.
-
-Deleting a file moves it to the system trash, and every file path is confined to
-its project — absolute paths, `..`, and symlinks pointing outside are all
-refused.
+repository. Deleting a file moves it to the system trash, and every file path is
+confined to its project — absolute paths, `..`, and symlinks pointing outside
+are all refused.
 
 `.env` values are never logged, never cached outside the file they came from,
 and never sent anywhere.
+
+## Contributing
+
+Genuinely welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first. The short
+version: the scope is deliberately narrow, `docs/DECISIONS.md` explains why
+things are the way they are, and a change that contradicts one of those
+decisions is welcome as long as it says which one and why it was wrong.
+
+## Documentation
+
+| | |
+| --- | --- |
+| [Architecture](docs/ARCHITECTURE.md) | How the pieces fit, and the constraints that shaped them |
+| [Decisions](docs/DECISIONS.md) | Every choice worth recording, and what it cost |
+| [Roadmap](docs/ROADMAP.md) | What is built, what is next, what is deliberately not planned |
+| [Contributing](CONTRIBUTING.md) | How to work on it |
+| [Distributing](docs/DISTRIBUTING.md) | Handing a build to somebody else |
+| [Publishing](docs/PUBLISHING.md) | Cutting a release |
+
+## Licence
+
+[AGPL-3.0](LICENSE).
+
+Use it, change it, run it however you like. If you distribute a modified
+version — including running one as a service other people use — you have to
+publish your changes under the same licence. That is the whole point: work put
+into Beacon stays available to everyone using it.
+
+The copyright holder is not bound by this and may also license Beacon under
+other terms. Contributions are made under the same licence and grant that
+right; see [CONTRIBUTING.md](CONTRIBUTING.md#licensing).
+
+[releases]: https://github.com/hxst1/Beacon-Split/releases
+[claude]: https://claude.com/claude-code

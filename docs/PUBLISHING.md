@@ -41,7 +41,7 @@ have to download a new copy by hand, once, to start trusting a new key.
   "updater": {
     "pubkey": "<the public key from above>",
     "endpoints": [
-      "https://github.com/<you>/beacon-split/releases/latest/download/latest.json"
+      "https://github.com/hxst1/Beacon-Split/releases/latest/download/latest.json"
     ]
   }
 }

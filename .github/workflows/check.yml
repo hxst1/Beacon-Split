@@ -1,0 +1,36 @@
+# The same command contributors run locally, on every push and pull request.
+#
+# One job rather than several: the pieces are fast, and a single red mark is
+# easier to act on than four.
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: swatinem/rust-cache@v2
+
+      - run: pnpm install --frozen-lockfile
+
+      # Some tests spawn real shells and a real daemon, which is the point of
+      # them — a mock would not have caught what they caught.
+      - run: pnpm check
