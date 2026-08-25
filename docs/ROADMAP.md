@@ -27,8 +27,6 @@ Done:
 
 Remaining:
 
-- Reordering tabs by dragging
-- Workspace icons
 - A settings surface for `projectsHome`
 
 ## Milestone 2 — Terminal / PTY ✅
@@ -47,8 +45,12 @@ Sessions get a sanitised environment: Beacon declares its own terminal identity
 rather than inheriting the launching terminal's, which otherwise triggers that
 terminal's shell integrations inside ours.
 
-Still to do here: coalescing very fast output into fewer IPC events, and
-multiple terminals per project.
+A project can hold several terminals, numbered rather than named — one is not
+enough the moment a dev server is holding one. Which shell they run is a
+setting: Beacon is the terminal emulator, so that is a shell and not another
+emulator.
+
+Still to do here: coalescing very fast output into fewer IPC events.
 
 ## Milestone 2.5 — Settings and layouts ✅
 
@@ -105,7 +107,8 @@ reading output and guessing.
 - A `.env` view: values masked, show or copy one at a time, copy `KEY=value`.
   Read fresh each time and kept nowhere else
 
-Still to do here: go-to-line, and following file changes made outside Beacon.
+Still to do here: following file changes made outside Beacon in an open buffer.
+The tree notices on focus; a buffer does not.
 
 ## Milestone 5 — Git ✅
 

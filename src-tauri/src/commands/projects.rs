@@ -50,6 +50,22 @@ pub fn remove_project(
     Ok(beacon.snapshot())
 }
 
+/// Moves a project to a new position among its siblings.
+///
+/// Tab order is project order, and the numbered shortcuts follow it, so this
+/// rearranges `⌘1`..`⌘9` too.
+#[tauri::command]
+pub fn reorder_project(
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    project_id: ProjectId,
+    to: usize,
+) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.reorder_project(&workspace_id, &project_id, to)?;
+    Ok(beacon.snapshot())
+}
+
 #[tauri::command]
 pub fn move_project(
     state: State<'_, AppState>,

@@ -73,7 +73,7 @@ fn a_session_does_not_inherit_the_launchers_state() {
     let project = ProjectId::generate();
 
     let id = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
 
     // The markers are split across printf arguments so the shell echoing the

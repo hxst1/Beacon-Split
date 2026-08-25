@@ -24,7 +24,11 @@ export function TitleBar(): React.ReactElement {
         onClick={(event) => setMenuAnchor(event.currentTarget.getBoundingClientRect())}
         aria-haspopup="menu"
       >
-        <span className={styles['workspaceDot']} />
+        {workspace?.icon ? (
+          <span className={styles['workspaceIcon']}>{workspace.icon}</span>
+        ) : (
+          <span className={styles['workspaceDot']} />
+        )}
         {workspace?.name ?? 'Workspace'}
         <span className={styles['chevron']}>▼</span>
       </button>

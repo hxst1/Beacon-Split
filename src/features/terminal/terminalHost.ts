@@ -14,6 +14,7 @@ export interface HostedTerminal {
   /** Which project this belongs to, so it can be torn down with it. */
   project: string
   kind: SessionKind
+  slot: number
 }
 
 /**
@@ -43,7 +44,7 @@ function terminalTheme(): Record<string, string> {
   }
 }
 
-function create(project: string, kind: SessionKind): HostedTerminal {
+function create(project: string, kind: SessionKind, slot: number): HostedTerminal {
   const element = document.createElement('div')
   element.style.width = '100%'
   element.style.height = '100%'
@@ -69,7 +70,7 @@ function create(project: string, kind: SessionKind): HostedTerminal {
   term.loadAddon(fit)
   term.open(element)
 
-  return { term, fit, element, project, kind }
+  return { term, fit, element, project, kind, slot }
 }
 
 /**
@@ -82,11 +83,12 @@ export async function acquire(
   sessionId: string,
   project: string,
   kind: SessionKind,
+  slot: number,
 ): Promise<HostedTerminal> {
   const existing = hosted.get(sessionId)
   if (existing) return existing
 
-  const terminal = create(project, kind)
+  const terminal = create(project, kind, slot)
   hosted.set(sessionId, terminal)
 
   await attach(sessionId, {
@@ -124,9 +126,11 @@ export function dispose(sessionId: string): void {
 }
 
 /** Tears down one project's terminal of a given kind, e.g. before a restart. */
-export function disposeFor(project: string, kind: SessionKind): void {
+export function disposeFor(project: string, kind: SessionKind, slot?: number): void {
   for (const [sessionId, terminal] of hosted) {
-    if (terminal.project === project && terminal.kind === kind) dispose(sessionId)
+    if (terminal.project !== project || terminal.kind !== kind) continue
+    if (slot !== undefined && terminal.slot !== slot) continue
+    dispose(sessionId)
   }
 }
 

@@ -301,11 +301,13 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
         Request::Ensure {
             project,
             kind,
+            slot,
             cwd,
             cols,
             rows,
+            shell,
         } => sessions
-            .ensure(&project, kind, &cwd, (cols, rows))
+            .ensure(&project, kind, slot, &cwd, (cols, rows), shell.as_ref())
             .and_then(|id| sessions.info(&id))
             .map(Reply::Session),
 
@@ -327,11 +329,13 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
         Request::Restart {
             project,
             kind,
+            slot,
             cwd,
             cols,
             rows,
+            shell,
         } => sessions
-            .restart_for(&project, kind, &cwd, (cols, rows))
+            .restart_for(&project, kind, slot, &cwd, (cols, rows), shell.as_ref())
             .and_then(|id| sessions.info(&id))
             .map(Reply::Session),
 

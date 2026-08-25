@@ -49,7 +49,7 @@ fn a_shell_session_runs_commands_and_reports_output() {
     let project = ProjectId::generate();
 
     let id = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .expect("session should start");
 
     manager.write(&id, b"echo beacon-ok\n").unwrap();
@@ -78,10 +78,10 @@ fn the_same_project_reuses_its_session() {
     let project = ProjectId::generate();
 
     let first = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
     let second = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
 
     assert_eq!(first, second, "switching tabs must not respawn the shell");
@@ -96,7 +96,7 @@ fn closing_a_session_reports_it_gone() {
     let project = ProjectId::generate();
 
     let id = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
     assert!(manager.info(&id).unwrap().running);
 
@@ -124,16 +124,16 @@ fn restarting_replaces_the_session_for_the_project() {
     let project = ProjectId::generate();
 
     let first = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
     let second = manager
-        .restart_for(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .restart_for(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
 
     assert_ne!(first, second);
     // The project now points at the replacement, not the dead one.
     let reused = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
     assert_eq!(reused, second);
 
@@ -148,7 +148,7 @@ fn restarting_a_project_with_no_session_just_starts_one() {
     let project = ProjectId::generate();
 
     let id = manager
-        .restart_for(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .restart_for(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .expect("restart should start a session rather than fail");
     assert!(manager.info(&id).unwrap().running);
 
@@ -163,12 +163,13 @@ fn a_project_can_run_a_shell_and_claude_at_the_same_time() {
     let project = ProjectId::generate();
 
     let shell = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
 
     // Claude may not be installed wherever this runs; what matters is that it
     // is tracked separately from the shell rather than replacing it.
-    if let Ok(claude) = manager.ensure(&project, SessionKind::Claude, dir.path(), (80, 24)) {
+    if let Ok(claude) = manager.ensure(&project, SessionKind::Claude, 0, dir.path(), (80, 24), None)
+    {
         assert_ne!(shell, claude);
         assert_eq!(manager.info(&claude).unwrap().kind, SessionKind::Claude);
         manager.close(&claude).unwrap();
@@ -186,7 +187,7 @@ fn resizing_a_live_session_succeeds() {
     let project = ProjectId::generate();
 
     let id = manager
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
 
     manager.resize(&id, 120, 40).expect("resize should succeed");

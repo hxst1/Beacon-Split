@@ -796,3 +796,57 @@ quiet: a drag is one save, not sixty.
 rather than only in the slider: a window nobody can read is not a preference,
 and a settings file is editable by hand. `clamp` alone returns NaN unchanged, so
 non-finite values are refused before they can reach `blur(NaNpx)`.
+
+## ADR-043: A session is identified by project, kind and slot
+
+**Context.** One terminal per project is not enough the moment something is
+running in it: a dev server holds a terminal, and stopping it to run a test is
+exactly the friction Beacon exists to remove.
+
+**Decision.** Sessions are keyed by project, kind and a slot number. Claude
+uses slot zero and only ever has one; terminals can have several. Slots are
+numbers rather than names, and the tabs show their position.
+
+**Why.** A name is a thing to invent, and a second terminal is usually "the
+other one" rather than anything worth titling. The slot also survives a
+restart, which is what lets a reattaching window find the right session rather
+than a session of the right kind.
+
+**Consequence.** The protocol carries a slot, so the version moved with it.
+Which slots are open is window state rather than something persisted: the
+sessions themselves survive, and reopening a project gives one terminal until
+another is asked for.
+
+## ADR-044: The shell is a setting; kitty is not
+
+**Context.** "Can I use kitty?" is a reasonable question with a confusing
+answer.
+
+**Decision.** Beacon runs a shell, chosen in settings, defaulting to the
+account's own started as a login shell. It does not run another terminal
+emulator.
+
+**Why.** Beacon *is* the emulator — xterm.js drawing a PTY is what kitty does.
+Running kitty inside it would be an emulator inside an emulator. What people
+actually want from the question is their shell: fish rather than zsh, or a
+specific build of one. That is what is configurable.
+
+**Consequence.** Anything specific to another emulator — kitty's graphics
+protocol, its keyboard protocol — is not available, and saying so is better
+than a setting that appears to offer it. Arguments are configurable alongside
+the program, because "login shell" is `-l` for zsh, bash and fish and nothing
+at all for nushell.
+
+## ADR-045: The client sends the shell, the daemon does not read it
+
+**Context.** The daemon spawns sessions; settings live with the application.
+
+**Decision.** The shell travels with the request to start a session.
+
+**Why.** A session should start with the shell configured now. A daemon that
+read settings when it started would keep serving the old one until it was
+restarted — and the daemon is deliberately long-lived, so that could be days.
+
+**Consequence.** The protocol carries a little more, and the daemon stays free
+of any opinion about where configuration lives, which is what lets it be the
+thing that outlives everything else.

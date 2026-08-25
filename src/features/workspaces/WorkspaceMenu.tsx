@@ -25,8 +25,16 @@ export function WorkspaceMenu({ onDone }: { onDone: () => void }): React.ReactEl
         submitLabel="Create"
         onCancel={onDone}
         withAccent={ACCENT_PRESETS[0].value}
-        onSubmit={(name, accent) => {
-          void createWorkspace(name, accent)
+        withIcon=""
+        onSubmit={(name, accent, icon) => {
+          void createWorkspace(name, accent).then(() => {
+            // Created first, then decorated: the workspace has to exist before
+            // it can be given anything.
+            const created = useBeacon
+              .getState()
+              .snapshot?.workspaces.find((w) => w.name === name)
+            if (created && icon) void updateWorkspace(created.id, { icon })
+          })
           onDone()
         }}
       />
@@ -41,8 +49,9 @@ export function WorkspaceMenu({ onDone }: { onDone: () => void }): React.ReactEl
         submitLabel="Save"
         onCancel={onDone}
         withAccent={active.accent}
-        onSubmit={(name, accent) => {
-          void updateWorkspace(active.id, { name, accent })
+        withIcon={active.icon ?? ''}
+        onSubmit={(name, accent, icon) => {
+          void updateWorkspace(active.id, { name, accent, icon })
           onDone()
         }}
       />
@@ -73,7 +82,7 @@ export function WorkspaceMenu({ onDone }: { onDone: () => void }): React.ReactEl
       {workspaces.map((workspace) => (
         <MenuItem
           key={workspace.id}
-          label={workspace.name}
+          label={workspace.icon ? `${workspace.icon}  ${workspace.name}` : workspace.name}
           dot={workspace.accent}
           active={workspace.id === active?.id}
           hint={workspace.projects.length > 0 ? String(workspace.projects.length) : undefined}

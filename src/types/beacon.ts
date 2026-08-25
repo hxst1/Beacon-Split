@@ -86,6 +86,8 @@ export interface Snapshot {
   /** Every bindable action with the shortcut it answers to. */
   bindings: ActionBinding[]
   appearance: Appearance
+  /** `null` means the account's own shell, started as a login shell. */
+  shell: ShellSpec | null
   projectsHome: string
 }
 
@@ -100,6 +102,9 @@ export interface SessionInfo {
   id: string
   project: string
   kind: SessionKind
+  /** Which of a project's sessions of this kind. Claude has one; terminals can
+   *  have several. */
+  slot: number
   cwd: string
   running: boolean
 }
@@ -158,6 +163,18 @@ export type Theme = 'system' | 'dark' | 'light'
  * Theme is a design choice; the other two are taste — how much of the desktop
  * shows through, and how far it is pushed out of focus.
  */
+/**
+ * A shell and how to start it.
+ *
+ * Beacon is the terminal emulator, so this is a shell — zsh, fish, nu — and not
+ * another emulator. Arguments are configurable because "login shell" is spelled
+ * differently enough to matter.
+ */
+export interface ShellSpec {
+  program: string
+  args: string[]
+}
+
 export interface Appearance {
   theme: Theme
   /** 0.5..1. Never lower: a window you cannot read is not a preference. */

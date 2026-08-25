@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, indentOnInput } from '@codemirror/language'
-import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search'
+import { gotoLine, highlightSelectionMatches, search, searchKeymap } from '@codemirror/search'
 import { Compartment, EditorState } from '@codemirror/state'
 import {
   EditorView,
@@ -77,6 +77,8 @@ export function CodeEditor({
           beaconTheme(),
           keymap.of([
             // Save before the defaults, so Cmd/Ctrl+S is ours everywhere.
+            // Go to line, on the binding every editor uses for it.
+            { key: 'Mod-g', preventDefault: true, run: gotoLine },
             {
               key: 'Mod-s',
               preventDefault: true,

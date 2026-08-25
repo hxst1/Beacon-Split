@@ -12,6 +12,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import type {
   Appearance,
   DirEntry,
+  ShellSpec,
   HookStatus,
   Requirement,
   Integration,
@@ -35,11 +36,16 @@ export const ipc = {
   createWorkspace: (name: string, accent: string) =>
     invoke<Snapshot>('create_workspace', { name, accent }),
 
-  updateWorkspace: (id: string, changes: { name?: string; accent?: string }) =>
+  /** An absent `icon` leaves it alone; an empty one clears it. */
+  updateWorkspace: (
+    id: string,
+    changes: { name?: string; accent?: string; icon?: string },
+  ) =>
     invoke<Snapshot>('update_workspace', {
       id,
       name: changes.name ?? null,
       accent: changes.accent ?? null,
+      icon: changes.icon ?? null,
     }),
 
   deleteWorkspace: (id: string) => invoke<Snapshot>('delete_workspace', { id }),
@@ -76,6 +82,13 @@ export const ipc = {
   moveProject: (workspaceId: string, projectId: string, targetWorkspaceId: string) =>
     invoke<Snapshot>('move_project', { workspaceId, projectId, targetWorkspaceId }),
 
+  /** Tab order is project order, so this moves the numbered shortcuts too. */
+  reorderProject: (workspaceId: string, projectId: string, to: number) =>
+    invoke<Snapshot>('reorder_project', { workspaceId, projectId, to }),
+
+  /** `null` goes back to the account's own shell. */
+  setShell: (shell: ShellSpec | null) => invoke<Snapshot>('set_shell', { shell }),
+
   setActiveProject: (workspaceId: string, projectId: string) =>
     invoke<Snapshot>('set_active_project', { workspaceId, projectId }),
 
@@ -90,9 +103,10 @@ export const ipc = {
     workspaceId: string,
     projectId: string,
     kind: SessionKind,
+    slot: number,
     cols: number,
     rows: number,
-  ) => invoke<SessionInfo>('open_session', { workspaceId, projectId, kind, cols, rows }),
+  ) => invoke<SessionInfo>('open_session', { workspaceId, projectId, kind, slot, cols, rows }),
 
   /** Keystrokes. Never logged, on either side of the boundary. */
   writeSession: (id: string, data: string) => invoke<void>('write_session', { id, data }),
@@ -108,11 +122,16 @@ export const ipc = {
     workspaceId: string,
     projectId: string,
     kind: SessionKind,
+    slot: number,
     cols: number,
     rows: number,
-  ) => invoke<SessionInfo>('restart_session', { workspaceId, projectId, kind, cols, rows }),
+  ) => invoke<SessionInfo>('restart_session', { workspaceId, projectId, kind, slot, cols, rows }),
 
   stopProject: (projectId: string) => invoke<void>('stop_project', { projectId }),
+
+  /** Ends one of a project's sessions, by slot. */
+  stopSessionSlot: (projectId: string, slot: number) =>
+    invoke<void>('stop_session_slot', { projectId, slot }),
 
   /** Sessions running right now, including any started before this window. */
   listSessions: () => invoke<SessionInfo[]>('list_sessions'),

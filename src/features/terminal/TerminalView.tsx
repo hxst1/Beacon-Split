@@ -11,6 +11,8 @@ interface TerminalViewProps {
   workspaceId: string
   projectId: string
   kind: SessionKind
+  /** Which of the project's sessions of this kind. Claude only ever uses 0. */
+  slot: number
   /** Focus the terminal once it is ready. */
   autoFocus?: boolean
 }
@@ -26,6 +28,7 @@ export function TerminalView({
   workspaceId,
   projectId,
   kind,
+  slot,
   autoFocus = false,
 }: TerminalViewProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -45,11 +48,18 @@ export function TerminalView({
       // Size the PTY from the panel before spawning, so the first prompt is
       // already laid out correctly rather than reflowing a moment later.
       const probe = estimateGrid(container)
-      const session = await ipc.openSession(workspaceId, projectId, kind, probe.cols, probe.rows)
+      const session = await ipc.openSession(
+        workspaceId,
+        projectId,
+        kind,
+        slot,
+        probe.cols,
+        probe.rows,
+      )
       if (cancelled) return
       useActivity.getState().sessionOpened(session.id, projectId)
 
-      const terminal = await acquire(session.id, projectId, kind)
+      const terminal = await acquire(session.id, projectId, kind, slot)
       if (cancelled) return
 
       container.append(terminal.element)
@@ -105,7 +115,7 @@ export function TerminalView({
       cancelled = true
       cleanup?.()
     }
-  }, [workspaceId, projectId, kind, autoFocus])
+  }, [workspaceId, projectId, kind, slot, autoFocus])
 
   return (
     <div className={styles['root']} ref={containerRef}>

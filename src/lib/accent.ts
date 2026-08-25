@@ -19,3 +19,16 @@ export const ACCENT_PRESETS = [
   { name: 'Coral', value: '#ff6f61' },
   { name: 'Rose', value: '#ff5c8a' },
 ] as const
+
+/**
+ * Icons a workspace can wear.
+ *
+ * Emoji rather than an icon set: nothing to bundle, nothing to license, and
+ * they carry meaning a glyph from a library would not — a workspace called
+ * "Red Bull" with a car on it is recognisable before it is read, which is the
+ * whole point of the accent too.
+ */
+export const ICON_PRESETS = [
+  '🏎️', '⚡', '🎮', '🛰️', '🧪', '📦', '🔧', '🎨',
+  '🚀', '🌱', '🏛️', '💾', '📡', '🧭', '🔒', '☕',
+] as const

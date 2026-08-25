@@ -51,6 +51,8 @@ pub struct Snapshot {
     /// Every bindable action with the shortcut it currently answers to.
     pub bindings: Vec<ActionBinding>,
     pub appearance: Appearance,
+    /// `None` means the account's own shell, started as a login shell.
+    pub shell: Option<crate::settings::ShellSpec>,
     pub projects_home: String,
 }
 
@@ -134,6 +136,22 @@ impl Beacon {
         Self::load(default_config_dir())
     }
 
+    /// What a terminal should run, when the user has said.
+    pub fn shell(&self) -> Option<crate::settings::ShellSpec> {
+        self.settings.shell.clone()
+    }
+
+    /// Sets it, or clears it back to the account's own shell.
+    pub fn set_shell(&mut self, shell: Option<crate::settings::ShellSpec>) -> Result<()> {
+        if let Some(spec) = &shell
+            && spec.program.trim().is_empty()
+        {
+            return Err(CoreError::invalid("a shell needs a program to run"));
+        }
+        self.settings.shell = shell;
+        self.save_settings()
+    }
+
     pub fn projects_home(&self) -> PathBuf {
         self.settings.projects_home_path()
     }
@@ -156,6 +174,7 @@ impl Beacon {
             hidden: self.ui.hidden.clone(),
             bindings: keymap::resolve(&self.settings.bindings),
             appearance: self.settings.appearance.clamped(),
+            shell: self.settings.shell.clone(),
             projects_home: home.to_string_lossy().into_owned(),
         }
     }
@@ -345,6 +364,35 @@ impl Beacon {
         }
         self.save_workspaces()?;
         self.save_ui()
+    }
+
+    /// Moves a project to a new position among its siblings.
+    ///
+    /// Tab order is the order in this list, and the numbered shortcuts follow
+    /// it, so rearranging tabs rearranges `⌘1`..`⌘9` with them.
+    pub fn reorder_project(
+        &mut self,
+        workspace_id: &WorkspaceId,
+        project_id: &ProjectId,
+        to: usize,
+    ) -> Result<()> {
+        let workspace = self.workspace_mut(workspace_id)?;
+        let from = workspace
+            .projects
+            .iter()
+            .position(|p| &p.id == project_id)
+            .ok_or_else(|| CoreError::ProjectNotFound(project_id.to_string()))?;
+
+        // Past the end means the end, rather than an error: a drop below the
+        // last tab is a perfectly clear intention.
+        let to = to.min(workspace.projects.len().saturating_sub(1));
+        if from == to {
+            return Ok(());
+        }
+
+        let project = workspace.projects.remove(from);
+        workspace.projects.insert(to, project);
+        self.save_workspaces()
     }
 
     pub fn move_project(

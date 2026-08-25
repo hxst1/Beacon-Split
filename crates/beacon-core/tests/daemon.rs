@@ -109,7 +109,7 @@ fn a_session_outlives_the_client_that_started_it() {
         .expect("should reach a daemon");
 
         let session = client
-            .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+            .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
             .expect("should start a session");
 
         client.write(&session.id, "echo bea''con-lives\n").unwrap();
@@ -139,7 +139,7 @@ fn a_session_outlives_the_client_that_started_it() {
     .expect("should reach the same daemon");
 
     let again = client
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .expect("should find the running session");
     assert_eq!(
         again.id, session.id,
@@ -198,10 +198,10 @@ fn closing_a_project_stops_its_sessions_but_not_the_daemon() {
     let one = ProjectId::generate();
     let other = ProjectId::generate();
     let kept = client
-        .ensure(&other, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&other, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
     client
-        .ensure(&one, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&one, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .unwrap();
 
     client.close_project(&one).unwrap();
@@ -240,7 +240,7 @@ fn the_client_gets_itself_back_after_the_daemon_is_replaced() {
 
     let project = ProjectId::generate();
     client
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .expect("a session to lose");
 
     // Stopping the daemon is the harshest version of this: everything it held
@@ -267,7 +267,7 @@ fn the_client_gets_itself_back_after_the_daemon_is_replaced() {
 
     // And it is usable again, not merely connected.
     let fresh = client
-        .ensure(&project, SessionKind::Shell, dir.path(), (80, 24))
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .expect("the reattached client should still work");
     assert!(fresh.running);
 

@@ -6,6 +6,18 @@ use serde::{Deserialize, Serialize};
 use crate::appearance::Appearance;
 use crate::paths::default_projects_home;
 
+/// A shell and how to start it.
+///
+/// Arguments are configurable because "login shell" is spelled differently
+/// enough to matter: `-l` for zsh, bash and fish, nothing at all for nushell.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellSpec {
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
 /// Application-wide preferences. Deliberately small: anything that belongs to a
 /// workspace lives in `workspaces.json`, anything ephemeral lives in
 /// `ui-state.json`.
@@ -25,6 +37,13 @@ pub struct Settings {
     /// no stale entry is left behind pointing at an action that moved on.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub bindings: BTreeMap<String, String>,
+    /// What a terminal runs, when the user wants something other than the
+    /// shell their account is set to.
+    ///
+    /// Beacon is the terminal emulator, so this is a shell — zsh, fish, nu —
+    /// and not another emulator. `None` means `$SHELL`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell: Option<ShellSpec>,
     /// How the window looks. Stored whole rather than only when changed: unlike
     /// a shortcut, every field here is always in effect.
     #[serde(default)]
@@ -48,6 +67,7 @@ impl Default for Settings {
             schema_version: Self::SCHEMA_VERSION,
             projects_home: None,
             bindings: BTreeMap::new(),
+            shell: None,
             appearance: Appearance::default(),
         }
     }

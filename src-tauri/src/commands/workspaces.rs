@@ -2,6 +2,7 @@ use beacon_core::Snapshot;
 use beacon_core::appearance::Appearance;
 use beacon_core::domain::WorkspaceId;
 use beacon_core::layout::{LayoutNode, LayoutPreset, PanelId};
+use beacon_core::settings::ShellSpec;
 use tauri::State;
 
 use crate::error::CommandResult;
@@ -29,9 +30,28 @@ pub fn update_workspace(
     id: WorkspaceId,
     name: Option<String>,
     accent: Option<String>,
+    icon: Option<String>,
 ) -> CommandResult<Snapshot> {
+    // Three intentions, not two: no `icon` field leaves it alone, an empty one
+    // clears it, anything else sets it. Collapsing the first two would make
+    // renaming a workspace silently remove its icon.
+    let icon: Option<Option<&str>> = icon.as_deref().map(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then_some(trimmed)
+    });
+
     let mut beacon = state.beacon();
-    beacon.update_workspace(&id, name.as_deref(), accent.as_deref(), None)?;
+    beacon.update_workspace(&id, name.as_deref(), accent.as_deref(), icon)?;
+    Ok(beacon.snapshot())
+}
+
+/// Sets what a terminal runs, or clears it back to the account's own shell.
+///
+/// Beacon is the terminal emulator, so this is a shell — not another emulator.
+#[tauri::command]
+pub fn set_shell(state: State<'_, AppState>, shell: Option<ShellSpec>) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_shell(shell)?;
     Ok(beacon.snapshot())
 }
 

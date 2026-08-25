@@ -13,6 +13,7 @@ use crate::protocol::{
     Envelope, Event, Message, Outcome, PROTOCOL_VERSION, Reply, Request, Response, socket_path,
 };
 use crate::session::{SessionInfo, SessionKind};
+use crate::settings::ShellSpec;
 
 /// How long a request waits before giving up.
 ///
@@ -148,15 +149,19 @@ impl DaemonClient {
         &self,
         project: &ProjectId,
         kind: SessionKind,
+        slot: u32,
         cwd: &Path,
         size: (u16, u16),
+        shell: Option<ShellSpec>,
     ) -> Result<SessionInfo> {
         match self.request(Request::Ensure {
             project: project.clone(),
             kind,
+            slot,
             cwd: cwd.to_path_buf(),
             cols: size.0,
             rows: size.1,
+            shell,
         })? {
             Reply::Session(info) => Ok(info),
             _ => Err(unexpected()),
@@ -196,15 +201,19 @@ impl DaemonClient {
         &self,
         project: &ProjectId,
         kind: SessionKind,
+        slot: u32,
         cwd: &Path,
         size: (u16, u16),
+        shell: Option<ShellSpec>,
     ) -> Result<SessionInfo> {
         match self.request(Request::Restart {
             project: project.clone(),
             kind,
+            slot,
             cwd: cwd.to_path_buf(),
             cols: size.0,
             rows: size.1,
+            shell,
         })? {
             Reply::Session(info) => Ok(info),
             _ => Err(unexpected()),

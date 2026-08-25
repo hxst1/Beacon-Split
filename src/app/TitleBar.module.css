@@ -90,3 +90,11 @@
    `-webkit-app-region`: the latter only works on macOS WebKit, and Beacon has
    to behave the same on WebKitGTK. Tauri also gives us double-click-to-zoom
    on these elements for free. */
+
+/* An icon stands in for the accent dot rather than joining it: two marks for
+   one workspace is one more than the eye needs. */
+.workspaceIcon {
+  font-size: 12px;
+  line-height: 1;
+  flex: none;
+}

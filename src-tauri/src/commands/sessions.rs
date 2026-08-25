@@ -16,15 +16,25 @@ pub fn open_session(
     workspace_id: WorkspaceId,
     project_id: ProjectId,
     kind: SessionKind,
+    slot: u32,
     cols: u16,
     rows: u16,
 ) -> CommandResult<SessionInfo> {
-    let cwd = state
-        .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
-    Ok(state
-        .daemon()?
-        .ensure(&project_id, kind, &cwd, (cols.max(2), rows.max(2)))?)
+    let (cwd, shell) = {
+        let beacon = state.beacon();
+        (
+            beacon.resolve_project_path(&workspace_id, &project_id)?,
+            beacon.shell(),
+        )
+    };
+    Ok(state.daemon()?.ensure(
+        &project_id,
+        kind,
+        slot,
+        &cwd,
+        (cols.max(2), rows.max(2)),
+        shell,
+    )?)
 }
 
 /// Sends keystrokes to a session. Nothing about the payload is logged.
@@ -73,15 +83,25 @@ pub fn restart_session(
     workspace_id: WorkspaceId,
     project_id: ProjectId,
     kind: SessionKind,
+    slot: u32,
     cols: u16,
     rows: u16,
 ) -> CommandResult<SessionInfo> {
-    let cwd = state
-        .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
-    Ok(state
-        .daemon()?
-        .restart(&project_id, kind, &cwd, (cols.max(2), rows.max(2)))?)
+    let (cwd, shell) = {
+        let beacon = state.beacon();
+        (
+            beacon.resolve_project_path(&workspace_id, &project_id)?,
+            beacon.shell(),
+        )
+    };
+    Ok(state.daemon()?.restart(
+        &project_id,
+        kind,
+        slot,
+        &cwd,
+        (cols.max(2), rows.max(2)),
+        shell,
+    )?)
 }
 
 /// Stops every process belonging to a project, leaving the project itself in
@@ -89,6 +109,31 @@ pub fn restart_session(
 #[tauri::command]
 pub fn stop_project(state: State<'_, AppState>, project_id: ProjectId) -> CommandResult<()> {
     Ok(state.daemon()?.close_project(&project_id)?)
+}
+
+/// Ends one of a project's sessions.
+///
+/// Addressed by project and slot rather than by session id: closing a terminal
+/// tab is something the window knows about, and the id belongs to the daemon.
+/// Found through the session list rather than a new message — the daemon
+/// already knows how to answer that question.
+#[tauri::command]
+pub fn stop_session_slot(
+    state: State<'_, AppState>,
+    project_id: ProjectId,
+    slot: u32,
+) -> CommandResult<()> {
+    let daemon = state.daemon()?;
+    let target = daemon
+        .list()?
+        .into_iter()
+        .find(|info| info.project == project_id && info.slot == slot);
+
+    // Already gone is the outcome asked for, not a failure.
+    if let Some(info) = target {
+        daemon.close(&info.id)?;
+    }
+    Ok(())
 }
 
 /// Which sessions are running, including any started before this window opened.

@@ -1,0 +1,58 @@
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: none;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.tab:hover {
+  background: var(--surface-2);
+  color: var(--fg-2);
+}
+
+.tab[data-active='true'] {
+  background: var(--surface-2);
+  color: var(--fg-1);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+/* Closing is only offered where there is something to fall back to: the last
+   terminal is the panel, and a panel with nothing in it is not a state. */
+.close {
+  color: var(--fg-4);
+  font-size: 9px;
+}
+
+.close:hover {
+  color: var(--danger);
+}
+
+.add {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-4);
+  font-size: 13px;
+  line-height: 1;
+  flex: none;
+}
+
+.add:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}

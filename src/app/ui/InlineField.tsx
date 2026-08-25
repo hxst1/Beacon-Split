@@ -1,17 +1,19 @@
 import { useState } from 'react'
 
-import { ACCENT_PRESETS } from '@/lib/accent'
+import { ACCENT_PRESETS, ICON_PRESETS } from '@/lib/accent'
 import styles from './InlineField.module.css'
 
 interface InlineFieldProps {
   label: string
   initialValue: string
   submitLabel: string
-  /** `accent` is the empty string unless `withAccent` was provided. */
-  onSubmit: (value: string, accent: string) => void
+  /** `accent` and `icon` are empty strings unless those pickers were shown. */
+  onSubmit: (value: string, accent: string, icon: string) => void
   onCancel: () => void
   /** Shows the accent picker, starting from this colour. */
-  withAccent?: string
+  withAccent?: string | undefined
+  /** Shows the icon picker, starting from this emoji. */
+  withIcon?: string | undefined
 }
 
 /**
@@ -27,13 +29,15 @@ export function InlineField({
   onSubmit,
   onCancel,
   withAccent,
+  withIcon,
 }: InlineFieldProps): React.ReactElement {
   const [value, setValue] = useState(initialValue)
   const [accent, setAccent] = useState(withAccent ?? '')
+  const [icon, setIcon] = useState(withIcon ?? '')
 
   const submit = (): void => {
     const trimmed = value.trim()
-    if (trimmed) onSubmit(trimmed, accent)
+    if (trimmed) onSubmit(trimmed, accent, icon)
   }
 
   return (
@@ -63,6 +67,32 @@ export function InlineField({
               data-selected={preset.value === accent}
               onClick={() => setAccent(preset.value)}
             />
+          ))}
+        </div>
+      ) : null}
+
+      {withIcon !== undefined ? (
+        <div className={styles['icons']}>
+          <button
+            type="button"
+            title="No icon"
+            className={styles['icon']}
+            data-none="true"
+            data-selected={icon === ''}
+            onClick={() => setIcon('')}
+          >
+            ✕
+          </button>
+          {ICON_PRESETS.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              className={styles['icon']}
+              data-selected={preset === icon}
+              onClick={() => setIcon(preset)}
+            >
+              {preset}
+            </button>
           ))}
         </div>
       ) : null}

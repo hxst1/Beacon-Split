@@ -76,7 +76,11 @@ interface BeaconState {
 
   load: () => Promise<void>
   createWorkspace: (name: string, accent: string) => Promise<void>
-  updateWorkspace: (id: string, changes: { name?: string; accent?: string }) => Promise<void>
+  /** An absent `icon` leaves it alone; an empty one clears it. */
+  updateWorkspace: (
+    id: string,
+    changes: { name?: string; accent?: string; icon?: string },
+  ) => Promise<void>
   deleteWorkspace: (id: string) => Promise<void>
   selectWorkspace: (id: string) => Promise<void>
   addProject: (path: string) => Promise<void>
@@ -85,7 +89,9 @@ interface BeaconState {
   /** Stops the project's processes without removing the project. */
   stopProject: (projectId: string) => Promise<void>
   /** Replaces one of the project's sessions with a fresh one. */
-  restartSession: (projectId: string, kind: SessionKind) => Promise<void>
+  restartSession: (projectId: string, kind: SessionKind, slot?: number) => Promise<void>
+  /** Moves a project among its siblings; tab order is project order. */
+  reorderProject: (projectId: string, to: number) => Promise<void>
   moveProject: (projectId: string, targetWorkspaceId: string) => Promise<void>
   selectProject: (projectId: string) => Promise<void>
   selectProjectAt: (index: number) => Promise<void>
@@ -215,16 +221,22 @@ export const useBeacon = create<BeaconState>((set, get) => {
       }
     },
 
-    restartSession: async (projectId, kind) => {
+    reorderProject: async (projectId, to) => {
+      const workspaceId = requireWorkspace()
+      if (!workspaceId) return
+      await run(() => ipc.reorderProject(workspaceId, projectId, to))
+    },
+
+    restartSession: async (projectId, kind, slot = 0) => {
       const workspaceId = requireWorkspace()
       if (!workspaceId) return
       try {
         // The view is rebuilt from scratch, so its size is measured again
         // anyway; these are only the grid the new process starts with.
-        await ipc.restartSession(workspaceId, projectId, kind, 80, 24)
-        disposeFor(projectId, kind)
+        await ipc.restartSession(workspaceId, projectId, kind, slot, 80, 24)
+        disposeFor(projectId, kind, slot)
         set((state) => {
-          const key = `${projectId}:${kind}`
+          const key = `${projectId}:${kind}:${slot}`
           return {
             sessionEpoch: { ...state.sessionEpoch, [key]: (state.sessionEpoch[key] ?? 0) + 1 },
           }

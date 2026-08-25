@@ -123,3 +123,31 @@
   background: var(--surface-2);
   color: var(--fg-1);
 }
+
+/* While a tab is being carried. It stays in place and dims rather than being
+   lifted out: the strip is the thing being rearranged, and a tab that vanishes
+   from it makes the new order harder to read, not easier. */
+.tab[data-dragging='true'] {
+  opacity: 0.4;
+}
+
+/* Where it would land. A line rather than a gap, so nothing shifts until the
+   drop actually happens. */
+.tab[data-drop='before']::before,
+.tab[data-drop='after']::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 99px;
+  background: var(--accent);
+}
+
+.tab[data-drop='before']::before {
+  left: -2px;
+}
+
+.tab[data-drop='after']::after {
+  right: -2px;
+}

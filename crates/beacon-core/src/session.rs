@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::domain::ProjectId;
 use crate::error::{CoreError, Result};
 use crate::scrollback::{DEFAULT_CAPACITY, Scrollback};
+use crate::settings::ShellSpec;
 use crate::tools::{resolve_program, user_shell};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -144,6 +145,9 @@ pub struct SessionInfo {
     pub id: SessionId,
     pub project: ProjectId,
     pub kind: SessionKind,
+    /// Which of a project's sessions of this kind. Claude has one; terminals
+    /// can have several, and this is how they are told apart across restarts.
+    pub slot: u32,
     pub cwd: String,
     pub running: bool,
 }
@@ -151,6 +155,7 @@ pub struct SessionInfo {
 struct Session {
     project: ProjectId,
     kind: SessionKind,
+    slot: u32,
     cwd: PathBuf,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
@@ -168,9 +173,9 @@ struct Session {
 pub struct SessionManager {
     events: Arc<dyn SessionEvents>,
     sessions: Mutex<HashMap<SessionId, Session>>,
-    /// One session per (project, kind), so switching tabs reuses rather than
-    /// respawns.
-    by_project: Mutex<HashMap<(ProjectId, SessionKind), SessionId>>,
+    /// One session per (project, kind, slot), so switching tabs reuses rather
+    /// than respawns, and a project can hold several terminals at once.
+    by_project: Mutex<HashMap<(ProjectId, SessionKind, u32), SessionId>>,
     /// Where `claude` lives, worked out once. `None` means it was looked for
     /// and not found.
     claude_path: OnceLock<Option<PathBuf>>,
@@ -203,11 +208,28 @@ impl SessionManager {
     /// GUI application's PATH is missing most of the user's tools. Claude is
     /// launched directly from its resolved path, so nothing the user's startup
     /// files print ends up in the panel above it.
-    fn command_for(&self, kind: SessionKind) -> Result<CommandBuilder> {
+    fn command_for(&self, kind: SessionKind, shell: Option<&ShellSpec>) -> Result<CommandBuilder> {
         match kind {
             SessionKind::Shell => {
-                let mut command = CommandBuilder::new(user_shell());
-                command.arg("-l");
+                // What the user configured, or their account's shell as a login
+                // shell — which is what every terminal emulator does, and
+                // without it a GUI application's PATH is missing most of their
+                // tools.
+                let mut command = match shell {
+                    Some(spec) => {
+                        let mut command = CommandBuilder::new(&spec.program);
+                        for arg in &spec.args {
+                            command.arg(arg);
+                        }
+                        command
+                    }
+                    None => {
+                        let mut command = CommandBuilder::new(user_shell());
+                        command.arg("-l");
+                        command
+                    }
+                };
+                let _ = &mut command;
                 Ok(command)
             }
             SessionKind::Claude => {
@@ -232,10 +254,12 @@ impl SessionManager {
         &self,
         project: &ProjectId,
         kind: SessionKind,
+        slot: u32,
         cwd: &Path,
         size: (u16, u16),
+        shell: Option<&ShellSpec>,
     ) -> Result<SessionId> {
-        let key = (project.clone(), kind);
+        let key = (project.clone(), kind, slot);
 
         if let Some(existing) = self.by_project.lock_or_recover().get(&key).cloned() {
             let mut sessions = self.sessions.lock_or_recover();
@@ -251,7 +275,7 @@ impl SessionManager {
             sessions.remove(&existing);
         }
 
-        let id = self.spawn(project.clone(), kind, cwd, size)?;
+        let id = self.spawn(project.clone(), kind, slot, cwd, size, shell)?;
         self.by_project.lock_or_recover().insert(key, id.clone());
         Ok(id)
     }
@@ -260,8 +284,10 @@ impl SessionManager {
         &self,
         project: ProjectId,
         kind: SessionKind,
+        slot: u32,
         cwd: &Path,
         (cols, rows): (u16, u16),
+        shell: Option<&ShellSpec>,
     ) -> Result<SessionId> {
         let pty = native_pty_system();
         let pair = pty
@@ -273,7 +299,7 @@ impl SessionManager {
             })
             .map_err(|err| CoreError::session("could not open a pty", err))?;
 
-        let mut command = self.command_for(kind)?;
+        let mut command = self.command_for(kind, shell)?;
         command.cwd(cwd);
         prepare_environment(&mut command);
 
@@ -346,6 +372,7 @@ impl SessionManager {
             Session {
                 project,
                 kind,
+                slot,
                 cwd: cwd.to_path_buf(),
                 master: pair.master,
                 writer,
@@ -436,6 +463,7 @@ impl SessionManager {
                     id: id.clone(),
                     project: session.project.clone(),
                     kind: session.kind,
+                    slot: session.slot,
                     cwd: session.cwd.to_string_lossy().into_owned(),
                     running: session.child.try_wait().ok().flatten().is_none(),
                 })
@@ -452,6 +480,7 @@ impl SessionManager {
             id: id.clone(),
             project: session.project.clone(),
             kind: session.kind,
+            slot: session.slot,
             cwd: session.cwd.to_string_lossy().into_owned(),
             running: session.child.try_wait().ok().flatten().is_none(),
         })
@@ -502,13 +531,15 @@ impl SessionManager {
         &self,
         project: &ProjectId,
         kind: SessionKind,
+        slot: u32,
         cwd: &Path,
         size: (u16, u16),
+        shell: Option<&ShellSpec>,
     ) -> Result<SessionId> {
         let existing = self
             .by_project
             .lock_or_recover()
-            .get(&(project.clone(), kind))
+            .get(&(project.clone(), kind, slot))
             .cloned();
 
         if let Some(id) = existing {
@@ -516,7 +547,7 @@ impl SessionManager {
             let _ = self.close(&id);
         }
 
-        self.ensure(project, kind, cwd, size)
+        self.ensure(project, kind, slot, cwd, size, shell)
     }
 }
 

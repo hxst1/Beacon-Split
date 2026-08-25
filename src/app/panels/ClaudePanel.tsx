@@ -23,7 +23,8 @@ export function ClaudePanel({
 }): React.ReactElement {
   const restartSession = useBeacon((s) => s.restartSession)
   const missingClaude = useBeacon((s) => s.missing.find((entry) => entry.id === 'claude'))
-  const epoch = useBeacon((s) => s.sessionEpoch[`${project.id}:claude`] ?? 0)
+  // Claude has one session per project; the slot exists for terminals.
+  const epoch = useBeacon((s) => s.sessionEpoch[`${project.id}:claude:0`] ?? 0)
   const attachEpoch = useBeacon((s) => s.attachEpoch)
 
   return (
@@ -50,6 +51,7 @@ export function ClaudePanel({
           workspaceId={workspaceId}
           projectId={project.id}
           kind="claude"
+          slot={0}
           autoFocus={focused}
         />
       )}

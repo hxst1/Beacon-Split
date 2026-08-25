@@ -126,6 +126,7 @@ the same configuration works on macOS and Linux.
 | `⌘↩` | Fullscreen the focused panel |
 | `⌘K` | Command palette |
 | `⌘P` | Quick open |
+| `⌘G` | Go to line, in the editor |
 
 Every shortcut is editable in Settings → Keyboard: click one and press the new
 one. Only the ones you change are stored, so later changes to a default still

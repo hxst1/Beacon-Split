@@ -344,3 +344,98 @@ fn an_unknown_action_cannot_be_bound() {
     let mut beacon = Beacon::load(&config).unwrap();
     assert!(beacon.set_binding("nothing.here", Some("mod+y")).is_err());
 }
+
+#[test]
+fn projects_can_be_rearranged_and_the_order_sticks() {
+    let (guard, config) = scratch();
+    let names = ["first", "second", "third"];
+    for name in names {
+        std::fs::create_dir_all(guard.path().join(name)).unwrap();
+    }
+
+    let (workspace, moved) = {
+        let mut beacon = Beacon::load(&config).unwrap();
+        let workspace = beacon.create_workspace("Work", "#4f8df7").unwrap();
+        let mut ids = Vec::new();
+        for name in names {
+            ids.push(
+                beacon
+                    .add_project(&workspace, &guard.path().join(name))
+                    .unwrap(),
+            );
+        }
+
+        // Drag the last tab to the front.
+        beacon.reorder_project(&workspace, &ids[2], 0).unwrap();
+        (workspace, ids[2].clone())
+    };
+
+    let snapshot = Beacon::load(&config).unwrap().snapshot();
+    let projects = &snapshot
+        .workspaces
+        .iter()
+        .find(|w| w.id == workspace)
+        .unwrap()
+        .projects;
+
+    assert_eq!(projects[0].id, moved);
+    assert_eq!(
+        projects.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+        vec!["third", "first", "second"]
+    );
+}
+
+#[test]
+fn dropping_past_the_last_tab_means_the_end() {
+    let (guard, config) = scratch();
+    for name in ["a", "b"] {
+        std::fs::create_dir_all(guard.path().join(name)).unwrap();
+    }
+
+    let mut beacon = Beacon::load(&config).unwrap();
+    let workspace = beacon.create_workspace("Work", "#4f8df7").unwrap();
+    let first = beacon
+        .add_project(&workspace, &guard.path().join("a"))
+        .unwrap();
+    beacon
+        .add_project(&workspace, &guard.path().join("b"))
+        .unwrap();
+
+    // A drop below everything is a clear intention, not an error.
+    beacon.reorder_project(&workspace, &first, 99).unwrap();
+
+    let snapshot = beacon.snapshot();
+    assert_eq!(snapshot.workspaces[0].projects[1].id, first);
+}
+
+#[test]
+fn a_shell_that_names_nothing_is_refused() {
+    let (_guard, config) = scratch();
+    let mut beacon = Beacon::load(&config).unwrap();
+    assert!(
+        beacon
+            .set_shell(Some(beacon_core::settings::ShellSpec {
+                program: "   ".into(),
+                args: vec![],
+            }))
+            .is_err()
+    );
+}
+
+#[test]
+fn a_chosen_shell_survives_a_reload() {
+    let (_guard, config) = scratch();
+    {
+        let mut beacon = Beacon::load(&config).unwrap();
+        beacon
+            .set_shell(Some(beacon_core::settings::ShellSpec {
+                program: "/opt/homebrew/bin/fish".into(),
+                args: vec!["-l".into()],
+            }))
+            .unwrap();
+    }
+
+    let shell = Beacon::load(&config).unwrap().snapshot().shell.unwrap();
+    assert_eq!(shell.program, "/opt/homebrew/bin/fish");
+    assert_eq!(shell.args, vec!["-l".to_string()]);
+}

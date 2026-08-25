@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::ProjectId;
 use crate::session::{SessionId, SessionInfo, SessionKind};
+use crate::settings::ShellSpec;
 
 /// The wire contract between Beacon and its session daemon.
 ///
@@ -17,7 +18,9 @@ use crate::session::{SessionId, SessionInfo, SessionKind};
 /// session is worse than a new one.
 ///
 /// Version 2 added `Report`, `ReportUsage` and `Usage`.
-pub const PROTOCOL_VERSION: u32 = 2;
+/// Version 3 gave sessions a slot, so a project can hold several terminals, and
+/// let the client say which shell to run.
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Newline-delimited JSON, one message per line.
 ///
@@ -84,9 +87,17 @@ pub enum Request {
     Ensure {
         project: ProjectId,
         kind: SessionKind,
+        /// Which of the project's sessions of this kind.
+        #[serde(default)]
+        slot: u32,
         cwd: PathBuf,
         cols: u16,
         rows: u16,
+        /// What to run. Sent by the client rather than read by the daemon, so a
+        /// session starts with the shell configured now — not the one that was
+        /// configured when the daemon happened to start.
+        #[serde(default)]
+        shell: Option<ShellSpec>,
     },
     #[serde(rename_all = "camelCase")]
     Write { id: SessionId, data: String },
@@ -101,9 +112,13 @@ pub enum Request {
     Restart {
         project: ProjectId,
         kind: SessionKind,
+        #[serde(default)]
+        slot: u32,
         cwd: PathBuf,
         cols: u16,
         rows: u16,
+        #[serde(default)]
+        shell: Option<ShellSpec>,
     },
     #[serde(rename_all = "camelCase")]
     CloseProject { project: ProjectId },
@@ -264,9 +279,11 @@ mod tests {
             request: Request::Ensure {
                 project: ProjectId::generate(),
                 kind: SessionKind::Claude,
+                slot: 0,
                 cwd: PathBuf::from("/tmp/project"),
                 cols: 80,
                 rows: 24,
+                shell: None,
             },
         };
 
@@ -290,9 +307,11 @@ mod tests {
             Request::Ensure {
                 project: project.clone(),
                 kind: SessionKind::Shell,
+                slot: 0,
                 cwd: cwd.clone(),
                 cols: 80,
                 rows: 24,
+                shell: None,
             },
             Request::Write {
                 id: id.clone(),
@@ -308,9 +327,11 @@ mod tests {
             Request::Restart {
                 project: project.clone(),
                 kind: SessionKind::Claude,
+                slot: 0,
                 cwd,
                 cols: 80,
                 rows: 24,
+                shell: None,
             },
             Request::CloseProject { project },
             Request::List {},
@@ -380,6 +401,7 @@ mod tests {
             id: SessionId("sn_x".into()),
             project: ProjectId("pj_x".into()),
             kind: SessionKind::Shell,
+            slot: 0,
             cwd: "/tmp/project".into(),
             running: true,
         };
