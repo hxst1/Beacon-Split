@@ -58,7 +58,9 @@ window, and whether what shows through is frosted.
 
 ## Install
 
-Beacon is macOS Apple Silicon today. Linux is next; Windows is not planned.
+Beacon is macOS today. Releases carry an Apple Silicon and an Intel build;
+Apple Silicon is the one it is developed and tested on. Linux is next; Windows
+is not planned.
 
 **From a release** — [download the latest][releases], open the `.dmg`, drag
 Beacon to Applications.

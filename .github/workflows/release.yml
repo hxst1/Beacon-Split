@@ -63,6 +63,28 @@ jobs:
       - name: Check
         run: pnpm check
 
+      # The release page and the panel inside the application read the same
+      # file, so they cannot disagree about what changed. It fails when the tag
+      # has no entry, which is the only moment anyone would notice that a
+      # version was about to ship with nothing to say for itself.
+      - name: Render the release notes
+        id: notes
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs"
+            const version = process.env.GITHUB_REF_NAME.replace(/^v/, "")
+            const release = JSON.parse(readFileSync("release-notes.json", "utf8"))
+              .find((entry) => entry.version === version)
+            if (!release) throw new Error(`release-notes.json has no entry for ${version}`)
+            process.stdout.write([release.summary, "", ...release.changes.map((c) => `- ${c}`)].join("\n"))
+          ' > notes.md
+          {
+            echo "body<<BEACON_NOTES_EOF"
+            cat notes.md
+            echo
+            echo "BEACON_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,9 +97,7 @@ jobs:
           args: --target ${{ matrix.target }}
           tagName: ${{ github.ref_name }}
           releaseName: Beacon ${{ github.ref_name }}
-          # Written from the notes that ship in the build, so the release page
-          # and the panel inside the application cannot disagree.
-          releaseBody: ${{ github.event.head_commit.message }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true

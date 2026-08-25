@@ -12,7 +12,7 @@
       "Command palette on ⌘K, quick open on ⌘P, and every shortcut is editable.",
       "Tabs say what Claude is doing — working, finished, or waiting for you — reported by Claude Code rather than guessed from output.",
       "The title bar shows how much of the five-hour allowance is left and how full each project's context is.",
-      "Light and dark themes, and sliders for how translucent and how blurred the window is."
+      "Light and dark themes, how much of the desktop shows through the window, and whether what shows through is frosted."
     ]
   }
 ]
