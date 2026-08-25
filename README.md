@@ -175,6 +175,36 @@ decisions is welcome as long as it says which one and why it was wrong.
 | [Distributing](docs/DISTRIBUTING.md) | Handing a build to somebody else |
 | [Publishing](docs/PUBLISHING.md) | Cutting a release |
 
+## Claude Code, and Anthropic
+
+Beacon is not affiliated with, endorsed by, or partnered with Anthropic.
+
+It runs Claude Code as Anthropic publishes it. Beacon does not bundle it,
+modify it, patch it, or restrict any way it can sign you in — it starts the
+`claude` on your `PATH` in a terminal, the same one you would start yourself.
+`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` and the Bedrock and Vertex settings
+are passed straight through for that reason.
+
+**You sign in to Claude yourself**, by running `claude` once, through
+Anthropic's own flow. Beacon never asks for, handles, stores, proxies or
+forwards a Claude account credential or session token, and it cannot: it has no
+account system, no server, and no idea who you are. Your usage is billed to
+you, under your own agreement with Anthropic.
+
+That also means Beacon is for one person on their own machine. Do not put it
+somewhere other people reach your signed-in Claude — sharing an account is
+against Anthropic's terms, and everyone using Claude Code needs their own
+subscription or API key. Your own devices reaching your own machine is a
+different thing, and fine.
+
+Your use of Claude Code is governed by [Anthropic's terms][terms], and its
+usage limits assume ordinary individual use. Beacon opens several projects at
+once because switching between them costs you attention — not to multiply what
+one person would otherwise do.
+
+Claude and Claude Code are trademarks of Anthropic PBC. Beacon uses those names
+only to say what it runs.
+
 ## Licence
 
 [AGPL-3.0](LICENSE).
@@ -190,3 +220,4 @@ right; see [CONTRIBUTING.md](CONTRIBUTING.md#licensing).
 
 [releases]: https://github.com/hxst1/Beacon-Split/releases
 [claude]: https://claude.com/claude-code
+[terms]: https://code.claude.com/docs/en/legal-and-compliance

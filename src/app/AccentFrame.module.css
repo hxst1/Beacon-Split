@@ -1,9 +1,15 @@
 /*
  * The workspace signal.
  *
- * A 1px inner hairline plus a wide, very low-opacity bloom. The point is
+ * A 1px inner hairline plus a narrow bloom that hugs it. The point is
  * peripheral recognition — you should know which workspace you are in before
  * you read anything — so it must never compete with content.
+ *
+ * The bloom used to be two stacked shadows, the wider of them reaching some
+ * fifty pixels into the window. That is far enough to sit behind text rather
+ * than around it, which reads as the window being tinted instead of edged.
+ * One shadow now, pulled in tight: the edge is still unmistakably the
+ * workspace's colour, and nothing inside the frame is.
  */
 .frame {
   position: fixed;
@@ -13,8 +19,7 @@
   border-radius: 12px;
   box-shadow:
     inset 0 0 0 1px var(--accent-line),
-    inset 0 0 34px -14px var(--accent-glow),
-    inset 0 0 90px -40px var(--accent-glow);
+    inset 0 0 26px -18px var(--accent-glow);
   transition: box-shadow var(--dur-2) var(--ease);
 }
 

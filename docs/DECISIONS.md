@@ -998,3 +998,36 @@ pair that has to agree.
 and is tested against every way a measurement has gone wrong so far — a
 collapsing panel, a hidden one, and a cell measured as zero, which divides into
 infinity rather than into something small and so slips past a range check.
+
+## ADR-052: Beacon never touches a Claude credential
+
+**Context.** Beacon runs Claude Code, which puts it inside the conditions
+Anthropic sets for products that do.
+
+**Decision.** Beacon starts the unmodified `claude` on the user's `PATH` and
+stops there. It has no account system, no server, no login screen, and no code
+path that reads, stores, forwards or proxies a Claude credential or session
+token. Every authentication variable the user has set — `ANTHROPIC_API_KEY`,
+`ANTHROPIC_BASE_URL`, the Bedrock and Vertex switches — is passed through
+untouched, and the environment Beacon strips is per-process state only, listed
+one variable at a time rather than by a `CLAUDE_*` prefix, precisely so that
+nothing to do with signing in can be caught by accident.
+
+**Why.** Anthropic's terms for running Claude Code in another product are
+specific: the binary must not be modified, no authentication method may be
+removed or restricted, and each end user must authenticate themselves. A
+developer may not offer Claude.ai login inside their own application, nor
+collect, store or intermediate credentials. The architecture that satisfies all
+of that is the one Beacon already had for other reasons — it is a terminal, and
+the session inside it is the user's own.
+
+**Consequence.** The remote access on the roadmap has a hard boundary drawn
+around it before it is built: reaching your own machine from your own phone is
+one person using their own subscription, and putting a signed-in Beacon
+somewhere a colleague can use it is not — that is account sharing, whoever pays
+for the server. Anything shared has to be each person running their own Beacon,
+signed in as themselves.
+
+**Also.** The product, its name and its icon carry nothing of Anthropic's.
+Naming what a panel contains is saying what it runs, which is allowed; naming
+the product after it would not be.
