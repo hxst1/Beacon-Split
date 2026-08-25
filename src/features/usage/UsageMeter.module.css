@@ -62,3 +62,51 @@
 .muted {
   color: var(--fg-4);
 }
+
+.details {
+  min-width: 230px;
+  padding: 4px 2px;
+}
+
+.heading {
+  padding: 6px 10px 4px;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 10px;
+  font-size: var(--text-sm);
+  color: var(--fg-2);
+}
+
+.lineLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.lineValue {
+  color: var(--fg-1);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.track {
+  height: 4px;
+  margin: 2px 10px 8px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.note {
+  padding: 6px 10px 4px;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}

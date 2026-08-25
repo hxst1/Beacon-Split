@@ -22,12 +22,7 @@
         "resizable": true,
         "transparent": true,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "windowEffects": {
-          "effects": ["underWindowBackground"],
-          "state": "followsWindowActiveState",
-          "radius": 12.0
-        }
+        "hiddenTitle": true
       }
     ],
     "security": {

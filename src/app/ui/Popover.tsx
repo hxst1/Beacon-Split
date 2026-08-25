@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 import styles from './Popover.module.css'
 
@@ -13,9 +14,15 @@ interface PopoverProps {
 /**
  * A floating panel positioned against an element's bounding box.
  *
- * Deliberately not a portal library: Beacon has one window and a handful of
- * menus, and a full popover dependency would be more surface than the whole
- * feature.
+ * Rendered into `document.body` rather than where it is written. Menus are
+ * opened from chrome that blurs what is behind it, and a `backdrop-filter`
+ * makes an element the containing block for fixed-position descendants *and* a
+ * stacking context — so a menu left in place was confined to a 42-pixel-tall
+ * title bar and painted underneath the panels below it. It was visible, and
+ * every click went to whatever was on top of it.
+ *
+ * No dependency for this: a portal is part of React, and what would have been
+ * pulled in is positioning logic that fits in ten lines.
  */
 export function Popover({
   anchor,
@@ -42,7 +49,7 @@ export function Popover({
       ? { top: anchor.bottom + 6, right: Math.max(8, window.innerWidth - anchor.right) }
       : { top: anchor.bottom + 6, left: Math.min(anchor.left, window.innerWidth - 240) }
 
-  return (
+  return createPortal(
     <div className={styles['layer']} onPointerDown={onClose}>
       <div
         ref={panelRef}
@@ -53,6 +60,7 @@ export function Popover({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

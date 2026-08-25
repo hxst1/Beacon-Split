@@ -892,3 +892,42 @@ for the two you are not.
 **Consequence.** Anything other than `waiting` clears the record, so a second
 wait notifies again. A permission prompt before the application has done
 anything is a prompt about nothing, so it waits.
+
+## ADR-048: Floating layers are portalled out of the interface
+
+**Context.** Menus opened from the title bar were visible and completely inert:
+clicking an item did nothing, so a workspace could not be deleted.
+
+**Decision.** `Popover` renders into `document.body` through a React portal
+rather than where it is written.
+
+**Why.** The title bar has a `backdrop-filter`, and that makes an element both
+the containing block for `position: fixed` descendants and a stacking context.
+A menu left in place was therefore confined to a 42-pixel-tall bar and painted
+inside the header's stacking context — so the panels below it, later in the
+document, drew on top. It looked correct and every click landed on whatever was
+above it.
+
+The original code said "deliberately not a portal library", which confused a
+dependency with the platform. A portal is part of React; what a library would
+have added is positioning logic that fits in ten lines.
+
+**Consequence.** Anything floating belongs outside the interface it floats over.
+Worth remembering that `backdrop-filter` — used on most of Beacon's chrome — has
+this effect at all: it is not a paint-only property.
+
+## ADR-049: No native vibrancy behind the window
+
+**Context.** Lowering the opacity slider appeared to do very little.
+
+**Decision.** The macOS window effect is gone. What is behind the window is the
+desktop, and `--window-alpha` and `--blur-px` are the only things between them.
+
+**Why.** `underWindowBackground` paints a frosted sheet of its own behind the
+webview, so making the webview more transparent revealed *that* rather than
+anything underneath — a control with nothing to control. Having made
+translucency a setting, it has to be the setting that decides it.
+
+**Consequence.** Beacon draws its own blur rather than borrowing the system's,
+which is also what makes the result the same on Linux. A window at full opacity
+looks the same as before; below that it now behaves the way the slider claims.

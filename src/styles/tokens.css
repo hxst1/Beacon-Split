@@ -12,7 +12,10 @@
  *
  * `--window-alpha` and `--blur-px` come from settings. They are the two things
  * about the look that are taste rather than design, so they are the two the
- * user can move.
+ * user can move — and they are the only thing between the window and the
+ * desktop, which is why the native vibrancy layer is gone: behind a translucent
+ * window it put a frosted sheet of its own, so lowering the opacity revealed
+ * that rather than anything, and the slider looked broken.
  */
 
 :root {
