@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.3.0",
+    "date": "2026-08-27",
+    "summary": "A tab knows Claude is there before you have said anything to it.",
+    "changes": [
+      "Beacon hears about a Claude session when it starts, not when you send it its first message. Until now the first hook of a session was the one that submits a prompt, so a tab you had just opened said nothing about the Claude sitting in it.",
+      "Resuming or clearing a session takes back what the tab was still claiming. \"Waiting for you\" and \"finished\" are never expired on a timer — both can honestly last hours — so a session left at a permission prompt and then resumed used to ask for an answer nobody owed it any more.",
+      "The hooks need installing again for this: open Settings and reinstall them, or Beacon will show them as stale until you do."
+    ]
+  },
+  {
     "version": "0.2.0",
     "date": "2026-08-27",
     "summary": "The hooks actually run, and the panel holding your keyboard says so.",
