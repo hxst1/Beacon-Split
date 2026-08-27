@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.2.0",
+    "date": "2026-08-27",
+    "summary": "The hooks actually run, and the panel holding your keyboard says so.",
+    "changes": [
+      "Claude Code's hooks work from an installed copy. The application lives at `/Applications/Beacon Split.app`, and the space in that path meant the shell Claude runs hooks through read the command as ending at `/Applications/Beacon`, so every hook failed.",
+      "Installing the hooks twice no longer leaves two of them behind. Beacon looked for its own entries by product name, which appears in a development checkout's path and never in an installed build's, so each install added a copy rather than replacing one. Reinstalling from this version clears the duplicates.",
+      "Beacon finds the `claude` binary when it was started from the Dock. It asked an interactive shell where the binary lived, which a prompt theme or a git status daemon can wedge forever; the probe now gives up after four seconds and falls back to where the installers actually write.",
+      "The panel your keyboard is in is edged in the workspace colour, and ⌥⌘← / ⌥⌘→ move between panels.",
+      "The session panel no longer draws a slab of accent colour over its own contents.",
+      "A new application icon."
+    ]
+  },
+  {
     "version": "0.1.0",
     "date": "2026-08-25",
     "summary": "The first build worth handing to somebody else.",
