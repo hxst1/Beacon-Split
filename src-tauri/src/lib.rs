@@ -107,6 +107,8 @@ pub fn run() {
             commands::install_claude_status_line,
             commands::remove_claude_status_line,
             commands::session_usage,
+            commands::session_clips,
+            commands::forget_clips,
             commands::claude_hook_command,
             commands::install_claude_hooks,
             commands::remove_claude_hooks,

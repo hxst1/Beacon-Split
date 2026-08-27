@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 24px;
+  height: var(--statusbar-height);
   padding: 0 12px;
   flex: none;
   border-top: 1px solid var(--line-1);

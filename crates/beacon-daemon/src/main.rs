@@ -5,6 +5,7 @@
 //! has, and detaches. Nothing about a session depends on anyone watching it.
 
 mod hook;
+mod mcp;
 mod server;
 mod statusline;
 
@@ -30,6 +31,11 @@ fn main() {
     // anything else, including logging: a hook must be silent and quick.
     match std::env::args().nth(1).as_deref() {
         Some("hook") => hook::run(),
+        // Serving MCP to the Claude session that started us. Checked here for
+        // the same reason as the hook: it must not touch the daemon's logging,
+        // which writes to stderr — and an MCP client reads stdout, not stderr,
+        // so a stray log line is survivable but a stray print is not.
+        Some("mcp") => mcp::run(),
         // A second argument is the status line Beacon took the slot from; it
         // still runs, and its output is still what Claude Code shows.
         Some("statusline") => statusline::run(std::env::args().nth(2)),

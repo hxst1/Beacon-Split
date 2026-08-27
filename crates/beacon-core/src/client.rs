@@ -242,6 +242,28 @@ impl DaemonClient {
         }
     }
 
+    /// Everything in the clip drawer, newest first.
+    pub fn clips(&self) -> Result<Vec<crate::clips::Clip>> {
+        match self.request(Request::Clips {})? {
+            Reply::Clips { clips } => Ok(clips),
+            _ => Err(unexpected()),
+        }
+    }
+
+    /// Drops one clip, or the whole drawer when given `None`.
+    ///
+    /// Returns what is left rather than nothing, so the window that asked does
+    /// not have to guess — and matches the broadcast every other window gets.
+    pub fn forget_clips(
+        &self,
+        id: Option<crate::domain::ClipId>,
+    ) -> Result<Vec<crate::clips::Clip>> {
+        match self.request(Request::ForgetClips { id })? {
+            Reply::Clips { clips } => Ok(clips),
+            _ => Err(unexpected()),
+        }
+    }
+
     pub fn shutdown(&self) -> Result<()> {
         self.request(Request::Shutdown {}).map(|_| ())
     }

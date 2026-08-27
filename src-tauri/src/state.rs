@@ -71,6 +71,13 @@ struct ExitPayload {
     code: Option<i32>,
 }
 
+/// The whole drawer, for the events that replace it rather than add to it.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipsPayload {
+    clips: Vec<beacon_core::clips::Clip>,
+}
+
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ActivityPayload {
@@ -92,6 +99,10 @@ pub const EVENT_EXIT: &str = "session:exit";
 pub const EVENT_ACTIVITY: &str = "session:activity";
 /// What a project's Claude session is costing.
 pub const EVENT_USAGE: &str = "session:usage";
+/// A clip was filed by a Claude session, for the user to copy.
+pub const EVENT_CLIP: &str = "clips:added";
+/// The drawer changed wholesale — something was forgotten, or all of it was.
+pub const EVENT_CLIPS: &str = "clips:replaced";
 /// Raised when the connection drops. Sessions keep running; this window is no
 /// longer watching them.
 pub const EVENT_DETACHED: &str = "session:detached";
@@ -139,6 +150,11 @@ impl DaemonEvents for WebviewEvents {
                 },
             ),
             Event::Usage(report) => self.app.emit(EVENT_USAGE, report),
+            // Never logged, at any level: a clip is as likely to be a token as
+            // an email, and it exists precisely so the user chooses where it
+            // goes.
+            Event::Clip(clip) => self.app.emit(EVENT_CLIP, clip),
+            Event::Clips { clips } => self.app.emit(EVENT_CLIPS, ClipsPayload { clips }),
         };
 
         if let Err(err) = delivered {
@@ -193,6 +209,26 @@ mod tests {
         .unwrap();
         assert_eq!(exit.get("id").and_then(|v| v.as_str()), Some("sn_x"));
         assert!(exit.get("event").is_none());
+
+        let clip = serde_json::to_value(beacon_core::clips::Clip {
+            id: beacon_core::domain::ClipId("cl_x".into()),
+            project: ProjectId("pj_x".into()),
+            title: "Staging keys".into(),
+            body: "API_KEY=abc".into(),
+            kind: beacon_core::clips::ClipKind::Variable,
+            created_at: 1_800_000_000,
+        })
+        .unwrap();
+        assert_eq!(clip.get("id").and_then(|v| v.as_str()), Some("cl_x"));
+        assert_eq!(
+            clip.get("body").and_then(|v| v.as_str()),
+            Some("API_KEY=abc")
+        );
+        assert_eq!(clip.get("kind").and_then(|v| v.as_str()), Some("variable"));
+        assert!(clip.get("event").is_none());
+        // The window reads `createdAt`; a snake_case field would be silently
+        // undefined and every clip would claim to be from 1970.
+        assert!(clip.get("createdAt").is_some(), "{clip}");
 
         let activity = serde_json::to_value(ActivityPayload {
             project: ProjectId("pj_x".into()),

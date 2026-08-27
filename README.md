@@ -44,6 +44,12 @@ waits can say so with a system notification.
 left, and how full each project's context is — enough to decide which project
 to spend the rest of it on, and when a conversation is worth clearing.
 
+**A drawer for things to copy.** Ask Claude for an environment variable, a
+command to run elsewhere, or the body of an email, and it lands in a drawer on
+the right edge with a copy button — instead of being selected out of a
+terminal. It works through one MCP tool that Beacon passes to each session
+itself, so there is nothing to install and nothing to connect.
+
 **Files, editor and git, at the size they deserve.** A file tree with the
 operations you expect, a light editor, a `.env` view that keeps values hidden
 until asked, and git status, diff, stage and commit. Deleting moves to the

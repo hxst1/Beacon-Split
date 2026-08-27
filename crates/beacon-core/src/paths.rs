@@ -6,7 +6,17 @@ use serde::{Deserialize, Serialize};
 ///
 /// Resolved here rather than through Tauri so that a future headless daemon
 /// reads exactly the same files as the UI.
+///
+/// `BEACON_CONFIG_DIR` overrides it, which is what makes a second, isolated
+/// Beacon possible — and what the tests use, so that running them cannot
+/// rewrite the workspaces or the clip book somebody is actually working in.
+/// The socket has had an equivalent escape hatch since the daemon existed; the
+/// configuration needed one the moment the daemon started writing to it.
 pub fn default_config_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("BEACON_CONFIG_DIR") {
+        return PathBuf::from(dir);
+    }
+
     let home = home_dir();
     if cfg!(target_os = "macos") {
         home.join("Library/Application Support/beacon-split")
@@ -98,6 +108,17 @@ fn to_portable_string(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_config_directory_can_be_moved_out_of_the_way() {
+        // Not a convenience: without it a test that starts a daemon writes to
+        // the real clip book, and one that clears a drawer clears the user's.
+        // SAFETY: single-threaded, and put back before anything else reads it.
+        unsafe { std::env::set_var("BEACON_CONFIG_DIR", "/tmp/beacon-elsewhere") };
+        assert_eq!(default_config_dir(), PathBuf::from("/tmp/beacon-elsewhere"));
+        unsafe { std::env::remove_var("BEACON_CONFIG_DIR") };
+        assert_ne!(default_config_dir(), PathBuf::from("/tmp/beacon-elsewhere"));
+    }
 
     #[test]
     fn paths_inside_projects_home_are_stored_relatively() {

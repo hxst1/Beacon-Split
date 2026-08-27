@@ -4,6 +4,7 @@ import { AppShell } from '@/app/AppShell'
 import { Boot } from '@/app/Boot'
 import { Welcome } from '@/features/workspaces/Welcome'
 import { startConnectionTracking, startSystemThemeTracking, useBeacon } from '@/app/store'
+import { startClipTracking } from '@/features/clips/clips'
 import { startActivityTracking } from '@/features/terminal/activity'
 import { checkForUpdate } from '@/features/releases/updates'
 import { startNotifications } from '@/features/terminal/notify'
@@ -22,6 +23,7 @@ export function App(): React.ReactElement {
       startConnectionTracking(),
       startActivityTracking(),
       startUsageTracking(),
+      startClipTracking(),
       startSystemThemeTracking(),
       startNotifications(),
     ]

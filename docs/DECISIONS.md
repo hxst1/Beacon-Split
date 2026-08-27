@@ -1031,3 +1031,86 @@ signed in as themselves.
 **Also.** The product, its name and its icon carry nothing of Anthropic's.
 Naming what a panel contains is saying what it runs, which is allowed; naming
 the product after it would not be.
+
+## ADR-053: Claude gets a tool, not another hook
+
+**Context.** Some of what Claude produces is not meant for the terminal at all.
+An environment variable, a command to run on another machine, the body of an
+email — you read it once and paste it somewhere else. Selecting it out of a PTY
+is fiddly and it is easy to take a line too few.
+
+**Decision.** Beacon exposes one MCP tool, `save_clip`, which files a titled
+piece of text in a drawer with a copy button. Hooks were not extended to cover
+it.
+
+**Why.** A hook is reactive: Claude Code fires it on a lifecycle event and
+Claude has no say in it. Nothing Claude *decides* to do can ever travel that
+way, and deciding is the whole feature — only Claude knows that what it has
+just written is meant to leave the conversation. MCP is the only channel where
+the model initiates, with arguments, and hears whether it worked.
+
+**Consequence.** It is not deterministic. Claude calls the tool when it
+recognises the moment, and "write me an email" will not always reach the drawer
+unless asked. The tool description is therefore load-bearing, and is written to
+name the artefacts — a variable, a command, an email — rather than the occasion.
+
+## ADR-054: The MCP server is passed per session, never installed
+
+**Context.** Beacon already writes to `~/.claude/settings.json` to register its
+hooks, and asks before doing it (ADR-036). The clip tool could have been
+registered the same way.
+
+**Decision.** It is not registered anywhere. Beacon starts each Claude session
+with `--mcp-config <its own file>`, written beside the daemon socket in the
+per-user temporary directory.
+
+**Why.** There is nothing to install, so there is nothing to uninstall, nothing
+to go stale when Beacon moves, and no way for a Beacon that was deleted to leave
+an entry behind pointing at a binary that is gone. A `claude` the user runs in
+their own terminal is completely unaffected — which is also the honest scope of
+the feature, since a clip has nowhere to go if no window is showing.
+
+**Also.** `--strict-mcp-config` is deliberately not passed. It would switch off
+every MCP server the user configured themselves, which is not a trade Beacon
+gets to make on their behalf in exchange for a drawer. And the flag is written
+joined, `--mcp-config=…`, because it takes a list and the separated form would
+swallow whatever argument came after it.
+
+## ADR-055: The drawer is write-only
+
+**Context.** Claude could as easily read the drawer as write to it — "take the
+third clip and rewrite it" is an obvious next request.
+
+**Decision.** There is one tool and it only files clips. Nothing in the protocol
+lets a session read the book back, and the Tauri layer has no command to add
+one.
+
+**Why.** Clips are drafted email, API keys and environment values by
+construction. A tool that reads them turns every page Claude fetches and every
+repository it reads into a possible instruction to send the contents somewhere —
+the drawer would become the most concentrated exfiltration target in the app,
+in exchange for a convenience. Write-only closes it completely rather than
+mitigating it.
+
+**Consequence.** Reworking a clip means asking Claude for a new one. That is a
+worse workflow and an acceptable price.
+
+## ADR-056: The daemon owns the clip book, and is its only writer
+
+**Context.** Clips have to survive the window closing, and two windows can be
+open at once.
+
+**Decision.** The daemon holds the book, writes `clips.json` on every change,
+and answers `Clips` and `ForgetClips`. Windows display what they are told and
+ask for removals; the frontend never writes the file.
+
+**Why.** One writer means no merge, no last-write-wins, and no window that has
+been open all day quietly overwriting a clip filed a minute ago by another.
+Every change is broadcast as the whole book rather than as a delta, because it
+is small and a drawer rebuilt from the truth cannot drift from one that missed
+an event.
+
+**Consequence.** The daemon now writes to Beacon's configuration directory,
+which the tests had no way to redirect. `BEACON_CONFIG_DIR` was added for the
+same reason the socket became an argument (ADR-033): a test that can rewrite the
+real clip book can delete somebody's work.

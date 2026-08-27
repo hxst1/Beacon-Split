@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use beacon_core::clips::{Clip, ClipBook, ClipStore, now_seconds};
 use beacon_core::domain::ProjectId;
 use beacon_core::protocol::{
     Envelope, Event, Greeting, Outcome, PROTOCOL_VERSION, Reply, Request, Response,
@@ -44,6 +45,27 @@ impl Broadcaster {
 }
 
 impl Daemon {
+    /// Files a clip and writes the book straight through to disk.
+    ///
+    /// Written on every clip rather than on a timer: clips arrive a handful of
+    /// times an hour, the write is a small atomic rename, and the failure this
+    /// avoids — the daemon reaching its idle timeout with an unsaved clip — is
+    /// exactly the one nobody would think to look for.
+    fn file_clip(&self, clip: Clip) {
+        self.clips.lock_or_recover().add(clip);
+        self.persist_clips();
+    }
+
+    fn persist_clips(&self) {
+        let book = self.clips.lock_or_recover().clone();
+        if let Err(err) = self.clip_store.save(&book) {
+            // Not fatal, and not worth failing the request over: the clip is in
+            // memory and already on its way to the window, which is where the
+            // user is about to copy it from.
+            tracing::warn!(error = %err, "could not save the clip book");
+        }
+    }
+
     fn broadcast(&self, event: &Event) {
         Broadcaster {
             clients: Arc::clone(&self.clients),
@@ -79,6 +101,14 @@ struct Daemon {
     /// Retained, unlike activity: a window that has just attached should see
     /// what a session costs immediately rather than waiting for its next turn.
     usage: Mutex<std::collections::BTreeMap<ProjectId, beacon_core::protocol::UsageReport>>,
+    /// Things Claude produced for the user to paste elsewhere.
+    ///
+    /// Held here rather than in the window for the same reason sessions are:
+    /// the window is the thing that closes. A clip filed while Beacon is not
+    /// showing must still be there when it is.
+    clips: Mutex<ClipBook>,
+    /// The only writer of `clips.json`. See `ClipStore`.
+    clip_store: ClipStore,
     sessions: Arc<SessionManager>,
     clients: Clients,
     attached: AtomicUsize,
@@ -97,9 +127,13 @@ pub fn serve(listener: UnixListener, socket: std::path::PathBuf) {
     let sessions = Arc::new(SessionManager::new(events));
     sessions.set_hook_socket(socket.clone());
 
+    let clip_store = ClipStore::open_default();
+
     let daemon = Arc::new(Daemon {
         socket: socket.clone(),
         usage: Mutex::new(std::collections::BTreeMap::new()),
+        clips: Mutex::new(clip_store.load()),
+        clip_store,
         sessions,
         clients,
         attached: AtomicUsize::new(0),
@@ -369,6 +403,41 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
         Request::Usage {} => Ok(Reply::Usage {
             reports: daemon.usage.lock_or_recover().values().cloned().collect(),
         }),
+
+        Request::Clip {
+            project,
+            title,
+            body,
+            kind,
+        } => {
+            // Never logged, at any level. A clip is an API key as often as it
+            // is an email, and the whole point is that the user chose where it
+            // goes.
+            Clip::new(project, title, body, kind, now_seconds()).map(|clip| {
+                daemon.file_clip(clip.clone());
+                daemon.broadcast(&Event::Clip(clip));
+                Reply::Done
+            })
+        }
+
+        Request::Clips {} => Ok(Reply::Clips {
+            clips: daemon.clips.lock_or_recover().clips().to_vec(),
+        }),
+
+        Request::ForgetClips { id } => {
+            let remaining = {
+                let mut book = daemon.clips.lock_or_recover();
+                book.forget(id.as_ref());
+                book.clips().to_vec()
+            };
+            daemon.persist_clips();
+            // The whole book, not a delta: it is small, and a drawer rebuilt
+            // from the truth cannot drift from one that missed an event.
+            daemon.broadcast(&Event::Clips {
+                clips: remaining.clone(),
+            });
+            Ok(Reply::Clips { clips: remaining })
+        }
 
         Request::List {} => Ok(Reply::Sessions {
             sessions: sessions.list(),

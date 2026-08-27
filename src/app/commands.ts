@@ -1,3 +1,4 @@
+import { toggleDrawer } from '@/features/clips/clips'
 import { ipc, pickFolder } from '@/ipc'
 import { useEditor } from '@/features/editor/openFiles'
 import { shortcutLabel } from '@/lib/platform'
@@ -45,6 +46,12 @@ export function buildCommands(): Command[] {
       group: 'Beacon',
       ...(hintFor('settings.open') ? { hint: hintFor('settings.open') } : {}),
       run: () => store.setOverlay('settings'),
+    },
+    {
+      id: 'app.clips',
+      title: 'Show clips to copy',
+      group: 'Beacon',
+      run: () => toggleDrawer(),
     },
     {
       id: 'app.stopDaemon',

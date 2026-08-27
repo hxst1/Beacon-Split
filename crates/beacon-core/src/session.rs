@@ -102,6 +102,42 @@ pub(crate) const STRIPPED_ENV: &[&str] = &[
     "CLAUDE_PID",
 ];
 
+/// Writes the MCP configuration Claude sessions are started with, and returns
+/// where it went.
+///
+/// Beacon deliberately does not register this server in the user's own Claude
+/// configuration. It is passed per session with `--mcp-config`, which means
+/// nothing is installed, nothing needs uninstalling, a Beacon that is deleted
+/// leaves no trace in `~/.claude.json`, and a Claude the user runs in their own
+/// terminal is completely unaffected. The cost is that clips only work in
+/// sessions Beacon started — which is the whole scope of the feature.
+///
+/// No environment is declared here: the server needs `BEACON_SOCKET` and
+/// `BEACON_PROJECT`, and it gets them by being a child of a session that
+/// already has them. Writing them into this file instead would freeze one
+/// project's id into a file every project's session reads.
+fn write_mcp_config(dir: &Path) -> std::io::Result<PathBuf> {
+    let binary = std::env::current_exe()?;
+    let path = dir.join("mcp.json");
+
+    let config = serde_json::json!({
+        "mcpServers": {
+            "beacon": {
+                "type": "stdio",
+                "command": binary,
+                "args": ["mcp"],
+            }
+        }
+    });
+
+    // Through a temporary file: a session starting while this is being written
+    // would otherwise read half a document and start with no clip tool at all.
+    let temporary = dir.join("mcp.json.tmp");
+    std::fs::write(&temporary, serde_json::to_vec(&config)?)?;
+    std::fs::rename(&temporary, &path)?;
+    Ok(path)
+}
+
 /// Gives the session a clean, honest environment.
 fn prepare_environment(command: &mut CommandBuilder) {
     for key in STRIPPED_ENV {
@@ -184,6 +220,9 @@ pub struct SessionManager {
     /// Only the daemon knows this, and only Claude sessions are told: a shell
     /// has no reason to be able to reach the daemon that spawned it.
     hook_socket: Mutex<Option<PathBuf>>,
+    /// The MCP configuration handed to every Claude session, written beside the
+    /// socket. `None` until the socket is known, or if it could not be written.
+    mcp_config: Mutex<Option<PathBuf>>,
 }
 
 impl SessionManager {
@@ -194,12 +233,29 @@ impl SessionManager {
             by_project: Mutex::new(HashMap::new()),
             claude_path: OnceLock::new(),
             hook_socket: Mutex::new(None),
+            mcp_config: Mutex::new(None),
         }
     }
 
     /// Tells the manager where Claude Code's hooks should report.
+    ///
+    /// Also writes the MCP configuration, which lives beside the socket for the
+    /// same reason the socket does: it is runtime state that names this
+    /// daemon's binary, it should not be synced, and it should not survive a
+    /// reboot.
     pub fn set_hook_socket(&self, socket: PathBuf) {
+        let config = socket.parent().and_then(|dir| match write_mcp_config(dir) {
+            Ok(path) => Some(path),
+            Err(err) => {
+                // Not fatal. Sessions still start, hooks still report, and the
+                // only thing missing is the clip drawer.
+                tracing::warn!(error = %err, "could not write the MCP configuration");
+                None
+            }
+        });
+
         *self.hook_socket.lock_or_recover() = Some(socket);
+        *self.mcp_config.lock_or_recover() = config;
     }
 
     /// The command for a session kind.
@@ -243,7 +299,20 @@ impl SessionManager {
                              it is on the PATH your login shell sets.",
                         )
                     })?;
-                Ok(CommandBuilder::new(path))
+                let mut command = CommandBuilder::new(path);
+
+                // Merged with whatever the user has configured, never replacing
+                // it: `--strict-mcp-config` would silently switch off every MCP
+                // server they set up themselves, which is not a trade Beacon
+                // gets to make on their behalf for a drawer.
+                if let Some(config) = self.mcp_config.lock_or_recover().as_ref() {
+                    // `--mcp-config` takes a *list*, so the separated form
+                    // swallows whatever argument comes after it. Nothing does
+                    // today; writing it joined means nothing ever can.
+                    command.arg(format!("--mcp-config={}", config.display()));
+                }
+
+                Ok(command)
             }
         }
     }

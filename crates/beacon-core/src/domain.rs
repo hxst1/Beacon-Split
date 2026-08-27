@@ -37,6 +37,7 @@ macro_rules! id_type {
 
 id_type!(WorkspaceId, "ws");
 id_type!(ProjectId, "pj");
+id_type!(ClipId, "cl");
 
 /// A project as Beacon knows it: a folder, a display name, and what we sniffed
 /// out of it. Nothing here is authoritative about the folder's contents — it is

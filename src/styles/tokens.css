@@ -48,6 +48,7 @@
   --text-md: 13px;
 
   --titlebar-height: 42px;
+  --statusbar-height: 24px;
   --panel-header-height: 30px;
   /* Room for the macOS traffic lights under an overlay title bar. */
   --titlebar-inset: 78px;

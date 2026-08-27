@@ -1,3 +1,4 @@
+import { ClipDrawer } from '@/features/clips/ClipDrawer'
 import { CommandPalette } from '@/features/palette/CommandPalette'
 import { QuickOpen } from '@/features/palette/QuickOpen'
 import { SettingsScreen } from '@/features/settings/SettingsScreen'
@@ -22,6 +23,10 @@ export function AppShell(): React.ReactElement {
       <TitleBar />
       <Workbench />
       <StatusBar />
+
+      {/* Outside the workbench on purpose: it overlays the layout rather than
+          taking a share of it, so opening it costs no terminal width. */}
+      <ClipDrawer />
 
       {overlay === 'palette' ? <CommandPalette onClose={close} /> : null}
       {overlay === 'quickOpen' ? <QuickOpen onClose={close} /> : null}

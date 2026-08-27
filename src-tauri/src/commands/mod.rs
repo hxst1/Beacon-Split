@@ -4,6 +4,7 @@
 //! `beacon-core`, and return a fresh [`Snapshot`]. Every mutation returning the
 //! whole state keeps the frontend from having to reconcile partial updates.
 
+mod clips;
 mod files;
 mod git;
 mod integration;
@@ -12,6 +13,7 @@ mod sessions;
 mod system;
 mod workspaces;
 
+pub use clips::*;
 pub use files::*;
 pub use git::*;
 pub use integration::*;

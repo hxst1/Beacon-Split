@@ -64,6 +64,7 @@ Three JSON documents, split by how often they change and how much they matter:
 | `settings.json` | Rarely | Preferences |
 | `workspaces.json` | On edit | Your project list |
 | `ui-state.json` | Constantly | Where the panels were |
+| `clips.json` | On each clip | Things left to paste |
 
 Each carries a `schemaVersion`. Reading a document written by a newer build is a
 hard error rather than a silent misparse. Writes go to a temporary file and are
@@ -71,6 +72,36 @@ renamed into place, so a crash mid-write cannot truncate your workspace list.
 
 JSON rather than SQLite: the whole dataset is a few kilobytes, it is
 hand-editable, and it diffs. See ADR-004.
+
+Everything above is written by the window. `clips.json` is the exception: it is
+written by the daemon and by nothing else, because the daemon is what is still
+running when the window is not. `BEACON_CONFIG_DIR` moves the whole directory,
+which is how tests avoid the one somebody is working in.
+
+## The clip drawer
+
+Some of what Claude produces is meant to be pasted somewhere else. Beacon gives
+it one MCP tool to hand those over, and shows them in a drawer with a copy
+button.
+
+```
+Claude  ──save_clip──▶  beacon-daemon mcp  ──socket──▶  daemon  ──event──▶  window
+ (session)               (child of the session)          (clip book)        (drawer)
+```
+
+The server is the daemon binary again, in a third mode beside `hook` and
+`statusline`. It needs no configuration at all: Beacon starts every Claude
+session with `BEACON_SOCKET` and `BEACON_PROJECT` in its environment, an MCP
+server is a child of that session, and children inherit it — so the server knows
+which project it belongs to without Claude ever being told where it is working.
+
+It is registered nowhere. Each session is started with `--mcp-config` pointing
+at a file the daemon writes beside its socket, so nothing is installed and a
+`claude` run outside Beacon is untouched. Outside Beacon the server advertises
+no tools at all, which is what keeps it free: an advertised tool costs context
+in every turn.
+
+The tool only writes. See ADR-053 to ADR-056.
 
 ## Portable project paths
 

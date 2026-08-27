@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::ProjectId;
+use crate::clips::{Clip, ClipKind};
+use crate::domain::{ClipId, ProjectId};
 use crate::session::{SessionId, SessionInfo, SessionKind};
 use crate::settings::ShellSpec;
 
@@ -20,6 +21,11 @@ use crate::settings::ShellSpec;
 /// Version 2 added `Report`, `ReportUsage` and `Usage`.
 /// Version 3 gave sessions a slot, so a project can hold several terminals, and
 /// let the client say which shell to run.
+/// Version 4 added `Clip`, `Clips` and `ForgetClips` — the drawer of things to
+/// copy. Three new requests, so by the rule above the number had to move, and
+/// upgrading to it replaces a running daemon and the sessions it holds. Paid
+/// once, knowingly: the alternative is an older daemon rejecting every clip
+/// while the window shows an empty drawer and no reason for it.
 ///
 /// `ClaudeActivity::Idle` was added without a version, deliberately. The rule
 /// is about the set of requests: a daemon that meets one it does not know
@@ -29,7 +35,7 @@ use crate::settings::ShellSpec;
 /// for that with a forced daemon replacement would kill every running session
 /// on upgrade, which is a far worse trade than a report that goes missing until
 /// the daemon is next restarted.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// Newline-delimited JSON, one message per line.
 ///
@@ -155,6 +161,33 @@ pub enum Request {
     /// Reported by Claude Code's status line, running inside a session.
     #[serde(rename_all = "camelCase")]
     ReportUsage { usage: UsageReport },
+    /// Filed by the MCP server running inside a Claude session: something the
+    /// user asked for in order to paste it somewhere else.
+    ///
+    /// The daemon stamps the id and the time rather than the sender. The sender
+    /// is a process that lives for one call and has no way to know what is
+    /// already in the book, and two clips filed in the same second by different
+    /// sessions must still be distinguishable.
+    #[serde(rename_all = "camelCase")]
+    Clip {
+        project: ProjectId,
+        title: String,
+        body: String,
+        #[serde(default)]
+        kind: ClipKind,
+    },
+    /// Everything in the clip book, newest first.
+    ///
+    /// Kept by the daemon and written to disk, unlike activity: a clip is worth
+    /// something precisely *after* the turn that produced it, which is the case
+    /// activity explicitly is not.
+    Clips {},
+    /// Drops one clip, or the whole book when `id` is absent.
+    #[serde(rename_all = "camelCase")]
+    ForgetClips {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<ClipId>,
+    },
     /// The last usage reported for each project.
     ///
     /// Unlike activity, this is worth keeping: a window that has just attached
@@ -213,6 +246,11 @@ pub enum Reply {
     Usage {
         reports: Vec<UsageReport>,
     },
+    /// A struct variant for the same reason as `Sessions`.
+    #[serde(rename_all = "camelCase")]
+    Clips {
+        clips: Vec<Clip>,
+    },
     Done,
 }
 
@@ -252,6 +290,16 @@ pub enum Event {
     },
     /// A project's Claude session reported what it is costing.
     Usage(UsageReport),
+    /// A clip was filed, by this window's session or by another's.
+    ///
+    /// Broadcast rather than answered to the sender: the sender is the MCP
+    /// server, which is not the thing that shows the drawer.
+    Clip(Clip),
+    /// Every clip was dropped, or one was. Carries the book rather than a
+    /// delta, because it is small and a drawer rebuilt from the truth cannot
+    /// drift from one that missed an event.
+    #[serde(rename_all = "camelCase")]
+    Clips { clips: Vec<Clip> },
     /// A project's Claude session said what it is doing.
     #[serde(rename_all = "camelCase")]
     Activity {
@@ -363,6 +411,16 @@ mod tests {
                 usage: sample_usage(),
             },
             Request::Usage {},
+            Request::Clip {
+                project: ProjectId("pj_y".into()),
+                title: "Staging keys".into(),
+                body: "API_KEY=abc".into(),
+                kind: ClipKind::Variable,
+            },
+            Request::Clips {},
+            Request::ForgetClips {
+                id: Some(ClipId("cl_x".into())),
+            },
         ];
 
         // A guard, not a formality. Adding a request without moving
@@ -370,7 +428,7 @@ mod tests {
         // replaced, which is exactly what happened once already.
         assert_eq!(
             requests.len(),
-            13,
+            16,
             "the set of requests changed: PROTOCOL_VERSION must change with it"
         );
 
@@ -441,12 +499,15 @@ mod tests {
             Reply::Usage {
                 reports: vec![sample_usage()],
             },
+            Reply::Clips {
+                clips: vec![sample_clip()],
+            },
             Reply::Done,
         ];
 
         assert_eq!(
             replies.len(),
-            6,
+            7,
             "the set of replies changed: PROTOCOL_VERSION must change with it"
         );
 
@@ -475,6 +536,57 @@ mod tests {
         match back.outcome {
             Outcome::Err(message) => assert_eq!(message, "no such session"),
             Outcome::Ok(_) => panic!("expected an error"),
+        }
+    }
+
+    fn sample_clip() -> Clip {
+        Clip {
+            id: ClipId("cl_x".into()),
+            project: ProjectId("pj_x".into()),
+            title: "Staging keys".into(),
+            body: "API_KEY=abc".into(),
+            kind: ClipKind::Variable,
+            created_at: 1_800_000_000,
+        }
+    }
+
+    /// A clip event is a newtype around a struct inside an adjacently tagged
+    /// enum — the exact shape that could not be serialised when `Sessions` was
+    /// written as one, so it is worth a test rather than an assumption.
+    #[test]
+    fn a_clip_event_survives_the_same_stream_as_a_reply() {
+        let event = serde_json::to_string(&Event::Clip(sample_clip())).unwrap();
+        let back = serde_json::from_str::<Message>(&event).unwrap();
+        match back {
+            Message::Event(Event::Clip(clip)) => {
+                assert_eq!(clip.body, "API_KEY=abc");
+                // The body is what lands on the clipboard: it must survive the
+                // wire byte for byte, newlines and all.
+                let multiline = Clip {
+                    body: "FOO=1\n  BAR=2".into(),
+                    ..sample_clip()
+                };
+                let line = serde_json::to_string(&Event::Clip(multiline)).unwrap();
+                match serde_json::from_str::<Message>(&line).unwrap() {
+                    Message::Event(Event::Clip(clip)) => {
+                        assert_eq!(clip.body, "FOO=1\n  BAR=2")
+                    }
+                    other => panic!("expected a clip, got {other:?}"),
+                }
+            }
+            other => panic!("expected a clip event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_clip_defaults_to_plain_text_when_the_sender_says_nothing() {
+        // The MCP server may omit `kind`; a missing one must not be a parse
+        // failure that drops the clip silently.
+        let line = r#"{"id":1,"method":"clip","params":{"project":"pj_x","title":"t","body":"b"}}"#;
+        let back: Envelope = serde_json::from_str(line).unwrap();
+        match back.request {
+            Request::Clip { kind, .. } => assert_eq!(kind, ClipKind::Text),
+            other => panic!("expected a clip, got {other:?}"),
         }
     }
 

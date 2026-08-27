@@ -19,6 +19,7 @@ struct Recorder {
     disconnects: Mutex<usize>,
     reattachments: Mutex<usize>,
     activity: Mutex<Vec<(beacon_core::protocol::ClaudeActivity, Option<String>)>>,
+    clips: Mutex<Vec<beacon_core::clips::Clip>>,
 }
 
 impl DaemonEvents for Recorder {
@@ -31,6 +32,9 @@ impl DaemonEvents for Recorder {
                 .lock()
                 .unwrap()
                 .push((*activity, detail.clone()));
+        }
+        if let Event::Clip(clip) = &event {
+            self.clips.lock().unwrap().push(clip.clone());
         }
         if let Event::Output { data, .. } = event {
             use base64::Engine as _;
@@ -73,6 +77,37 @@ fn wait_for(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
 /// down — a daemon somebody is actually working in.
 fn private_socket(dir: &std::path::Path) -> PathBuf {
     dir.join("daemon.sock")
+}
+
+/// A daemon of this test's own, with a configuration directory of its own.
+///
+/// Started here rather than left to the client, so its environment can be set.
+/// A daemon that inherits the real one writes to the clip book somebody is
+/// actually using — and a test that empties a drawer empties theirs.
+fn daemon_with_private_config(
+    binary: &std::path::Path,
+    socket_dir: &std::path::Path,
+    config_dir: &std::path::Path,
+) -> std::process::Child {
+    let child = std::process::Command::new(binary)
+        .arg(socket_dir)
+        .env("BEACON_CONFIG_DIR", config_dir)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("the daemon should start");
+
+    // The client connects to whatever is already listening, so it has to be
+    // listening before the client is built or it would start a second one —
+    // with the real configuration.
+    let socket = socket_dir.join("daemon.sock");
+    assert!(
+        wait_for(Duration::from_secs(10), || {
+            std::os::unix::net::UnixStream::connect(&socket).is_ok()
+        }),
+        "the private daemon never started listening"
+    );
+    child
 }
 
 /// The daemon built alongside this test.
@@ -272,6 +307,174 @@ fn the_client_gets_itself_back_after_the_daemon_is_replaced() {
     assert!(fresh.running);
 
     client.close(&fresh.id).unwrap();
+}
+
+#[test]
+fn a_clip_travels_from_the_mcp_server_to_the_window_and_to_disk() {
+    // The whole path, as it runs in the app: Claude calls the tool, the MCP
+    // server finds the socket in the environment it inherited, the daemon files
+    // the clip, and every attached window is told — with nobody having
+    // configured anything.
+    use beacon_core::clips::ClipKind;
+
+    let binary = daemon_binary();
+    if !binary.exists() {
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let config = tempfile::tempdir().unwrap();
+    let socket = private_socket(dir.path());
+
+    // Its own configuration directory, so the clip book this test fills and
+    // empties is never the one the user is working in.
+    let mut daemon = daemon_with_private_config(&binary, dir.path(), config.path());
+
+    let recorder = Arc::new(Recorder::default());
+    let client = DaemonClient::connect_at(
+        &binary,
+        &socket,
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    )
+    .unwrap();
+
+    let project = ProjectId::generate();
+
+    // Exactly the conversation Claude Code has with an MCP server, in order.
+    let conversation = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"claude-code","version":"2"}}}"#.to_string(),
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.to_string(),
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#.to_string(),
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "save_clip",
+                "arguments": {
+                    "title": "Staging keys",
+                    // Two lines, to prove the body survives the whole path
+                    // exactly as it will be pasted.
+                    "body": "API_KEY=abc\nAPI_URL=https://staging",
+                    "kind": "variable",
+                },
+            },
+        })
+        .to_string(),
+    ]
+    .join("\n");
+
+    let mut server = std::process::Command::new(&binary)
+        .arg("mcp")
+        .env("BEACON_SOCKET", &socket)
+        .env("BEACON_PROJECT", project.as_str())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("the mcp server should run");
+
+    use std::io::Write as _;
+    server
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(format!("{conversation}\n").as_bytes())
+        .unwrap();
+    drop(server.stdin.take());
+
+    let output = server.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "the mcp server should exit cleanly"
+    );
+
+    let replies = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        replies.contains("save_clip"),
+        "the tool should be advertised inside Beacon; saw: {replies}"
+    );
+    assert!(
+        replies.contains("\"isError\":false"),
+        "the call should have been accepted; saw: {replies}"
+    );
+
+    // The window heard about it without asking.
+    assert!(
+        wait_for(Duration::from_secs(10), || !recorder
+            .clips
+            .lock()
+            .unwrap()
+            .is_empty()),
+        "the window should have been told about the clip"
+    );
+
+    let announced = recorder.clips.lock().unwrap().clone();
+    assert_eq!(announced[0].title, "Staging keys");
+    assert_eq!(announced[0].kind, ClipKind::Variable);
+    assert_eq!(announced[0].body, "API_KEY=abc\nAPI_URL=https://staging");
+
+    // And asking for the drawer finds the same thing, so a window that opened
+    // after the clip arrived is not blank.
+    let held = client.clips().unwrap();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].id, announced[0].id);
+
+    // Forgetting it empties the drawer for everyone.
+    assert!(
+        client
+            .forget_clips(Some(held[0].id.clone()))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(client.clips().unwrap().is_empty());
+
+    // And it was written where it was told to be, not where the user's is.
+    let book = config.path().join("clips.json");
+    assert!(
+        book.exists(),
+        "the daemon should have used its own config dir"
+    );
+
+    let _ = daemon.kill();
+    let _ = daemon.wait();
+}
+
+#[test]
+fn an_mcp_server_outside_beacon_offers_nothing() {
+    // Registered once and harmless everywhere else, exactly like the hook. An
+    // advertised tool costs context in every turn of every session.
+    let binary = daemon_binary();
+    if !binary.exists() {
+        return;
+    }
+
+    let output = {
+        use std::io::Write as _;
+        let mut server = std::process::Command::new(&binary)
+            .arg("mcp")
+            .env_remove("BEACON_SOCKET")
+            .env_remove("BEACON_PROJECT")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("the mcp server should run anywhere");
+
+        server
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}\n")
+            .unwrap();
+        drop(server.stdin.take());
+        server.wait_with_output().unwrap()
+    };
+
+    assert!(output.status.success());
+    let replies = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        replies.contains(r#""tools":[]"#),
+        "outside Beacon there is nothing to offer; saw: {replies}"
+    );
 }
 
 #[test]

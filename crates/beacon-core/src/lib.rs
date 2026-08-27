@@ -9,6 +9,7 @@
 pub mod appearance;
 pub mod claude_hooks;
 pub mod client;
+pub mod clips;
 pub mod detect;
 pub mod domain;
 pub mod dotenv;

@@ -165,6 +165,27 @@ export interface SessionActivity {
   detail: string | null
 }
 
+/**
+ * What a clip is, so the drawer can label it and pick a typeface.
+ *
+ * `command` and `variable` are shown monospaced and never wrapped: a line break
+ * inside a command does not stay cosmetic once it is pasted into a shell.
+ */
+export type ClipKind = 'text' | 'command' | 'variable' | 'email'
+
+/** Something Claude produced for you to paste somewhere else. */
+export interface Clip {
+  id: string
+  /** The project whose session produced it. */
+  project: string
+  title: string
+  /** Exactly what the copy button puts on the clipboard. Never reformatted. */
+  body: string
+  kind: ClipKind
+  /** Unix seconds. */
+  createdAt: number
+}
+
 /** Whether Beacon's hooks are registered with Claude Code. */
 export type HookStatus = 'installed' | 'stale' | 'notInstalled'
 

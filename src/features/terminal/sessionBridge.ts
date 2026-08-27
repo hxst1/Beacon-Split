@@ -1,6 +1,7 @@
 import { listen } from '@tauri-apps/api/event'
 
 import type {
+  Clip,
   SessionActivity,
   SessionExit,
   SessionOutput,
@@ -47,6 +48,10 @@ export interface ActivityWatcher {
   onClaudeActivity?: (report: SessionActivity) => void
   /** Claude Code said what a project's session is costing. */
   onUsage?: (report: UsageReport) => void
+  /** Claude filed something for the user to copy. */
+  onClip?: (clip: Clip) => void
+  /** The drawer changed wholesale — something was forgotten, or all of it. */
+  onClips?: (clips: Clip[]) => void
 }
 
 const watchers = new Set<ActivityWatcher>()
@@ -116,6 +121,12 @@ function ensureListening(): Promise<void> {
     }),
     listen<UsageReport>('session:usage', ({ payload }) => {
       for (const watcher of watchers) watcher.onUsage?.(payload)
+    }),
+    listen<Clip>('clips:added', ({ payload }) => {
+      for (const watcher of watchers) watcher.onClip?.(payload)
+    }),
+    listen<{ clips: Clip[] }>('clips:replaced', ({ payload }) => {
+      for (const watcher of watchers) watcher.onClips?.(payload.clips)
     }),
   ]).then(() => undefined)
 

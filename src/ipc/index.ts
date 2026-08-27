@@ -11,6 +11,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
   Appearance,
+  Clip,
   DirEntry,
   ShellSpec,
   HookStatus,
@@ -157,6 +158,17 @@ export const ipc = {
   claudeHookStatus: () => invoke<HookStatus>('claude_hook_status'),
 
   claudeIntegration: () => invoke<Integration>('claude_integration'),
+
+  /** Everything in the clip drawer, newest first. */
+  sessionClips: () => invoke<Clip[]>('session_clips'),
+
+  /**
+   * Forgets one clip, or the whole drawer when given nothing.
+   *
+   * Returns what is left rather than nothing: the drawer redraws from the
+   * answer instead of predicting it, so it cannot disagree with the daemon.
+   */
+  forgetClips: (id?: string) => invoke<Clip[]>('forget_clips', { id: id ?? null }),
 
   /** Checked on demand: someone who installs the missing thing looks again. */
   checkRequirements: () => invoke<Requirement[]>('check_requirements'),
