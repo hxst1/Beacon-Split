@@ -155,6 +155,23 @@ fn prepare_environment(command: &mut CommandBuilder) {
     // Identify ourselves, so anything that adapts to its terminal can.
     command.env("TERM_PROGRAM", "Beacon");
     command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+    ensure_utf8_locale(command);
+}
+
+/// Promises the session a UTF-8 world.
+///
+/// Launched from the Dock, Beacon inherits no locale at all: setting one is
+/// Terminal's doing, not the system's. A session that inherits nothing leaves
+/// every tool guessing, and on macOS the guess is Mac OS Roman, which is how
+/// `pbcopy` turns an accent into two bytes of noise on its way to the
+/// clipboard. We only fill the gap; a locale the user chose is left alone.
+fn ensure_utf8_locale(command: &mut CommandBuilder) {
+    let chosen = ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()));
+    if !chosen {
+        command.env("LANG", "en_US.UTF-8");
+    }
 }
 
 /// How the host is told about things the session does on its own.
