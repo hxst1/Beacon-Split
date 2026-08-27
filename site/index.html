@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beacon Split — know which project is waiting for you</title>
+<meta name="description" content="An agent-first development workspace. Run several Claude Code sessions at once, with real terminals, files and git — and a tab that tells you the moment one stops and needs an answer. Free and open source.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Beacon Split — know which project is waiting for you">
+<meta property="og:description" content="An agent-first development workspace for running several Claude Code sessions at once. Free, open source, macOS.">
+<meta property="og:image" content="/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <div class="nav__in">
+    <a class="brand" href="/" aria-label="Beacon Split, home">
+      <span class="beam" aria-hidden="true"></span>
+      <span class="brand__name">Beacon <span class="brand__dim">Split</span></span>
+    </a>
+    <nav class="nav__links" aria-label="Primary">
+      <a href="#what">What it does</a>
+      <a href="#platforms">Platforms</a>
+      <a href="#open">Open source</a>
+      <a class="nav__gh" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33C3.81 14.36 3.34 13 3.34 13c-.36-.93-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.23 1.88.87 2.34.67.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+      <a class="btn btn--sm" href="#install">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ── Hero ─────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero__glow" aria-hidden="true"></div>
+  <div class="wrap hero__grid">
+    <div class="hero__copy">
+      <h1 class="h1">Know which project is <span class="h1__em">waiting for you</span>.</h1>
+      <p class="lede">
+        An agent-first workspace for running several Claude Code sessions at once.
+        Real terminals, real sessions, real git, and a tab that tells you the moment
+        Claude stops and needs an answer.
+      </p>
+      <div class="cta">
+        <a class="btn btn--lg" href="#install">
+          <svg viewBox="0 0 14 15" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
+          Download for macOS
+        </a>
+        <a class="btn btn--ghost btn--lg" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">View the source</a>
+      </div>
+      <p class="cta__meta">
+        v0.1.0 · Apple Silicon &amp; Intel · <strong>Free</strong>, AGPL-3.0 · No account, no server
+      </p>
+    </div>
+
+    <!-- The headline, made literal: three projects, and one of them has stopped. -->
+    <ul class="proof" aria-label="Three projects, one waiting">
+      <li class="pcard">
+        <i class="st" data-state="working"></i>
+        <b class="pcard__n">beacon-split</b>
+        <span class="pcard__s">Claude is working</span>
+      </li>
+      <li class="pcard">
+        <i class="st" data-state="done"></i>
+        <b class="pcard__n">docs-site</b>
+        <span class="pcard__s">Finished · nothing needed</span>
+      </li>
+      <li class="pcard is-hot">
+        <i class="st" data-state="waiting"></i>
+        <b class="pcard__n">api-gateway</b>
+        <span class="pcard__s">Waiting for an answer · <em>18 min</em></span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- The product, drawn from Beacon's own design tokens -->
+  <div class="stage">
+    <div class="win" id="win">
+      <div class="win__accent" aria-hidden="true"></div>
+
+      <div class="tbar">
+        <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <button class="ws" type="button" tabindex="-1">
+          <span class="ws__dot"></span><span class="ws__icon">◆</span>Personal<span class="ws__chev">▾</span>
+        </button>
+        <span class="tbar__div" aria-hidden="true"></span>
+        <div class="tabs" role="tablist" aria-label="Projects (illustration)">
+          <span class="tab is-active"><i class="st" data-state="idle"></i>beacon-split</span>
+          <span class="tab" id="tabB"><i class="st" data-state="working" id="dotB"></i>api-gateway</span>
+          <span class="tab"><i class="st" data-state="done"></i>docs-site</span>
+        </div>
+        <span class="tbar__drag" aria-hidden="true"></span>
+        <span class="meter"><b>3h 12m</b> left · ctx <b>41%</b></span>
+        <span class="gear" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="13" height="13"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"/><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="m13.3 9.7-.7-.4a4.8 4.8 0 0 0 0-2.6l.7-.4a.9.9 0 0 0 .3-1.2l-.6-1a.9.9 0 0 0-1.2-.3l-.7.4a4.8 4.8 0 0 0-2.2-1.3V2a.9.9 0 0 0-.9-.9H6.9A.9.9 0 0 0 6 2v.9a4.8 4.8 0 0 0-2.2 1.3l-.7-.4a.9.9 0 0 0-1.2.3l-.6 1a.9.9 0 0 0 .3 1.2l.7.4a4.8 4.8 0 0 0 0 2.6l-.7.4a.9.9 0 0 0-.3 1.2l.6 1a.9.9 0 0 0 1.2.3l.7-.4A4.8 4.8 0 0 0 6 13.1v.9a.9.9 0 0 0 .9.9h1.1a.9.9 0 0 0 .9-.9v-.9a4.8 4.8 0 0 0 2.2-1.3l.7.4a.9.9 0 0 0 1.2-.3l.6-1a.9.9 0 0 0-.3-1.2Z"/></svg>
+        </span>
+      </div>
+
+      <div class="win__body">
+        <section class="pane pane--claude is-focused">
+          <header class="pane__h"><span class="pane__t">Claude</span><span class="pane__s">beacon-split</span></header>
+          <div class="pane__b term">
+<span class="l"><span class="c-dim">&gt;</span> add a <span class="c-acc">--json</span> flag to the status command</span>
+<span class="l"></span>
+<span class="l"><span class="c-acc">⏺</span> I'll add the flag, thread it through the formatter, and cover it.</span>
+<span class="l"></span>
+<span class="l"><span class="c-acc">⏺</span> <span class="c-fg">Read</span>(<span class="c-dim">crates/beacon-cli/src/status.rs</span>)</span>
+<span class="l">  <span class="c-dim">⎿  Read 84 lines</span></span>
+<span class="l"><span class="c-acc">⏺</span> <span class="c-fg">Update</span>(<span class="c-dim">crates/beacon-cli/src/status.rs</span>)</span>
+<span class="l">  <span class="c-dim">⎿  </span><span class="c-ok">+34</span> <span class="c-dim">additions,</span> <span class="c-warn">-6</span> <span class="c-dim">removals</span></span>
+<span class="l"><span class="c-acc">⏺</span> <span class="c-fg">Bash</span>(<span class="c-dim">cargo test -p beacon-cli</span>)</span>
+<span class="l">  <span class="c-dim">⎿  test result: </span><span class="c-ok">ok</span><span class="c-dim">. 14 passed; 0 failed</span></span>
+<span class="l"></span>
+<span class="l"><span class="c-acc">⏺</span> Done. <span class="c-fg">beacon status --json</span> prints the same fields</span>
+<span class="l">  as the table, so it stays a formatting change only.</span>
+<span class="l"></span>
+<span class="l"><span class="c-dim">&gt;</span> <span class="caret"></span></span>
+          </div>
+        </section>
+
+        <div class="col">
+          <section class="pane pane--files">
+            <header class="pane__h"><span class="pane__t">Files</span><span class="pane__s">beacon-split</span></header>
+            <div class="pane__b tree">
+              <span class="row"><span class="tw">▾</span><span class="dir">crates</span></span>
+              <span class="row" style="--d:1"><span class="tw">▾</span><span class="dir">beacon-core</span></span>
+              <span class="row" style="--d:2"><span class="f">keymap.rs</span></span>
+              <span class="row" style="--d:1"><span class="tw">▸</span><span class="dir">beacon-daemon</span></span>
+              <span class="row"><span class="tw">▾</span><span class="dir">src</span></span>
+              <span class="row is-sel" style="--d:1"><span class="f">Workbench.tsx</span></span>
+              <span class="row"><span class="f env">.env</span><span class="badge">masked</span></span>
+            </div>
+          </section>
+
+          <section class="pane pane--git">
+            <header class="pane__h"><span class="pane__t">Git</span><span class="pane__s">main ↑2</span></header>
+            <div class="pane__b git">
+              <span class="git__grp">Staged</span>
+              <span class="row"><i class="gs gs--a">A</i>panelFocus.ts</span>
+              <span class="git__grp">Not staged</span>
+              <span class="row"><i class="gs gs--m">M</i>Workbench.tsx</span>
+              <span class="row"><i class="gs gs--m">M</i>Panel.module.css</span>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="sbar">
+        <span class="sbar__p">~/projects/beacon-split/src/app/Workbench.tsx</span>
+        <span class="sbar__h">⌘K commands · ⌘P files</span>
+      </div>
+    </div>
+
+    <!-- The moment the product exists for -->
+    <aside class="note" id="note" aria-hidden="true">
+      <span class="note__ico"><span class="beam beam--sm"></span></span>
+      <span class="note__body">
+        <b class="note__t">api-gateway needs you</b>
+        <span class="note__d">Claude is waiting for an answer.</span>
+      </span>
+    </aside>
+  </div>
+</section>
+
+<!-- ── The waiting state ────────────────────────────────────────────── -->
+<section class="band" id="what">
+  <div class="wrap wrap--tight">
+    <h2 class="h2">The expensive thing isn't switching tabs.</h2>
+    <p class="body">
+      It's a permission prompt going unseen for twenty minutes. With three projects open you
+      can't watch them all, and the one that stopped is the one costing you time.
+    </p>
+    <p class="body">
+      Beacon reads Claude Code's own hooks rather than guessing from terminal output, so a tab
+      knows whether Claude is <em>working</em>, <em>done</em>, or <em>stopped and waiting for you</em>.
+      The states differ in weight, not just colour, so you read them at a glance — and a project
+      that starts waiting raises a system notification, once, and only when you're looking elsewhere.
+    </p>
+    <ul class="states" aria-label="What a project tab can say">
+      <li><i class="st" data-state="working"></i><b>Working</b><span>Claude is running. Nothing needed.</span></li>
+      <li><i class="st" data-state="done"></i><b>Done</b><span>It finished and has something for you.</span></li>
+      <li><i class="st" data-state="waiting"></i><b>Waiting</b><span>Stopped, and needs an answer.</span></li>
+      <li><i class="st" data-state="stopped"></i><b>Stopped</b><span>No session running here.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ── Feature rows ─────────────────────────────────────────────────── -->
+<section class="rows">
+  <div class="wrap">
+
+    <article class="row2">
+      <div class="row2__txt">
+        <h3 class="h3">It runs the real thing.</h3>
+        <p class="body">
+          A <code>claude</code> session and a shell per project, each in its own PTY. Colours,
+          prompts, permissions, selection and scrolling are whatever the CLI does, because it
+          <em>is</em> the CLI. Beacon doesn't reimplement Claude Code, doesn't bundle it, and never
+          touches a credential: you sign in yourself, through Anthropic's own flow.
+        </p>
+      </div>
+      <div class="row2__art">
+        <div class="chip">
+          <div class="chip__b term term--sm">
+<span class="l"><span class="c-dim">$</span> which claude</span>
+<span class="l"><span class="c-dim">/opt/homebrew/bin/claude</span></span>
+<span class="l"></span>
+<span class="l"><span class="c-ok">✓</span> found through your login shell</span>
+<span class="l"><span class="c-ok">✓</span> started in a real PTY</span>
+<span class="l"><span class="c-ok">✓</span> ANTHROPIC_* passed straight through</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="row2 row2--flip">
+      <div class="row2__txt">
+        <h3 class="h3">Sessions outlive the window.</h3>
+        <p class="body">
+          A background daemon owns every PTY. Close Beacon and your work keeps running; open it
+          again and it reattaches, scrollback intact, nothing lost and nothing repeated. The window
+          is a client, not the owner.
+        </p>
+      </div>
+      <div class="row2__art">
+        <div class="chip chip--flow">
+          <span class="flow__s"><i class="flow__d"></i>Window closed</span>
+          <span class="flow__line" aria-hidden="true"></span>
+          <span class="flow__s is-live"><i class="flow__d"></i>Daemon still running · 3 sessions</span>
+          <span class="flow__line" aria-hidden="true"></span>
+          <span class="flow__s"><i class="flow__d"></i>Reopened · reattached</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="row2">
+      <div class="row2__txt">
+        <h3 class="h3">See what a session is costing.</h3>
+        <p class="body">
+          How much of the five-hour allowance is left, and how full each project's context is —
+          enough to decide which project to spend the rest of it on, and when a conversation is
+          worth clearing. If Claude Code stops reporting, stale numbers are dimmed and labelled
+          rather than left standing as current.
+        </p>
+      </div>
+      <div class="row2__art">
+        <div class="chip chip--meter">
+          <span class="mt"><span class="mt__k">Five-hour allowance</span><span class="mt__v">3h 12m left</span></span>
+          <span class="bar"><i style="width:64%"></i></span>
+          <span class="mt"><span class="mt__k">beacon-split context</span><span class="mt__v">41%</span></span>
+          <span class="bar"><i style="width:41%"></i></span>
+          <span class="mt"><span class="mt__k">api-gateway context</span><span class="mt__v">88%</span></span>
+          <span class="bar"><i class="is-hot" style="width:88%"></i></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="row2 row2--flip">
+      <div class="row2__txt">
+        <h3 class="h3">Files, editor and git, at the size they deserve.</h3>
+        <p class="body">
+          A file tree with the operations you expect, a light editor, a <code>.env</code> view that
+          keeps values hidden until asked, and git status, diff, stage and commit. Deleting moves to
+          the trash. There is no operation here that removes a file outright. An open buffer notices
+          when Claude changes the file underneath it, and refuses to overwrite your typing.
+        </p>
+      </div>
+      <div class="row2__art">
+        <div class="chip">
+          <div class="chip__b diff">
+<span class="l"><span class="c-dim">crates/beacon-core/src/keymap.rs</span></span>
+<span class="l"></span>
+<span class="l"><span class="c-dim">@@ -118,6 +118,11 @@</span></span>
+<span class="l">     Action::PanelClose,</span>
+<span class="l" data-a="+"><span class="c-ok">+    Action::FocusNextPanel,</span></span>
+<span class="l" data-a="+"><span class="c-ok">+    Action::FocusPrevPanel,</span></span>
+<span class="l">     Action::ToggleFiles,</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="row2">
+      <div class="row2__txt">
+        <h3 class="h3">Keyboard first, and rebindable.</h3>
+        <p class="body">
+          A command palette on <kbd>⌘K</kbd>, quick open on <kbd>⌘P</kbd> that respects the repo's
+          own ignore rules, and every shortcut editable — click one, press the new one. Layouts are
+          a tree of splits with four presets, and every divider drags. If something you do daily
+          takes a trip through three menus, that's a bug.
+        </p>
+      </div>
+      <div class="row2__art">
+        <div class="chip chip--pal">
+          <div class="pal__in"><span class="pal__c">›</span>focus<span class="caret"></span></div>
+          <div class="pal__r is-on"><span>Focus next panel</span><kbd>⌥⌘→</kbd></div>
+          <div class="pal__r"><span>Focus previous panel</span><kbd>⌥⌘←</kbd></div>
+          <div class="pal__r"><span>Focus Claude</span><kbd>⌘1</kbd></div>
+          <div class="pal__r"><span>Focus terminal</span><kbd>⌘J</kbd></div>
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ── Platforms ────────────────────────────────────────────────────── -->
+<section class="band band--alt" id="platforms">
+  <div class="wrap wrap--tight">
+    <h2 class="h2">Where it runs.</h2>
+    <p class="body">
+      Beacon is macOS today. The rest is said plainly rather than promised.
+    </p>
+
+    <ul class="plats">
+      <li class="plat">
+        <i class="st st--lg" data-state="working"></i>
+        <div class="plat__b">
+          <h4 class="plat__t">macOS <span class="plat__s plat__s--on">Available now</span></h4>
+          <p class="plat__d">
+            Apple Silicon and Intel builds ship with every release. Apple Silicon is the one it's
+            developed and tested on daily.
+          </p>
+        </div>
+      </li>
+      <li class="plat">
+        <i class="st st--lg" data-state="stopped"></i>
+        <div class="plat__b">
+          <h4 class="plat__t">Linux <span class="plat__s plat__s--soon">Being built</span></h4>
+          <p class="plat__d">
+            Arch first, and it has never been built there, so nothing claims it works yet. The work
+            is real and bounded: condition the window configuration by platform (vibrancy and the
+            overlay title bar are macOS-only), then document the system dependencies. Everything
+            underneath is already portable Rust.
+          </p>
+          <p class="plat__help">
+            <strong>This is the single most useful thing to help with.</strong> If you run Linux and
+            want Beacon on it, that contribution is worth more than any other right now.
+            <a href="https://github.com/hxst1/Beacon-Split/issues" target="_blank" rel="noopener">Open an issue →</a>
+          </p>
+        </div>
+      </li>
+      <li class="plat">
+        <i class="st st--lg" data-state="off"></i>
+        <div class="plat__b">
+          <h4 class="plat__t">Windows <span class="plat__s">Not planned</span></h4>
+          <p class="plat__d">Not on the roadmap. Said here so you don't have to go looking.</p>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- ── Install ──────────────────────────────────────────────────────── -->
+<section class="band" id="install">
+  <div class="wrap wrap--tight">
+    <h2 class="h2">Get it.</h2>
+    <p class="body">
+      Free, and free of everything that usually comes with free: no account, no telemetry,
+      no server, nothing to buy later.
+    </p>
+
+    <div class="dl">
+      <a class="dlc" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.1.0/Beacon.Split_0.1.0_aarch64.dmg">
+        <span class="dlc__t">Apple Silicon</span>
+        <span class="dlc__s">M1 and newer · .dmg · 6.8 MB</span>
+        <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
+      </a>
+      <a class="dlc" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.1.0/Beacon.Split_0.1.0_x64.dmg">
+        <span class="dlc__t">Intel</span>
+        <span class="dlc__s">x86-64 · .dmg · 5.3 MB</span>
+        <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
+      </a>
+    </div>
+
+    <div class="gate">
+      <h4 class="gate__t">macOS will say it's damaged. It isn't.</h4>
+      <p class="gate__d">
+        The build isn't signed with an Apple Developer ID, so Gatekeeper refuses it the first time.
+        Clear the quarantine flag once, after dragging Beacon to Applications:
+      </p>
+      <div class="cmd">
+        <code id="cmd">xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"</code>
+        <button class="cmd__c" type="button" data-copy="#cmd" aria-label="Copy command">Copy</button>
+      </div>
+      <p class="gate__d gate__d--fine">
+        That removes a check macOS applies to software it cannot verify. It's a reasonable thing to
+        do for a build you chose to download; it isn't something to do casually. Signing and
+        notarisation need an Apple Developer membership, and are on the roadmap.
+      </p>
+    </div>
+
+    <p class="body body--fine">
+      Beacon needs <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a>
+      and <code>git</code> on your <code>PATH</code>. It checks for both through the same login shell a
+      session uses, and tells you exactly what's missing and how to install it.
+      Updates arrive in place, and you're told what changed before anything happens.
+    </p>
+  </div>
+</section>
+
+<!-- ── Open source ──────────────────────────────────────────────────── -->
+<section class="band band--alt" id="open">
+  <div class="wrap wrap--tight">
+    <h2 class="h2">Built for one way of working. Yours to change.</h2>
+    <p class="body">
+      Beacon was built for how one person works, and released for anyone who works the same way.
+      It's <a href="https://github.com/hxst1/Beacon-Split/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0</a>:
+      use it, change it, run it however you like. Distribute a modified version, including running
+      one as a service, and you publish your changes under the same licence, so work put into
+      Beacon stays available to everyone using it.
+    </p>
+    <p class="body">
+      The repository is unusually documented on purpose. Every choice worth recording is written
+      down with what it cost, so a change that contradicts one is welcome as long as it says which
+      one and why it was wrong.
+    </p>
+
+    <div class="help">
+      <h4 class="help__t">Where help goes furthest</h4>
+      <ol class="help__l">
+        <li><b>The Linux build.</b> Nobody has run it there yet. Bounded, and the highest value.</li>
+        <li><b>Detached panels.</b> Pop a panel into its own window. The daemon already makes this window management, not a session change.</li>
+        <li><b>Per-workspace layouts</b> and rearranging panels by hand.</li>
+        <li><b>A dev-server state</b> read honestly from the process tree, rather than guessed from output.</li>
+      </ol>
+      <div class="help__cta">
+        <a class="btn" href="https://github.com/hxst1/Beacon-Split/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">How to contribute</a>
+        <a class="btn btn--ghost" href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Read the roadmap</a>
+      </div>
+    </div>
+
+    <a class="ask" href="https://github.com/hxst1/Beacon-Split/issues/1" target="_blank" rel="noopener">
+      <span class="ask__mark" aria-hidden="true"><span class="beam"></span></span>
+      <span class="ask__b">
+        <b class="ask__t">You don't have to write Rust to help.</b>
+        <span class="ask__d">
+          The icon and the marks around it are placeholder work, and they look like it. If designing
+          identity is your thing, Beacon would rather have your proposal than the placeholder. A
+          direction, a sketch or a finished set, all welcome, and nothing to win.
+        </span>
+        <span class="ask__l">Open the design thread <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 9.5 9.5 2.5M4 2.5h5.5V8"/></svg></span>
+      </span>
+    </a>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <a class="brand" href="/">
+        <span class="beam" aria-hidden="true"></span>
+        <span class="brand__name">Beacon <span class="brand__dim">Split</span></span>
+      </a>
+      <nav class="foot__nav" aria-label="Footer">
+        <a href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/hxst1/Beacon-Split/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">Architecture</a>
+        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/DECISIONS.md" target="_blank" rel="noopener">Decisions</a>
+        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Roadmap</a>
+      </nav>
+    </div>
+
+    <p class="foot__legal">
+      <b>Beacon is not affiliated with, endorsed by, or partnered with Anthropic.</b>
+      It runs Claude Code as Anthropic publishes it. It does not bundle, modify or patch it, and it
+      never asks for, handles, stores or forwards a Claude credential. You sign in yourself, and your
+      usage is billed to you under your own agreement with Anthropic. Beacon is for one person on
+      their own machine; everyone using Claude Code needs their own subscription or API key.
+      Claude and Claude Code are trademarks of Anthropic PBC, used here only to say what Beacon runs.
+    </p>
+    <p class="foot__legal foot__legal--end">
+      AGPL-3.0 · Made by <a href="https://github.com/hxst1" target="_blank" rel="noopener">hxst1</a>
+    </p>
+  </div>
+</footer>
+
+<script src="/main.js" defer></script>
+</body>
+</html>
