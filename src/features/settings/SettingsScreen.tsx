@@ -705,7 +705,7 @@ function ClaudeSection(): React.ReactElement {
     hooks === 'installed'
       ? 'Installed'
       : hooks === 'stale'
-        ? 'Installed, but pointing at another copy of Beacon'
+        ? 'Installed, but out of date: another copy of Beacon, or an older set of events'
         : 'Not installed'
 
   return (

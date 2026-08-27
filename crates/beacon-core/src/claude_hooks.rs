@@ -32,6 +32,10 @@ const EVENTS: &[&str] = &[
     "UserPromptSubmit",
     "Stop",
     "StopFailure",
+    // Last of the lifecycle pair on purpose: an install from before this event
+    // existed has every other hook registered, so it reads as stale — an
+    // install to refresh — rather than as absent.
+    "SessionStart",
     "SessionEnd",
 ];
 
@@ -40,8 +44,9 @@ const EVENTS: &[&str] = &[
 pub enum HookStatus {
     /// Registered and pointing at this build.
     Installed,
-    /// Registered, but pointing somewhere else — an older Beacon, or one that
-    /// has moved.
+    /// Registered, but not as this build would register them — pointing at an
+    /// older Beacon or one that has moved, duplicated by an install that could
+    /// not recognise its own entries, or missing an event added since.
     Stale,
     NotInstalled,
 }
@@ -378,6 +383,25 @@ mod tests {
         for event in EVENTS {
             assert!(hooks.contains_key(*event), "{event} was not registered");
         }
+    }
+
+    #[test]
+    fn an_install_from_before_a_new_event_existed_is_stale_rather_than_installed() {
+        // The upgrade path. A build that adds an event has to be able to say so
+        // — otherwise the settings look installed and the new hook never runs.
+        let (_guard, path) = scratch();
+        install_at(&path, &beacon()).unwrap();
+
+        let mut settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        settings["hooks"]
+            .as_object_mut()
+            .unwrap()
+            .remove(*EVENTS.last().unwrap());
+        std::fs::write(&path, serde_json::to_vec_pretty(&settings).unwrap()).unwrap();
+
+        assert_eq!(status_at(&path, &beacon()).unwrap(), HookStatus::Stale);
+        install_at(&path, &beacon()).unwrap();
+        assert_eq!(status_at(&path, &beacon()).unwrap(), HookStatus::Installed);
     }
 
     #[test]

@@ -17,7 +17,8 @@ const SETTLE_MS = 700
  *
  * `waiting` and `done` are deliberately not expired: both are states a session
  * can legitimately sit in for hours, and both are still true if Claude stopped
- * because it needs you.
+ * because it needs you. What takes them back is Claude saying so — a session
+ * that starts, resumes or is cleared reports `idle`.
  */
 const WORKING_EXPIRY_MS = 2 * 60 * 1000
 
@@ -120,7 +121,11 @@ export function startActivityTracking(): () => void {
     onClaudeActivity: ({ project, activity, detail }) => {
       useActivity.setState((state) => {
         const reported = { ...state.reported }
-        if (activity === 'ended') delete reported[project]
+        // Both drop the claim rather than replace it: a session that ended has
+        // nothing to say, and one that just started or was cleared is saying
+        // only that it is there, which is what inferring from output already
+        // assumes.
+        if (activity === 'ended' || activity === 'idle') delete reported[project]
         else reported[project] = { activity, detail, at: Date.now() }
         return { reported }
       })

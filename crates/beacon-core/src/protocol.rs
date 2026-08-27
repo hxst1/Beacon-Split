@@ -20,6 +20,15 @@ use crate::settings::ShellSpec;
 /// Version 2 added `Report`, `ReportUsage` and `Usage`.
 /// Version 3 gave sessions a slot, so a project can hold several terminals, and
 /// let the client say which shell to run.
+///
+/// `ClaudeActivity::Idle` was added without a version, deliberately. The rule
+/// is about the set of requests: a daemon that meets one it does not know
+/// leaves a client waiting on a session it cannot use. A value it does not know
+/// inside a `Report` costs one dropped report — the daemon answers with an
+/// error and carries on, and the tab keeps saying what it already said. Paying
+/// for that with a forced daemon replacement would kill every running session
+/// on upgrade, which is a far worse trade than a report that goes missing until
+/// the daemon is next restarted.
 pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Newline-delimited JSON, one message per line.
@@ -42,6 +51,15 @@ pub enum ClaudeActivity {
     Waiting,
     /// Finished its turn.
     Done,
+    /// Open, with nothing claimed about it — a session that has just started,
+    /// resumed, or been cleared.
+    ///
+    /// Worth a state of its own rather than reusing `Done`: `waiting` and
+    /// `done` never expire, because both can honestly last hours. That makes a
+    /// session resumed after a permission prompt keep shouting for attention it
+    /// no longer needs, and a fresh session claim it finished something it
+    /// never started. This says only that Claude is there.
+    Idle,
     /// The session ended.
     Ended,
 }

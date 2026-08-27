@@ -62,6 +62,11 @@ pub fn interpret(event: &serde_json::Value) -> Option<(ClaudeActivity, Option<St
         "PreToolUse" => (ClaudeActivity::Working, tool),
         "UserPromptSubmit" => (ClaudeActivity::Working, None),
         "Stop" | "StopFailure" => (ClaudeActivity::Done, None),
+        // Fires on startup, on resume, and after a clear or a compact. Its job
+        // is to take back whatever the tab was still claiming: a session
+        // resumed after a permission prompt was left asking for an answer it no
+        // longer wants.
+        "SessionStart" => (ClaudeActivity::Idle, None),
         "SessionEnd" => (ClaudeActivity::Ended, None),
         _ => return None,
     })
@@ -112,6 +117,32 @@ mod tests {
         // the same either way; the terminal shows what went wrong.
         let (activity, _) = event(serde_json::json!({ "hook_event_name": "StopFailure" })).unwrap();
         assert_eq!(activity, ClaudeActivity::Done);
+    }
+
+    #[test]
+    fn a_session_that_just_started_claims_nothing_about_itself() {
+        let (activity, detail) = event(serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "source": "startup"
+        }))
+        .unwrap();
+
+        assert_eq!(activity, ClaudeActivity::Idle);
+        assert_eq!(detail, None);
+    }
+
+    #[test]
+    fn resuming_or_clearing_drops_a_claim_that_has_stopped_being_true() {
+        // The reason the event is worth a hook at all: `waiting` never expires,
+        // so without this a resumed session asks for an answer forever.
+        for source in ["resume", "clear", "compact"] {
+            let (activity, _) = event(serde_json::json!({
+                "hook_event_name": "SessionStart",
+                "source": source
+            }))
+            .unwrap();
+            assert_eq!(activity, ClaudeActivity::Idle, "source {source}");
+        }
     }
 
     #[test]

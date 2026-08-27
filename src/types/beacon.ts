@@ -149,8 +149,14 @@ export interface SessionExit {
  */
 export type Activity = 'working' | 'idle' | 'stopped' | 'waiting' | 'done'
 
-/** What Claude Code reports through a hook. */
-export type ClaudeActivity = 'working' | 'waiting' | 'done' | 'ended'
+/**
+ * What Claude Code reports through a hook.
+ *
+ * `idle` is a session saying it is there and claiming nothing else — it has
+ * just started, resumed, or been cleared. It is how a tab stops repeating a
+ * `waiting` or `done` that has quietly stopped being true.
+ */
+export type ClaudeActivity = 'working' | 'waiting' | 'done' | 'idle' | 'ended'
 
 export interface SessionActivity {
   project: string
