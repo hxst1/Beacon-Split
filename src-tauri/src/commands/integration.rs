@@ -26,12 +26,22 @@ pub fn daemon_available() -> bool {
 ///
 /// The daemon binary in its `hook` mode: nothing extra to ship, and it is
 /// already beside the application wherever the application is.
+///
+/// Quoted, because Claude Code hands hook commands to a shell and the packaged
+/// application lives at `/Applications/Beacon Split.app` — a space the shell
+/// would otherwise read as the end of the command.
 fn hook_command() -> String {
-    format!("{} hook", daemon_binary_path().display())
+    format!(
+        "{} hook",
+        claude_hooks::shell_quote(&daemon_binary_path().to_string_lossy())
+    )
 }
 
 fn status_line_command() -> String {
-    format!("{} statusline", daemon_binary_path().display())
+    format!(
+        "{} statusline",
+        claude_hooks::shell_quote(&daemon_binary_path().to_string_lossy())
+    )
 }
 
 /// Everything the Claude Code section needs to describe itself.

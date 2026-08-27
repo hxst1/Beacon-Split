@@ -7,7 +7,19 @@ use crate::error::{CoreError, Result};
 
 /// Marks the hook entries as ours, so they can be found and removed again
 /// without disturbing anything else in the file.
-const MARKER: &str = "beacon-split";
+///
+/// The daemon's own file name, not the product name: the application is called
+/// "Beacon Split" and installs at `/Applications/Beacon Split.app`, so a path
+/// to it contains no `beacon-split` anywhere. Marking by the product name found
+/// our entries in a development checkout and never in an installed build, which
+/// meant every install added another copy instead of replacing the last.
+const MARKER: &str = "beacon-daemon";
+
+/// Where the status line Beacon displaced is remembered.
+///
+/// Spelled out rather than built from `MARKER`, because it is already written
+/// into settings files in the wild and renaming it would strand them.
+const PREVIOUS_STATUS_LINE: &str = "beacon-splitPreviousStatusLine";
 
 /// The events worth knowing about.
 ///
@@ -68,46 +80,45 @@ pub fn status_at(path: &Path, command: &Path) -> Result<HookStatus> {
 
     let mut found = false;
     for event in EVENTS {
-        let Some(groups) = hooks.get(*event).and_then(Value::as_array) else {
-            return Ok(if found {
-                HookStatus::Stale
-            } else {
-                HookStatus::NotInstalled
-            });
-        };
+        let registered = hooks
+            .get(*event)
+            .and_then(Value::as_array)
+            .map(|groups| ours(groups))
+            .unwrap_or_default();
 
-        match ours(groups) {
-            Some(registered) => {
-                found = true;
-                if registered != command.to_string_lossy() {
-                    return Ok(HookStatus::Stale);
-                }
-            }
-            None => {
+        match registered.as_slice() {
+            // More than one means an earlier install left a copy behind, so
+            // Claude would run the hook twice for every event. Stale rather
+            // than installed: reinstalling is what clears it.
+            [only] if *only == command.to_string_lossy() => found = true,
+            [] => {
                 return Ok(if found {
                     HookStatus::Stale
                 } else {
                     HookStatus::NotInstalled
                 });
             }
+            _ => return Ok(HookStatus::Stale),
         }
     }
 
     Ok(HookStatus::Installed)
 }
 
-/// The command registered by our group, if it is there.
-fn ours(groups: &[Value]) -> Option<String> {
+/// Every command registered by us for one event.
+///
+/// A list rather than the first match, so duplicates left by an install that
+/// could not recognise its own entries are visible instead of silent.
+fn ours(groups: &[Value]) -> Vec<String> {
     groups
         .iter()
-        .find(|group| group.get("matcher").and_then(Value::as_str) == Some("*"))
-        .and_then(|group| group.get("hooks")?.as_array())
-        .and_then(|hooks| {
-            hooks.iter().find_map(|hook| {
-                let command = hook.get("command")?.as_str()?;
-                command.contains(MARKER).then(|| command.to_string())
-            })
+        .filter_map(|group| group.get("hooks")?.as_array())
+        .flatten()
+        .filter_map(|hook| {
+            let command = hook.get("command")?.as_str()?;
+            command.contains(MARKER).then(|| command.to_string())
         })
+        .collect()
 }
 
 /// Registers the hooks, replacing any Beacon left from a previous install.
@@ -209,6 +220,9 @@ pub fn install_status_line_at(path: &Path, command: &Path) -> Result<()> {
         .and_then(|line| line.get("command"))
         .and_then(Value::as_str)
         .filter(|previous| !previous.contains(MARKER))
+        // An empty command is nothing to preserve, and putting one back would
+        // leave Claude Code running a status line that prints nothing.
+        .filter(|previous| !previous.trim().is_empty())
         .map(str::to_string);
 
     let ours = match &existing {
@@ -218,10 +232,7 @@ pub fn install_status_line_at(path: &Path, command: &Path) -> Result<()> {
 
     if let Some(previous) = &existing {
         // Recorded so uninstalling can put it back exactly.
-        object.insert(
-            format!("{MARKER}PreviousStatusLine"),
-            Value::String(previous.clone()),
-        );
+        object.insert(PREVIOUS_STATUS_LINE.into(), Value::String(previous.clone()));
     }
 
     object.insert(
@@ -248,10 +259,10 @@ pub fn remove_status_line_at(path: &Path) -> Result<()> {
         return Ok(());
     }
 
-    let key = format!("{MARKER}PreviousStatusLine");
     match object
-        .remove(&key)
+        .remove(PREVIOUS_STATUS_LINE)
         .and_then(|v| v.as_str().map(str::to_string))
+        .filter(|previous| !previous.trim().is_empty())
     {
         Some(previous) => {
             object.insert(
@@ -287,8 +298,12 @@ pub fn status_line_installed() -> Result<bool> {
     status_line_installed_at(&settings_path())
 }
 
-/// Wraps a command so it survives being passed as one argument.
-fn shell_quote(command: &str) -> String {
+/// Wraps a word so it survives the shell Claude Code runs hooks through.
+///
+/// Not decoration: the application installs at `/Applications/Beacon Split.app`,
+/// and an unquoted path through it is two words to a shell, which then tries to
+/// run `/Applications/Beacon` and fails on every hook Claude fires.
+pub fn shell_quote(command: &str) -> String {
     format!("'{}'", command.replace('\'', r"'\''"))
 }
 
@@ -332,8 +347,14 @@ mod tests {
         (dir, path)
     }
 
+    /// The command as an installed build actually registers it: a quoted path
+    /// through `/Applications/Beacon Split.app`, which is where the packaged
+    /// application lives.
     fn beacon() -> PathBuf {
-        PathBuf::from("/Applications/beacon-split.app/Contents/MacOS/beacon-daemon")
+        PathBuf::from(format!(
+            "{} hook",
+            shell_quote("/Applications/Beacon Split.app/Contents/MacOS/beacon-daemon")
+        ))
     }
 
     #[test]
@@ -371,6 +392,83 @@ mod tests {
         .unwrap();
 
         assert_eq!(status_at(&path, &beacon()).unwrap(), HookStatus::Stale);
+    }
+
+    #[test]
+    fn a_path_with_a_space_in_it_survives_the_shell() {
+        // "/Applications/Beacon Split.app" is two words to a shell, and Claude
+        // Code runs hook commands through one. Unquoted, every hook it fired
+        // tried to run "/Applications/Beacon".
+        let quoted = shell_quote("/Applications/Beacon Split.app/Contents/MacOS/beacon-daemon");
+        let output = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!("printf '%s' {quoted}"))
+            .output()
+            .unwrap();
+
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "/Applications/Beacon Split.app/Contents/MacOS/beacon-daemon"
+        );
+    }
+
+    #[test]
+    fn hooks_installed_from_the_bundle_are_recognised_as_ours() {
+        // The marker used to be the product name, which appears in the
+        // development checkout's path and nowhere in an installed build's — so
+        // an installed Beacon could never find, replace, or remove its own
+        // entries.
+        let (_guard, path) = scratch();
+        install_at(&path, &beacon()).unwrap();
+
+        assert_eq!(status_at(&path, &beacon()).unwrap(), HookStatus::Installed);
+        uninstall_at(&path).unwrap();
+        assert_eq!(
+            status_at(&path, &beacon()).unwrap(),
+            HookStatus::NotInstalled
+        );
+    }
+
+    #[test]
+    fn a_second_copy_left_by_an_older_install_reads_as_stale() {
+        // What earlier builds left behind: one hook per install, all firing.
+        // Reporting it as installed would hide it; stale asks for the reinstall
+        // that clears it.
+        let (_guard, path) = scratch();
+        install_at(&path, &beacon()).unwrap();
+
+        let mut settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let groups = settings["hooks"]["Stop"].as_array_mut().unwrap();
+        let duplicate = groups[0].clone();
+        groups.push(duplicate);
+        std::fs::write(&path, serde_json::to_vec_pretty(&settings).unwrap()).unwrap();
+
+        assert_eq!(status_at(&path, &beacon()).unwrap(), HookStatus::Stale);
+
+        // And installing again clears it rather than adding a third.
+        install_at(&path, &beacon()).unwrap();
+        assert_eq!(status_at(&path, &beacon()).unwrap(), HookStatus::Installed);
+    }
+
+    #[test]
+    fn a_status_line_that_was_empty_is_not_put_back() {
+        // An empty command is nothing to preserve, and restoring one would
+        // leave Claude Code running a status line that prints nothing.
+        let (_guard, path) = scratch();
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&json!({
+                "statusLine": { "type": "command", "command": "" }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        install_status_line_at(&path, &beacon()).unwrap();
+        remove_status_line_at(&path).unwrap();
+
+        let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(settings.get("statusLine").is_none(), "got {settings}");
     }
 
     #[test]
@@ -451,7 +549,7 @@ mod tests {
 
         let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let command = settings["statusLine"]["command"].as_str().unwrap();
-        assert!(command.contains("beacon-split"), "got {command}");
+        assert!(command.contains("beacon-daemon"), "got {command}");
         assert!(
             command.contains("my-statusline.sh"),
             "the user's line should still run: {command}"
@@ -486,7 +584,7 @@ mod tests {
 
         let settings: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let command = settings["statusLine"]["command"].as_str().unwrap();
-        assert_eq!(command.matches("beacon-split").count(), 1, "got {command}");
+        assert_eq!(command.matches("beacon-daemon").count(), 1, "got {command}");
     }
 
     #[test]
