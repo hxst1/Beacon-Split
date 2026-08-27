@@ -96,7 +96,15 @@
   white-space: nowrap;
 }
 
+/*
+ * The same bar at reading size, inside the panel.
+ *
+ * Positioned, because the fill inside it is absolute: without a positioned
+ * ancestor the fill escapes and sizes itself against the panel, which drew it
+ * as an accent-coloured slab over everything.
+ */
 .track {
+  position: relative;
   height: 4px;
   margin: 2px 10px 8px;
   border-radius: 99px;

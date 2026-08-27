@@ -99,7 +99,7 @@ export function UsageMeter(): React.ReactElement | null {
                   <span
                     className={styles['fill']}
                     data-level={stale ? 'unknown' : levelOf(sessionUsed)}
-                    style={{ width: `${100 - sessionUsed}%`, display: 'block', height: '100%' }}
+                    style={{ width: `${100 - sessionUsed}%` }}
                   />
                 </div>
                 {resets ? (
@@ -133,7 +133,7 @@ export function UsageMeter(): React.ReactElement | null {
                   <span
                     className={styles['fill']}
                     data-level={levelOf(contextUsed)}
-                    style={{ width: `${contextUsed}%`, display: 'block', height: '100%' }}
+                    style={{ width: `${contextUsed}%` }}
                   />
                 </div>
                 {projectUsage?.report.contextUsedTokens ? (
