@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!--
+    Beacon's mark: one vertical beam of light, centred, clear of every edge.
+
+    It is the same shape the application draws in CSS on its boot screen and in
+    the workspace accent frame, so the icon is not a separate piece of artwork —
+    it is the interface's own motif at icon size.
+
+    The beam is a solid fill. The bloom around it is a separate radial wash, so
+    the bar itself never fades: at 16px the glow disappears into the background
+    and the solid bar is still a clean, legible stroke.
+
+    Regenerate every platform size with:  pnpm tauri icon assets/icon.svg
+  -->
+  <defs>
+    <radialGradient id="bloom" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#6b7cff" stop-opacity="0.55"/>
+      <stop offset="42%"  stop-color="#6b7cff" stop-opacity="0.17"/>
+      <stop offset="100%" stop-color="#6b7cff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="squircle">
+      <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <!-- The window colour, so the icon and the application are the same material. -->
+    <rect x="0" y="0" width="1024" height="1024" fill="#08080b"/>
+    <ellipse cx="512" cy="512" rx="215" ry="360" fill="url(#bloom)"/>
+    <!-- 272px of clearance above and below: the beam never touches an edge. -->
+    <rect x="486" y="272" width="52" height="480" rx="26" ry="26" fill="#6b7cff"/>
+  </g>
+</svg>
