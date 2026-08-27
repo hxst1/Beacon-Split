@@ -23,11 +23,9 @@ import styles from './TerminalPanel.module.css'
 export function TerminalPanel({
   workspaceId,
   project,
-  focused,
 }: {
   workspaceId: string
   project: Project
-  focused: boolean
 }): React.ReactElement {
   const restartSession = useBeacon((s) => s.restartSession)
   const attachEpoch = useBeacon((s) => s.attachEpoch)
@@ -58,9 +56,9 @@ export function TerminalPanel({
 
   return (
     <Panel
+      id="terminal"
       title="Terminal"
       subtitle={project.displayPath}
-      focused={focused}
       actions={
         <>
           <span className={styles['tabs']}>

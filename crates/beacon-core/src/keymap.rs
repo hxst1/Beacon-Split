@@ -22,6 +22,11 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("panel.toggle.editor", "mod+o"),
     ("panel.toggle.terminal", "mod+j"),
     ("panel.fullscreen", "mod+enter"),
+    // Arrows rather than letters, because Option rewrites what a letter key
+    // reports on macOS and the binding would arrive as a character nobody
+    // pressed.
+    ("panel.focusNext", "mod+alt+arrowright"),
+    ("panel.focusPrevious", "mod+alt+arrowleft"),
     ("session.restartClaude", "mod+shift+r"),
     ("project.next", "mod+shift+]"),
     ("project.previous", "mod+shift+["),

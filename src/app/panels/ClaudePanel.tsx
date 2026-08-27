@@ -15,11 +15,12 @@ import styles from './Panel.module.css'
 export function ClaudePanel({
   workspaceId,
   project,
-  focused,
+  autoFocus,
 }: {
   workspaceId: string
   project: Project
-  focused: boolean
+  /** Take the keyboard when the window opens. */
+  autoFocus: boolean
 }): React.ReactElement {
   const restartSession = useBeacon((s) => s.restartSession)
   const missingClaude = useBeacon((s) => s.missing.find((entry) => entry.id === 'claude'))
@@ -29,9 +30,9 @@ export function ClaudePanel({
 
   return (
     <Panel
+      id="claude"
       title="Claude"
       subtitle={project.displayPath}
-      focused={focused}
       actions={
         <button
           type="button"
@@ -52,7 +53,7 @@ export function ClaudePanel({
           projectId={project.id}
           kind="claude"
           slot={0}
-          autoFocus={focused}
+          autoFocus={autoFocus}
         />
       )}
     </Panel>

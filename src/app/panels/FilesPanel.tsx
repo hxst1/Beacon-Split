@@ -10,7 +10,7 @@ export function FilesPanel({
   project: Project
 }): React.ReactElement {
   return (
-    <Panel title="Files" subtitle={project.name}>
+    <Panel id="files" title="Files" subtitle={project.name}>
       <FileTree key={project.id} workspaceId={workspaceId} projectId={project.id} />
     </Panel>
   )

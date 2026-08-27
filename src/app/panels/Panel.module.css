@@ -44,10 +44,26 @@
   overflow: auto;
 }
 
-/* Focused panel gets a barely-there accent edge, not a highlight. */
+/*
+ * The panel with the keyboard.
+ *
+ * A ring in the workspace's own colour, drawn inside the panel so it takes no
+ * space and cannot shift the layout as focus moves. Its job is to answer one
+ * question at a glance — where is my typing going — so it is a clear edge, not
+ * a wash: nothing about the panel's contents changes.
+ */
+.panel {
+  outline: none;
+  transition: box-shadow var(--dur-1) var(--ease);
+}
+
+.panel[data-focused='true'] {
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
 .panel[data-focused='true'] .header {
   color: var(--fg-3);
-  box-shadow: inset 0 1px 0 0 var(--accent-line);
+  border-bottom-color: var(--accent-line);
 }
 
 /* A header affordance. Quiet until you are looking for it. */

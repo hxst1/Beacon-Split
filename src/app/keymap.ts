@@ -1,6 +1,8 @@
+import { panelsOf, prune } from '@/lib/layout'
 import { hasPrimaryModifier, isMac } from '@/lib/platform'
-import type { ActionBinding } from '@/types/beacon'
-import { useBeacon } from './store'
+import type { ActionBinding, PanelId } from '@/types/beacon'
+import { focusPanel, panelAfter, usePanelFocus } from './panelFocus'
+import { selectHidden, selectLayout, useBeacon } from './store'
 
 /**
  * What each bindable action does.
@@ -25,6 +27,9 @@ const HANDLERS: Record<string, () => void> = {
     store.toggleFullscreen(store.fullscreenPanel ?? 'claude')
   },
 
+  'panel.focusNext': () => shiftFocus(1),
+  'panel.focusPrevious': () => shiftFocus(-1),
+
   'session.restartClaude': () => {
     const store = useBeacon.getState()
     const project = activeProjectId(store)
@@ -45,9 +50,32 @@ export const ACTION_TITLES: Record<string, string> = {
   'panel.toggle.editor': 'Toggle the editor',
   'panel.toggle.terminal': 'Toggle the terminal',
   'panel.fullscreen': 'Fullscreen the focused panel',
+  'panel.focusNext': 'Focus the next panel',
+  'panel.focusPrevious': 'Focus the previous panel',
   'session.restartClaude': 'Restart Claude',
   'project.next': 'Next project',
   'project.previous': 'Previous project',
+}
+
+/**
+ * Moves the keyboard to the next panel along.
+ *
+ * The order is the layout's own, so it follows what you can see: a fullscreen
+ * panel is the only one there is, and a hidden panel is not somewhere focus can
+ * land.
+ */
+function shiftFocus(step: number): void {
+  const store = useBeacon.getState()
+  const layout = selectLayout(store)
+
+  const order: PanelId[] = store.fullscreenPanel
+    ? [store.fullscreenPanel]
+    : layout
+      ? panelsOf(prune(layout, selectHidden(store)) ?? layout)
+      : []
+
+  const next = panelAfter(order, usePanelFocus.getState().focused, step)
+  if (next) focusPanel(next)
 }
 
 /** Actions the backend offers that nothing here implements. */

@@ -10,6 +10,7 @@ import { FilesPanel } from './panels/FilesPanel'
 import { GitPanel } from './panels/GitPanel'
 import { TerminalPanel } from './panels/TerminalPanel'
 import { LayoutView } from './LayoutView'
+import { usePanelFocus } from './panelFocus'
 import { selectActiveProject, selectHidden, selectLayout, useBeacon } from './store'
 import styles from './Workbench.module.css'
 
@@ -31,6 +32,15 @@ export function Workbench(): React.ReactElement {
   const [draft, setDraft] = useState(layout)
   useEffect(() => setDraft(layout), [layout])
 
+  // Focus is observed rather than declared. One listener here beats each panel
+  // reporting for itself: the panels do not all own their focusable parts —
+  // xterm and CodeMirror bring their own — and anything that takes the
+  // keyboard inside a panel counts, however it got there.
+  const watchFocus = (event: React.FocusEvent<HTMLDivElement>): void => {
+    const panel = event.target.closest<HTMLElement>('[data-panel]')?.dataset['panel']
+    usePanelFocus.getState().set((panel as PanelId | undefined) ?? null)
+  }
+
   if (!draft) return <div className={styles['workbench']} />
 
   if (!project || !workspaceId) {
@@ -41,20 +51,23 @@ export function Workbench(): React.ReactElement {
     )
   }
 
-  const render = (panel: PanelId): React.ReactNode =>
-    renderPanel(panel, workspaceId, project, fullscreen)
+  const render = (panel: PanelId): React.ReactNode => renderPanel(panel, workspaceId, project)
 
   // Fullscreen bypasses the tree entirely rather than rewriting it, so leaving
   // fullscreen cannot lose the arrangement.
   if (fullscreen) {
-    return <div className={styles['workbench']}>{render(fullscreen)}</div>
+    return (
+      <div className={styles['workbench']} onFocus={watchFocus}>
+        {render(fullscreen)}
+      </div>
+    )
   }
 
   const visible = prune(draft, hidden)
   if (!visible) return <div className={styles['workbench']} />
 
   return (
-    <div className={styles['workbench']}>
+    <div className={styles['workbench']} onFocus={watchFocus}>
       <LayoutView
         node={visible}
         render={render}
@@ -66,26 +79,19 @@ export function Workbench(): React.ReactElement {
 }
 
 /** Maps a panel id to the component that draws it. */
-function renderPanel(
-  panel: PanelId,
-  workspaceId: string,
-  project: Project,
-  fullscreen: PanelId | null,
-): React.ReactNode {
-  const focused = fullscreen === panel || (fullscreen === null && panel === 'claude')
-
+function renderPanel(panel: PanelId, workspaceId: string, project: Project): React.ReactNode {
   switch (panel) {
     case 'claude':
-      return <ClaudePanel workspaceId={workspaceId} project={project} focused={focused} />
+      // The one panel that takes the keyboard unasked, because it is what the
+      // window is for and typing into it is the first thing anyone does.
+      return <ClaudePanel workspaceId={workspaceId} project={project} autoFocus />
     case 'files':
       return <FilesPanel workspaceId={workspaceId} project={project} />
     case 'editor':
-      return <EditorPanel workspaceId={workspaceId} project={project} focused={focused} />
+      return <EditorPanel workspaceId={workspaceId} project={project} />
     case 'git':
       return <GitPanel workspaceId={workspaceId} project={project} />
     case 'terminal':
-      return (
-        <TerminalPanel workspaceId={workspaceId} project={project} focused={focused} />
-      )
+      return <TerminalPanel workspaceId={workspaceId} project={project} />
   }
 }

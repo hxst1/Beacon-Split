@@ -106,6 +106,7 @@ the CLI you already use.
 | `⌘P` | Quick open |
 | `⌘1` … `⌘9` | Switch to project tab |
 | `⌘E` / `⌘G` / `⌘O` / `⌘J` | Toggle Files, Git, the editor, the terminal |
+| `⌥⌘←` / `⌥⌘→` | Move the keyboard between panels |
 | `⌘↩` | Fullscreen the focused panel |
 | `⌘⇧R` | Restart Claude |
 | `⌘S` / `⌘G` | Save / go to line, in the editor |

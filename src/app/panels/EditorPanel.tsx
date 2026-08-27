@@ -8,18 +8,16 @@ import styles from './Panel.module.css'
 export function EditorPanel({
   workspaceId,
   project,
-  focused,
 }: {
   workspaceId: string
   project: Project
-  focused: boolean
 }): React.ReactElement {
   const togglePanel = useBeacon((s) => s.togglePanel)
 
   return (
     <Panel
+      id="editor"
       title="Editor"
-      focused={focused}
       actions={
         <button
           type="button"
