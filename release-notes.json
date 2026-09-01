@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.5.0",
+    "date": "2026-09-01",
+    "summary": "A project holds several named Claude conversations, and you can tell which one you are in.",
+    "changes": [
+      "Claude sessions have names and come back. A project is no longer one nameless conversation that grows until most of it is work nobody is doing any more: start a workstream for the thing you are about to do, name it, and come back to it later from the chip in the panel header. Beacon gives each conversation its id when it starts it, so this needs a recent Claude Code — where the flags are missing, the chip is not there and nothing else changes.",
+      "Restarting Claude no longer throws the conversation away. The header button says Resume, and it does: the process starts again and carries on where it was. Starting clean is a deliberate act now, with a name attached.",
+      "Beacon refuses to open one conversation in two Claudes. It asks Claude Code what is running rather than assuming, and offers to fork instead — which keeps the history and leaves the original where it is.",
+      "The usage panel says more, because Claude Code does. How full the context is, in bands rather than a bare number; whether the prompt cache is warm, and what a cold one would cost to rebuild; the model, the effort, the week and the five-hour window. When Claude Code says nothing about something, Beacon says nothing about it either.",
+      "One piece of advice at a time, and never acted on. A large context whose cache has gone cold is worth knowing about at the moment it starts costing something. What to do about it is yours: Beacon does not compact, does not clear, and does not start a session on your behalf.",
+      "Three small agents, offered to the sessions Beacon starts. One searches the repository, one runs tests, one reviews a finished change with fresh eyes — each there to keep a large pile of output out of the conversation doing the work. They are handed to Claude Code per session, so nothing is written into your projects and the agents you already have are untouched. There is a switch in Settings, because their descriptions cost context whether they are used or not.",
+      "The header says when work has been delegated. From outside, a session that has handed a large search to a subagent looks exactly like one that has gone quiet.",
+      "Git handles a conflicted file as one. It is shown separately, kept out of stage and unstage — which used to mark it resolved with its markers still in place — and staging everything refuses to sweep it up. A commit is blocked while conflicts are unresolved, and says so. Every git command now has a deadline, so nothing git waits for can take the panel with it.",
+      "Saving is atomic and refuses to overwrite a file that moved underneath it, which in this application usually means Claude. A clean buffer reloads; a dirty one asks, because one choice loses your typing and the other loses Claude's.",
+      "Quitting with unsaved work asks first. The file tree can show dotfiles, and can move a file somewhere else. Notifications go through macOS directly, so they arrive when Beacon is not the application in front.",
+      "The hooks need installing again for this: open Settings and reinstall them. Beacon now listens for subagents starting and finishing, which is two events it did not register before."
+    ]
+  },
+  {
     "version": "0.4.0",
     "date": "2026-08-27",
     "summary": "Claude can hand you something worth keeping, and it survives the trip to the clipboard.",
