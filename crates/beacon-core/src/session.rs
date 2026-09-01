@@ -53,6 +53,90 @@ impl SessionKind {
     }
 }
 
+/// What a session should be started as.
+///
+/// Bundled rather than passed one by one, because the list was going to keep
+/// growing and a call with eight positional arguments says nothing about which
+/// is which. Sent by the client rather than read by the daemon, like the shell
+/// alone used to be and for the same reason: a session starts with the
+/// preferences set now, not the ones set when the daemon happened to start.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionPrefs {
+    /// `None` means the account's own shell. Ignored for a Claude session.
+    pub shell: Option<ShellSpec>,
+    /// Whether Beacon's own subagents are offered. Ignored for a shell.
+    pub agents: bool,
+}
+
+/// How a Claude session should be started.
+///
+/// Beacon chooses the conversation's id rather than discovering it, so this is
+/// settled before the process exists and nothing ever has to read a transcript
+/// to find out what it is talking to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeLaunch {
+    /// The conversation, as a UUID — the form `--session-id` accepts.
+    pub session_id: String,
+    /// What to call it, when it has been called something.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub start: ClaudeStart,
+    /// Whether Beacon's own subagents and routing policy are offered.
+    ///
+    /// Sent by the client rather than read by the daemon, like the shell and
+    /// for the same reason: a session starts with the preference set now, not
+    /// the one that happened to be set when the daemon started.
+    #[serde(default)]
+    pub agents: bool,
+}
+
+/// Whether the conversation being started already exists.
+///
+/// The distinction is not cosmetic: `--session-id` on a conversation that has
+/// already been used is refused — *"Session ID … is already in use"* — so a
+/// Claude that crashed and is being brought back has to be resumed, not
+/// started. Getting this wrong would turn every restart into an error message
+/// where the session used to be.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum ClaudeStart {
+    /// A conversation that does not exist yet.
+    New,
+    /// One that does: every start after the first, including after a crash.
+    Resume,
+    /// A new conversation carrying another's history.
+    #[serde(rename_all = "camelCase")]
+    Fork { from: String },
+}
+
+impl ClaudeLaunch {
+    /// The arguments Claude Code is started with.
+    ///
+    /// The name is passed on all three paths, which was checked against the
+    /// real CLI rather than assumed: Beacon's name for a conversation and the
+    /// one Claude Code shows in its own prompt box should not drift apart.
+    pub fn args(&self) -> Vec<String> {
+        let mut args = match &self.start {
+            ClaudeStart::New => vec!["--session-id".into(), self.session_id.clone()],
+            ClaudeStart::Resume => vec!["--resume".into(), self.session_id.clone()],
+            ClaudeStart::Fork { from } => vec![
+                "--resume".into(),
+                from.clone(),
+                "--fork-session".into(),
+                "--session-id".into(),
+                self.session_id.clone(),
+            ],
+        };
+
+        if let Some(name) = &self.name {
+            args.push("--name".into());
+            args.push(name.clone());
+        }
+        args
+    }
+}
+
 /// Environment variables a spawned session must not inherit from whatever
 /// launched Beacon.
 ///
@@ -240,6 +324,15 @@ pub struct SessionManager {
     /// The MCP configuration handed to every Claude session, written beside the
     /// socket. `None` until the socket is known, or if it could not be written.
     mcp_config: Mutex<Option<PathBuf>>,
+    /// Which conversation each project's next Claude should start in.
+    ///
+    /// Held here rather than passed through `ensure`, alongside the hook socket
+    /// and the MCP configuration, because it is the same kind of thing: what a
+    /// session is spawned with, decided by the daemon, read at spawn time. It
+    /// also means a session that exits and is brought back by `ensure` comes
+    /// back into the conversation it was in, rather than starting a new one
+    /// because the caller happened not to say.
+    claude_launch: Mutex<HashMap<ProjectId, ClaudeLaunch>>,
 }
 
 impl SessionManager {
@@ -251,7 +344,25 @@ impl SessionManager {
             claude_path: OnceLock::new(),
             hook_socket: Mutex::new(None),
             mcp_config: Mutex::new(None),
+            claude_launch: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Says which conversation a project's Claude should be started in.
+    ///
+    /// Set before starting one, and updated to [`ClaudeStart::Resume`] once it
+    /// has started, so the next spawn continues rather than colliding with a
+    /// conversation id that is already in use.
+    pub fn set_claude_launch(&self, project: ProjectId, launch: ClaudeLaunch) {
+        self.claude_launch.lock_or_recover().insert(project, launch);
+    }
+
+    pub fn claude_launch(&self, project: &ProjectId) -> Option<ClaudeLaunch> {
+        self.claude_launch.lock_or_recover().get(project).cloned()
+    }
+
+    pub fn forget_claude_launch(&self, project: &ProjectId) {
+        self.claude_launch.lock_or_recover().remove(project);
     }
 
     /// Tells the manager where Claude Code's hooks should report.
@@ -281,7 +392,12 @@ impl SessionManager {
     /// GUI application's PATH is missing most of the user's tools. Claude is
     /// launched directly from its resolved path, so nothing the user's startup
     /// files print ends up in the panel above it.
-    fn command_for(&self, kind: SessionKind, shell: Option<&ShellSpec>) -> Result<CommandBuilder> {
+    fn command_for(
+        &self,
+        kind: SessionKind,
+        shell: Option<&ShellSpec>,
+        launch: Option<&ClaudeLaunch>,
+    ) -> Result<CommandBuilder> {
         match kind {
             SessionKind::Shell => {
                 // What the user configured, or their account's shell as a login
@@ -327,6 +443,33 @@ impl SessionManager {
                     // swallows whatever argument comes after it. Nothing does
                     // today; writing it joined means nothing ever can.
                     command.arg(format!("--mcp-config={}", config.display()));
+                }
+
+                // Started in a named conversation, when this build of Claude
+                // Code has the flags for it. Without them the session starts
+                // exactly as it did before workstreams existed — which is the
+                // whole point of asking rather than assuming.
+                if let Some(launch) = launch.filter(|_| crate::claude::capabilities().workstreams())
+                {
+                    for arg in launch.args() {
+                        command.arg(arg);
+                    }
+                }
+
+                // Three small agents, defined for this session only, so nothing
+                // is written into the user's repository and a Claude they start
+                // themselves is untouched. The routing policy travels with them
+                // because on its own it would name agents that do not exist.
+                if launch.is_some_and(|launch| launch.agents)
+                    && crate::claude::capabilities().session_agents
+                {
+                    command.arg("--agents");
+                    command.arg(crate::agents::definitions());
+
+                    if crate::claude::capabilities().append_system_prompt {
+                        command.arg("--append-system-prompt");
+                        command.arg(crate::agents::ROUTING_POLICY);
+                    }
                 }
 
                 Ok(command)
@@ -385,7 +528,10 @@ impl SessionManager {
             })
             .map_err(|err| CoreError::session("could not open a pty", err))?;
 
-        let mut command = self.command_for(kind, shell)?;
+        let launch = (kind == SessionKind::Claude)
+            .then(|| self.claude_launch(&project))
+            .flatten();
+        let mut command = self.command_for(kind, shell, launch.as_ref())?;
         command.cwd(cwd);
         prepare_environment(&mut command);
 
@@ -403,6 +549,21 @@ impl SessionManager {
             .slave
             .spawn_command(command)
             .map_err(|err| CoreError::session("could not start the session", err))?;
+
+        // The conversation exists now. Every later start of it — after a crash,
+        // after a restart, after the window came back — has to resume, because
+        // `--session-id` on a conversation already in use is refused.
+        if let Some(launch) = launch
+            && launch.start != ClaudeStart::Resume
+        {
+            self.set_claude_launch(
+                project.clone(),
+                ClaudeLaunch {
+                    start: ClaudeStart::Resume,
+                    ..launch
+                },
+            );
+        }
         // The slave must be closed here or the reader never sees EOF when the
         // child exits.
         drop(pair.slave);
@@ -647,5 +808,107 @@ trait LockOrRecover<T> {
 impl<T> LockOrRecover<T> for Mutex<T> {
     fn lock_or_recover(&self) -> std::sync::MutexGuard<'_, T> {
         self.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ID: &str = "b57bf9d0-8020-4275-a060-a521d289beae";
+    const PARENT: &str = "e4e2464c-b66a-46ca-b65b-2af448574bb5";
+
+    fn launch(start: ClaudeStart, name: Option<&str>) -> ClaudeLaunch {
+        ClaudeLaunch {
+            session_id: ID.into(),
+            name: name.map(str::to_string),
+            start,
+            agents: true,
+        }
+    }
+
+    #[test]
+    fn a_new_conversation_is_started_on_an_id_beacon_chose() {
+        assert_eq!(
+            launch(ClaudeStart::New, Some("auth-refactor")).args(),
+            ["--session-id", ID, "--name", "auth-refactor"]
+        );
+    }
+
+    #[test]
+    fn a_conversation_that_exists_is_resumed_rather_than_started() {
+        // `--session-id` on a conversation already in use is refused, so this
+        // is the difference between a restart that works and an error message
+        // where the session used to be.
+        assert_eq!(
+            launch(ClaudeStart::Resume, Some("auth-refactor")).args(),
+            ["--resume", ID, "--name", "auth-refactor"]
+        );
+    }
+
+    #[test]
+    fn a_fork_carries_the_parent_and_lands_on_an_id_beacon_chose() {
+        assert_eq!(
+            launch(
+                ClaudeStart::Fork {
+                    from: PARENT.into()
+                },
+                Some("dashboard-experiment")
+            )
+            .args(),
+            [
+                "--resume",
+                PARENT,
+                "--fork-session",
+                "--session-id",
+                ID,
+                "--name",
+                "dashboard-experiment"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_conversation_nobody_named_is_not_given_a_name() {
+        assert_eq!(launch(ClaudeStart::New, None).args(), ["--session-id", ID]);
+        assert_eq!(launch(ClaudeStart::Resume, None).args(), ["--resume", ID]);
+    }
+
+    #[test]
+    fn a_launch_survives_a_round_trip_across_the_socket() {
+        for start in [
+            ClaudeStart::New,
+            ClaudeStart::Resume,
+            ClaudeStart::Fork {
+                from: PARENT.into(),
+            },
+        ] {
+            let original = launch(start, Some("payments-bug"));
+            let line = serde_json::to_string(&original).unwrap();
+            let back: ClaudeLaunch = serde_json::from_str(&line).unwrap();
+            assert_eq!(back, original);
+        }
+    }
+
+    #[test]
+    fn a_project_is_told_how_to_start_before_it_starts() {
+        struct Silent;
+        impl SessionEvents for Silent {
+            fn output(&self, _: &SessionId, _: &ProjectId, _: u64, _: &[u8]) {}
+            fn exited(&self, _: &SessionId, _: &ProjectId, _: Option<i32>) {}
+        }
+
+        let manager = SessionManager::new(Arc::new(Silent));
+        let project = ProjectId("pj_x".into());
+        assert!(manager.claude_launch(&project).is_none());
+
+        manager.set_claude_launch(project.clone(), launch(ClaudeStart::New, Some("auth")));
+        assert_eq!(
+            manager.claude_launch(&project).unwrap().start,
+            ClaudeStart::New
+        );
+
+        manager.forget_claude_launch(&project);
+        assert!(manager.claude_launch(&project).is_none());
     }
 }

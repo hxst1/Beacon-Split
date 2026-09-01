@@ -1,5 +1,8 @@
 import { TerminalView } from '@/features/terminal/TerminalView'
 import { MissingTool } from '@/features/settings/MissingTool'
+import { AgentActivity } from '@/features/workstreams/AgentActivity'
+import { WorkstreamChip } from '@/features/workstreams/WorkstreamChip'
+import { useWorkstreamsSupported } from '@/features/workstreams/capabilities'
 import { useBeacon } from '@/app/store'
 import type { Project } from '@/types/beacon'
 import { Panel } from './Panel'
@@ -24,6 +27,10 @@ export function ClaudePanel({
 }): React.ReactElement {
   const restartSession = useBeacon((s) => s.restartSession)
   const missingClaude = useBeacon((s) => s.missing.find((entry) => entry.id === 'claude'))
+  // On a Claude Code with the flags for it, restarting continues the
+  // conversation instead of throwing it away — so the button says so. The old
+  // word stays where the old behaviour does.
+  const resumes = useWorkstreamsSupported()
   // Claude has one session per project; the slot exists for terminals.
   const epoch = useBeacon((s) => s.sessionEpoch[`${project.id}:claude:0`] ?? 0)
   const attachEpoch = useBeacon((s) => s.attachEpoch)
@@ -34,14 +41,20 @@ export function ClaudePanel({
       title="Claude"
       subtitle={project.displayPath}
       actions={
-        <button
-          type="button"
-          className={styles['action']}
-          title="Restart Claude"
-          onClick={() => void restartSession(project.id, 'claude')}
-        >
-          Restart
-        </button>
+        <>
+          <AgentActivity projectId={project.id} />
+          <WorkstreamChip workspaceId={workspaceId} projectId={project.id} />
+          <button
+            type="button"
+            className={styles['action']}
+            title={
+              resumes ? 'Start Claude again and carry on in the same workstream' : 'Restart Claude'
+            }
+            onClick={() => void restartSession(project.id, 'claude')}
+          >
+            {resumes ? 'Resume' : 'Restart'}
+          </button>
+        </>
       }
     >
       {missingClaude ? (

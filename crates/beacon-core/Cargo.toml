@@ -13,8 +13,8 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
 portable-pty = "0.9"
+tempfile = "3"
 trash = "5"
 
 [dev-dependencies]
 base64 = "0.22"
-tempfile = "3"

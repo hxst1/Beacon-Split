@@ -100,6 +100,56 @@ fn ask_shell(name: &str, args: &[&str]) -> Option<PathBuf> {
     extract_resolved_path(&std::fs::read_to_string(&answer.path).ok()?)
 }
 
+/// Runs a program for what it prints, and gives up if it will not finish.
+///
+/// `Command::output()` would be shorter and would block forever on a program
+/// that never exits — which is the wrong trade on a path that runs while a
+/// session is being started. Returns `None` when the program could not be run,
+/// would not finish, or failed; every caller here treats "no answer" as "cannot
+/// do that", which hides a feature rather than breaking one.
+///
+/// Output is drained on its own thread for the same reason git's is: a parent
+/// that waits for exit while the pipe is full waits forever on a child that is
+/// waiting to be read.
+pub fn capture_briefly(command: &mut std::process::Command, limit: Duration) -> Option<String> {
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    let stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut buffer = String::new();
+        use std::io::Read;
+        let mut stdout = stdout;
+        let _ = stdout.read_to_string(&mut buffer);
+        buffer
+    });
+
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Err(_) => return None,
+            Ok(None) => {}
+        }
+
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            // The reader thread is abandoned rather than joined: whatever is
+            // holding the program up may be holding the pipe open too.
+            return None;
+        }
+
+        std::thread::sleep(Duration::from_millis(10));
+    };
+
+    status.success().then(|| reader.join().ok())?
+}
+
 /// Waits for a probe, then stops waiting.
 fn wait_briefly(child: &mut std::process::Child, limit: Duration) {
     let deadline = Instant::now() + limit;

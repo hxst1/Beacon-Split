@@ -7,6 +7,9 @@ import { applyAppearance } from '@/lib/appearance'
 import { PANEL_LABELS } from '@/lib/layout'
 import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
 import { modifierLabel } from '@/lib/platform'
+import { describePermission } from '@/features/notifications/copy'
+import { useNotificationPermission } from '@/features/notifications/permission'
+import { useWorkstreamsSupported } from '@/features/workstreams/capabilities'
 import type {
   Appearance,
   Integration,
@@ -590,6 +593,69 @@ function KeyboardSection(): React.ReactElement {
  * and running kitty inside it would be an emulator inside an emulator. What
  * people want from that question is fish instead of zsh, which is this.
  */
+/**
+ * What macOS itself will do, which is the half Beacon does not control.
+ *
+ * Shown as its own thing rather than folded into the switch above, because the
+ * two fail differently: the switch is a preference, and this is a permission
+ * that can be revoked from outside while Beacon is running. Conflating them
+ * produces the worst version of this feature — a switch that is on, and
+ * notifications that silently go nowhere.
+ */
+function SystemPermission(): React.ReactElement {
+  const { permission, asking, request, openSettings, refresh } = useNotificationPermission()
+  const copy = describePermission(permission)
+  const [tested, setTested] = useState<string | null>(null)
+
+  const test = async (): Promise<void> => {
+    try {
+      await ipc.sendNotification('Beacon Split', 'This is what a notification looks like.')
+      setTested('Sent. If nothing appeared, macOS is holding it back.')
+    } catch (error) {
+      setTested(String(error))
+    }
+    void refresh()
+  }
+
+  return (
+    <>
+      <div className={styles['rows']}>
+        <div className={styles['row']}>
+          <span className={styles['rowLabel']}>System permission</span>
+          <span className={styles['rowValue']}>{copy.label}</span>
+        </div>
+      </div>
+
+      {copy.hint ? <p className={styles['sectionNote']}>{copy.hint}</p> : null}
+
+      <div className={styles['buttons']}>
+        {copy.action === 'ask' ? (
+          <button
+            type="button"
+            className={styles['primary']}
+            disabled={asking}
+            onClick={() => void request()}
+          >
+            {asking ? 'Waiting for macOS…' : 'Ask macOS'}
+          </button>
+        ) : null}
+
+        {copy.action === 'openSettings' ? (
+          <button type="button" className={styles['primary']} onClick={() => void openSettings()}>
+            Open System Settings
+          </button>
+        ) : null}
+
+        <button type="button" className={styles['revert']} onClick={() => void test()}>
+          Send a test notification
+        </button>
+
+        {tested ? <span className={styles['rowValue']}>{tested}</span> : null}
+      </div>
+    </>
+  )
+}
+
 function TerminalSection(): React.ReactElement {
   const shell = useBeacon((s) => s.snapshot?.shell ?? null)
   const notifications = useBeacon((s) => s.snapshot?.notifications ?? true)
@@ -641,24 +707,28 @@ function TerminalSection(): React.ReactElement {
         <h2 className={styles['sectionTitle']}>Interruptions</h2>
         <p className={styles['sectionNote']}>
           With several projects open, the expensive thing is not switching tabs — it is a
-          permission prompt in one of them going unseen. Beacon can say so, and only when you are
-          not already looking at that project.
+          permission prompt in one of them going unseen, or a long turn finishing while you are in
+          a browser. Beacon can say so, and only when you are not already looking at that project.
         </p>
 
         <div className={styles['rows']}>
           <div className={styles['row']}>
-            <span className={styles['rowLabel']}>Notify me when Claude is waiting</span>
+            <span className={styles['rowLabel']}>
+              Notify me when Claude is waiting, or has finished a long turn
+            </span>
             <button
               type="button"
               className={styles['toggle']}
               data-on={notifications}
               role="switch"
               aria-checked={notifications}
-              aria-label="Notify me when Claude is waiting"
+              aria-label="Notify me when Claude is waiting, or has finished a long turn"
               onClick={() => void setNotifications(!notifications)}
             />
           </div>
         </div>
+
+        <SystemPermission />
       </section>
     </>
   )
@@ -678,6 +748,9 @@ function TerminalSection(): React.ReactElement {
 function ClaudeSection(): React.ReactElement {
   const [integration, setIntegration] = useState<Integration | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const agents = useBeacon((s) => s.snapshot?.claudeAgents ?? true)
+  const setClaudeAgents = useBeacon((s) => s.setClaudeAgents)
+  const agentsPossible = useWorkstreamsSupported()
 
   useEffect(() => {
     let cancelled = false
@@ -710,6 +783,39 @@ function ClaudeSection(): React.ReactElement {
 
   return (
     <>
+      {agentsPossible ? (
+        <section className={styles['section']}>
+          <h2 className={styles['sectionTitle']}>Delegating</h2>
+          <p className={styles['sectionNote']}>
+            Beacon offers three small agents to the sessions it starts — one that searches the
+            repository, one that runs tests, one that reviews a finished change. Each exists to
+            keep a large pile of text out of the conversation doing the work and hand back only
+            the part that changes what happens next.
+          </p>
+          <p className={styles['sectionNote']}>
+            They are passed to Claude Code for one session at a time. Nothing is written into your
+            projects, your <code>.claude/agents/</code> is untouched, and a Claude you start
+            yourself never sees them. The cost is that their descriptions sit in every session's
+            context whether they are used or not, which is why this is a switch.
+          </p>
+
+          <div className={styles['rows']}>
+            <div className={styles['row']}>
+              <span className={styles['rowLabel']}>Offer Beacon&rsquo;s agents to new sessions</span>
+              <button
+                type="button"
+                className={styles['toggle']}
+                data-on={agents}
+                role="switch"
+                aria-checked={agents}
+                aria-label="Offer Beacon's agents to new sessions"
+                onClick={() => void setClaudeAgents(!agents)}
+              />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className={styles['section']}>
         <h2 className={styles['sectionTitle']}>What Claude is doing</h2>
         <p className={styles['sectionNote']}>

@@ -109,6 +109,16 @@
   user-select: text;
 }
 
+/* Why an expanded directory is showing nothing: an empty folder should not
+   look like one that failed to load. */
+.note {
+  padding: 2px 8px 2px 0;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  font-style: italic;
+  white-space: nowrap;
+}
+
 .rename {
   flex: 1;
   min-width: 0;

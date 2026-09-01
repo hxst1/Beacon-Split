@@ -60,6 +60,10 @@ pub struct Snapshot {
     pub unseen_releases: Vec<crate::releases::Release>,
     /// Whether a new version announces itself, rather than waiting to be asked.
     pub release_notices: bool,
+    /// Whether the file tree lists dotfiles.
+    pub show_hidden_files: bool,
+    /// Whether Beacon offers its own subagents to the sessions it starts.
+    pub claude_agents: bool,
     pub projects_home: String,
 }
 
@@ -148,6 +152,11 @@ impl Beacon {
         self.settings.shell.clone()
     }
 
+    /// Whether Beacon offers its own subagents to the sessions it starts.
+    pub fn claude_agents(&self) -> bool {
+        self.settings.claude_agents
+    }
+
     /// Sets it, or clears it back to the account's own shell.
     pub fn set_shell(&mut self, shell: Option<crate::settings::ShellSpec>) -> Result<()> {
         if let Some(spec) = &shell
@@ -189,6 +198,8 @@ impl Beacon {
             unseen_releases: crate::releases::unseen(self.settings.last_seen_version.as_deref())
                 .unwrap_or_default(),
             release_notices: self.settings.release_notices,
+            show_hidden_files: self.settings.show_hidden_files,
+            claude_agents: self.settings.claude_agents,
             projects_home: home.to_string_lossy().into_owned(),
         }
     }
@@ -545,6 +556,21 @@ impl Beacon {
     /// Whether a new version announces itself on start.
     pub fn set_release_notices(&mut self, enabled: bool) -> Result<()> {
         self.settings.release_notices = enabled;
+        self.save_settings()
+    }
+
+    /// Whether the file tree lists dotfiles.
+    pub fn set_show_hidden_files(&mut self, shown: bool) -> Result<()> {
+        self.settings.show_hidden_files = shown;
+        self.save_settings()
+    }
+
+    /// Whether Beacon offers its own subagents to the sessions it starts.
+    ///
+    /// Takes effect on the next session: the flags are read when Claude Code is
+    /// started, and there is no way to hand an agent to one already running.
+    pub fn set_claude_agents(&mut self, enabled: bool) -> Result<()> {
+        self.settings.claude_agents = enabled;
         self.save_settings()
     }
 

@@ -1,0 +1,163 @@
+/*
+ * The panel header is read constantly and used rarely, so the chip is quiet
+ * until you look for it: the name at normal weight, everything else derived
+ * from it. It earns its place because carrying on in the wrong conversation is
+ * the expensive mistake this whole feature exists to stop.
+ */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 1px 6px 1px 8px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.chip:hover,
+.chip[aria-expanded='true'] {
+  background: var(--surface-2);
+  color: var(--fg-2);
+}
+
+/* Switching replaces the process behind the panel; saying so beats a header
+   that looks idle while the terminal goes blank and comes back. */
+.chip[data-busy='true'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-4);
+}
+
+/*
+ * Colour arrives only when the number starts to mean something. A percentage
+ * that is always tinted teaches you to stop reading it.
+ */
+.context[data-health='high'] {
+  color: var(--warn);
+}
+
+.context[data-health='critical'] {
+  color: var(--danger);
+}
+
+.caret {
+  flex: none;
+  font-size: 8px;
+  opacity: 0.6;
+}
+
+.menu {
+  min-width: 240px;
+}
+
+.current {
+  padding: 4px 8px 8px;
+}
+
+.currentName {
+  color: var(--fg-1);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  height: 3px;
+  margin: 7px 0 5px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--fg-3);
+  transition: width var(--dur-2) var(--ease);
+}
+
+.fill[data-health='growing'] {
+  background: var(--fg-2);
+}
+
+.fill[data-health='high'] {
+  background: var(--warn);
+}
+
+.fill[data-health='critical'] {
+  background: var(--danger);
+}
+
+.line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  padding: 4px 8px 6px;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+/*
+ * Advice, not an alarm.
+ *
+ * A hairline and a heading, no colour and no icon: this is information offered
+ * at the moment a number starts to matter, and an application that shouts it
+ * teaches you to stop opening the menu.
+ */
+.advice {
+  margin: 6px 5px 2px;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.adviceTitle {
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+}
+
+.adviceDetail {
+  margin-top: 3px;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.dismiss {
+  margin-top: 6px;
+  padding: 0;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  transition: color var(--dur-1) var(--ease);
+}
+
+.dismiss:hover {
+  color: var(--fg-2);
+}

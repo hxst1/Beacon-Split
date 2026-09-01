@@ -114,3 +114,9 @@
   font-size: 10px;
   color: var(--fg-4);
 }
+
+/* Why a submit did not go through, said where the value was typed. */
+.problem {
+  color: var(--danger);
+  font-size: var(--text-xs);
+}

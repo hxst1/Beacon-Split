@@ -86,6 +86,16 @@ struct ActivityPayload {
     detail: Option<String>,
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentPayload {
+    project: ProjectId,
+    agent: String,
+    agent_type: Option<String>,
+    running: bool,
+    summary: Option<String>,
+}
+
 /// Forwards what the daemon reports to the webview.
 ///
 /// The only place that knows sessions are rendered in a window at all.
@@ -99,6 +109,8 @@ pub const EVENT_EXIT: &str = "session:exit";
 pub const EVENT_ACTIVITY: &str = "session:activity";
 /// What a project's Claude session is costing.
 pub const EVENT_USAGE: &str = "session:usage";
+/// A subagent started or finished inside a project's Claude session.
+pub const EVENT_AGENT: &str = "session:agent";
 /// A clip was filed by a Claude session, for the user to copy.
 pub const EVENT_CLIP: &str = "clips:added";
 /// The drawer changed wholesale — something was forgotten, or all of it was.
@@ -150,6 +162,22 @@ impl DaemonEvents for WebviewEvents {
                 },
             ),
             Event::Usage(report) => self.app.emit(EVENT_USAGE, report),
+            Event::Agent {
+                project,
+                agent,
+                agent_type,
+                running,
+                summary,
+            } => self.app.emit(
+                EVENT_AGENT,
+                AgentPayload {
+                    project,
+                    agent,
+                    agent_type,
+                    running,
+                    summary,
+                },
+            ),
             // Never logged, at any level: a clip is as likely to be a token as
             // an email, and it exists precisely so the user chooses where it
             // goes.

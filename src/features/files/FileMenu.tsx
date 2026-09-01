@@ -1,20 +1,26 @@
 import { useState } from 'react'
 
 import { MenuHeading, MenuItem, MenuSeparator } from '@/app/ui/Menu'
-import { InlineField } from '@/app/ui/InlineField'
+import { selectProjects, useBeacon } from '@/app/store'
 import { useEditor } from '@/features/editor/openFiles'
 import { errorMessage, ipc } from '@/ipc'
 import { isMac } from '@/lib/platform'
 import type { DirEntry } from '@/types/beacon'
-import { joinPath, parentOf, useTree } from './treeStore'
+import { InlineField } from '@/app/ui/InlineField'
+import { destinationError, joinPath, nameError, parentOf, useTree } from './treeStore'
 
-type Prompt = 'none' | 'rename' | 'new-file' | 'new-folder' | 'confirm-trash'
+/** The items a keyboard shortcut can ask for without opening the whole menu. */
+export type MenuPrompt = 'rename' | 'confirm-trash'
+
+type Prompt = MenuPrompt | 'none' | 'new-file' | 'new-folder' | 'move'
 
 interface FileMenuProps {
   workspaceId: string
   projectId: string
   /** The entry the menu was opened on, or `null` for the project root. */
   entry: DirEntry | null
+  /** Which prompt to open on, for F2 and Delete. */
+  initialPrompt?: MenuPrompt | undefined
   onDone: () => void
 }
 
@@ -28,25 +34,42 @@ export function FileMenu({
   workspaceId,
   projectId,
   entry,
+  initialPrompt,
   onDone,
 }: FileMenuProps): React.ReactElement {
-  const [prompt, setPrompt] = useState<Prompt>('none')
+  const [prompt, setPrompt] = useState<Prompt>(entry ? (initialPrompt ?? 'none') : 'none')
   const refresh = useTree((s) => s.refresh)
+  const reveal = useTree((s) => s.reveal)
   const setError = useTree((s) => s.setError)
   const clipboard = useTree((s) => s.clipboard)
   const setClipboard = useTree((s) => s.setClipboard)
   const closeFile = useEditor((s) => s.close)
   const renameOpenFile = useEditor((s) => s.rename)
+  const openFile = useEditor((s) => s.open)
+  const showPanel = useBeacon((s) => s.showPanel)
+  const project = useBeacon((s) => selectProjects(s).find((p) => p.id === projectId))
 
   const path = entry?.path ?? ''
   const isDirectory = entry === null || entry.kind === 'directory'
   /** Where new things go: inside a folder, or beside a file. */
   const container = isDirectory ? path : parentOf(path)
 
-  const run = async (action: () => Promise<void>, ...reload: string[]): Promise<void> => {
+  /**
+   * Runs a menu action and then puts the result on screen.
+   *
+   * A path handed back is something that now exists and nobody has seen yet —
+   * a new file, a duplicate, a paste. Revealing it opens whatever it landed in
+   * and selects it, because a creation that leaves the panel looking untouched
+   * reads as a creation that did not happen.
+   */
+  const run = async (
+    action: () => Promise<string | void>,
+    ...reload: string[]
+  ): Promise<void> => {
     try {
-      await action()
-      for (const dir of new Set(reload)) await refresh(workspaceId, projectId, dir)
+      const created = await action()
+      if (typeof created === 'string') await reveal(workspaceId, projectId, created)
+      else for (const dir of new Set(reload)) await refresh(workspaceId, projectId, dir)
       setError(null)
     } catch (error) {
       setError(errorMessage(error))
@@ -57,6 +80,7 @@ export function FileMenu({
   if (prompt === 'rename' && entry) {
     return (
       <InlineField
+        validate={nameError}
         label="Rename"
         initialValue={entry.name}
         submitLabel="Rename"
@@ -66,6 +90,31 @@ export function FileMenu({
           void run(async () => {
             await ipc.renamePath(workspaceId, projectId, path, target)
             renameOpenFile(projectId, path, target)
+            return target
+          })
+        }}
+      />
+    )
+  }
+
+  if (prompt === 'move' && entry) {
+    return (
+      <InlineField
+        validate={destinationError}
+        label={`Move “${entry.name}” into`}
+        initialValue={parentOf(path)}
+        submitLabel="Move"
+        onCancel={onDone}
+        onSubmit={(folder) => {
+          const target = joinPath(folder.replace(/^\/+|\/+$/g, ''), entry.name)
+          if (target === path) {
+            onDone()
+            return
+          }
+          void run(async () => {
+            await ipc.renamePath(workspaceId, projectId, path, target)
+            renameOpenFile(projectId, path, target)
+            return target
           }, parentOf(path))
         }}
       />
@@ -76,19 +125,24 @@ export function FileMenu({
     const isFolder = prompt === 'new-folder'
     return (
       <InlineField
+        validate={nameError}
         label={isFolder ? 'New folder' : 'New file'}
         initialValue=""
         submitLabel="Create"
         onCancel={onDone}
         onSubmit={(name) => {
           const target = joinPath(container, name)
-          void run(
-            () =>
-              isFolder
-                ? ipc.createDir(workspaceId, projectId, target)
-                : ipc.createFile(workspaceId, projectId, target),
-            container,
-          )
+          void run(async () => {
+            if (isFolder) {
+              await ipc.createDir(workspaceId, projectId, target)
+            } else {
+              await ipc.createFile(workspaceId, projectId, target)
+              // A new file is one you are about to write in.
+              await openFile(workspaceId, projectId, target)
+              void showPanel('editor')
+            }
+            return target
+          })
         }}
       />
     )
@@ -115,6 +169,8 @@ export function FileMenu({
   }
 
   const canPaste = clipboard !== null && clipboard.projectId === projectId
+  /** What Copy path hands over: what every other tool will accept. */
+  const absolutePath = project ? joinAbsolute(project.absolutePath, path) : path
 
   return (
     <>
@@ -127,13 +183,11 @@ export function FileMenu({
         <>
           <MenuSeparator />
           <MenuItem label="Rename…" onSelect={() => setPrompt('rename')} />
+          <MenuItem label="Move to…" hint="Folder" onSelect={() => setPrompt('move')} />
           <MenuItem
             label="Duplicate"
             onSelect={() => {
-              void run(
-                () => ipc.duplicatePath(workspaceId, projectId, path).then(() => undefined),
-                parentOf(path),
-              )
+              void run(() => ipc.duplicatePath(workspaceId, projectId, path))
             }}
           />
           <MenuItem
@@ -151,11 +205,7 @@ export function FileMenu({
           label="Paste"
           hint={clipboard.path.split('/').pop()}
           onSelect={() => {
-            void run(
-              () =>
-                ipc.copyInto(workspaceId, projectId, clipboard.path, container).then(() => undefined),
-              container,
-            )
+            void run(() => ipc.copyInto(workspaceId, projectId, clipboard.path, container))
           }}
         />
       ) : null}
@@ -164,7 +214,7 @@ export function FileMenu({
       <MenuItem
         label="Copy path"
         onSelect={() => {
-          void navigator.clipboard.writeText(path)
+          void navigator.clipboard.writeText(absolutePath)
           onDone()
         }}
       />
@@ -195,4 +245,9 @@ export function FileMenu({
       ) : null}
     </>
   )
+}
+
+/** The project root itself when the menu was opened on empty space. */
+function joinAbsolute(root: string, relative: string): string {
+  return relative ? `${root}/${relative}` : root
 }

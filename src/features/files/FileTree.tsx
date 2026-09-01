@@ -1,24 +1,34 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Popover } from '@/app/ui/Popover'
 import { useBeacon } from '@/app/store'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 import { useEditor } from '@/features/editor/openFiles'
 import type { DirEntry } from '@/types/beacon'
-import { FileMenu } from './FileMenu'
-import { treeKey, useTree } from './treeStore'
+import { FileMenu, type MenuPrompt } from './FileMenu'
+import { parentOf, useTree, visibleRows, type TreeRow } from './treeStore'
 import styles from './FileTree.module.css'
 
 interface MenuTarget {
   entry: DirEntry | null
   anchor: DOMRect
+  /** Set when a key asked for one thing rather than for the whole menu. */
+  prompt?: MenuPrompt | undefined
+}
+
+const NOTES: Record<'reading' | 'empty' | 'hidden', string> = {
+  reading: 'Reading…',
+  empty: 'Empty',
+  hidden: 'Only hidden files',
 }
 
 /**
  * A conventional file tree, not a TUI.
  *
  * Directories load a level at a time on expand, so a project with a large
- * dependency folder costs nothing until someone opens it.
+ * dependency folder costs nothing until someone opens it. The rows are drawn
+ * from one flat list rather than nested components: the keyboard moves through
+ * what is on screen, and what is on screen is that list.
  */
 export function FileTree({
   workspaceId,
@@ -29,10 +39,24 @@ export function FileTree({
 }): React.ReactElement {
   const load = useTree((s) => s.load)
   const refreshAll = useTree((s) => s.refreshAll)
-  const showHidden = useTree((s) => s.showHidden)
-  const setShowHidden = useTree((s) => s.setShowHidden)
+  const entries = useTree((s) => s.entries)
+  const expanded = useTree((s) => s.expanded)
+  const loading = useTree((s) => s.loading)
+  // A setting rather than panel state, so it is read from the same place as
+  // every other one and outlives the window.
+  const showHidden = useBeacon((s) => s.snapshot?.showHiddenFiles ?? false)
+  const setShowHidden = useBeacon((s) => s.setShowHiddenFiles)
+  const selected = useTree((s) => s.selected[projectId])
+  const select = useTree((s) => s.select)
+  const toggle = useTree((s) => s.toggle)
+  const setExpanded = useTree((s) => s.setExpanded)
   const error = useTree((s) => s.error)
+
+  const openFile = useEditor((s) => s.open)
+  const showPanel = useBeacon((s) => s.showPanel)
+
   const [menu, setMenu] = useState<MenuTarget | null>(null)
+  const rows = useRef<Map<string, HTMLButtonElement>>(new Map())
 
   useEffect(() => {
     void load(workspaceId, projectId, '')
@@ -46,6 +70,107 @@ export function FileTree({
     null,
   )
 
+  const visible = useMemo(
+    () => visibleRows({ entries, expanded, loading, showHidden }, projectId),
+    [entries, expanded, loading, showHidden, projectId],
+  )
+  const items = useMemo(
+    () => visible.flatMap((row) => (row.type === 'entry' ? [row] : [])),
+    [visible],
+  )
+
+  // Roving tabindex: one row is in the tab order, and it is the selected one
+  // unless the selection has scrolled out of the tree entirely.
+  const active =
+    items.find((row) => row.entry.path === selected)?.entry.path ?? items[0]?.entry.path
+
+  const focusRow = (path: string | undefined): void => {
+    if (path === undefined) return
+    select(projectId, path)
+    rows.current.get(path)?.focus()
+  }
+
+  const activate = (entry: DirEntry): void => {
+    select(projectId, entry.path)
+    if (entry.kind === 'directory') {
+      void toggle(workspaceId, projectId, entry.path)
+      return
+    }
+    // Opening a file is what brings the editor out; it starts hidden so an
+    // empty pane never takes up room.
+    void openFile(workspaceId, projectId, entry.path)
+    void showPanel('editor')
+  }
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    // Trash is the one thing people reach for with a modifier held — it is
+    // Cmd+Backspace on a Mac — so it is the one key that accepts them.
+    const trashing = event.key === 'Delete' || event.key === 'Backspace'
+    if (!trashing && (event.metaKey || event.ctrlKey || event.altKey)) return
+
+    const index = Math.max(
+      items.findIndex((row) => row.entry.path === active),
+      0,
+    )
+    const row = items[index]
+    const step = (to: number): void => {
+      focusRow(items[Math.min(Math.max(to, 0), items.length - 1)]?.entry.path)
+    }
+
+    switch (event.key) {
+      case 'ArrowDown':
+        step(index + 1)
+        break
+      case 'ArrowUp':
+        step(index - 1)
+        break
+      case 'Home':
+        step(0)
+        break
+      case 'End':
+        step(items.length - 1)
+        break
+      case 'ArrowRight':
+        if (!row) break
+        if (row.entry.kind !== 'directory') break
+        // Open it, or — already open — walk into what it contains.
+        if (row.expanded) step(index + 1)
+        else void setExpanded(workspaceId, projectId, row.entry.path, true)
+        break
+      case 'ArrowLeft':
+        if (!row) break
+        if (row.entry.kind === 'directory' && row.expanded) {
+          void setExpanded(workspaceId, projectId, row.entry.path, false)
+        } else {
+          const parent = parentOf(row.entry.path)
+          if (parent) focusRow(parent)
+        }
+        break
+      case 'F2':
+        if (row) {
+          setMenu({
+            entry: row.entry,
+            anchor: rectOf(rows.current.get(row.entry.path)),
+            prompt: 'rename',
+          })
+        }
+        break
+      case 'Delete':
+      case 'Backspace':
+        if (row) {
+          setMenu({
+            entry: row.entry,
+            anchor: rectOf(rows.current.get(row.entry.path)),
+            prompt: 'confirm-trash',
+          })
+        }
+        break
+      default:
+        return
+    }
+    event.preventDefault()
+  }
+
   return (
     <div className={styles['root']}>
       <div className={styles['toolbar']}>
@@ -53,9 +178,18 @@ export function FileTree({
         <button
           type="button"
           className={styles['tool']}
+          title="Refresh"
+          aria-label="Refresh"
+          onClick={() => void refreshAll(workspaceId, projectId)}
+        >
+          ↻
+        </button>
+        <button
+          type="button"
+          className={styles['tool']}
           data-on={showHidden}
           title={showHidden ? 'Hide dotfiles' : 'Show dotfiles'}
-          onClick={() => setShowHidden(!showHidden)}
+          onClick={() => void setShowHidden(!showHidden)}
         >
           .*
         </button>
@@ -71,6 +205,7 @@ export function FileTree({
 
       <div
         className={styles['list']}
+        onKeyDown={onKeyDown}
         onContextMenu={(event) => {
           // A right-click on empty space acts on the project root.
           if (event.target !== event.currentTarget) return
@@ -78,14 +213,44 @@ export function FileTree({
           setMenu({ entry: null, anchor: rectAt(event.clientX, event.clientY) })
         }}
       >
-        {error ? <div className={`${styles['status']} ${styles['error']}`}>{error}</div> : null}
-        <Level
-          workspaceId={workspaceId}
-          projectId={projectId}
-          path=""
-          depth={0}
-          onMenu={(entry, anchor) => setMenu({ entry, anchor })}
-        />
+        {error ? (
+          <div className={`${styles['status']} ${styles['error']}`} role="alert">
+            {error}
+          </div>
+        ) : null}
+
+        {/* The rows are their own element so that everything a tree owns is a
+            row, and the message above it is not read as one. */}
+        <div role="tree" aria-label="Files">
+          {visible.map((row) =>
+            row.type === 'note' ? (
+              <div
+                key={row.id}
+                role="none"
+                className={styles['note']}
+                style={{ paddingLeft: `${20 + row.depth * 12}px` }}
+              >
+                {NOTES[row.note]}
+              </div>
+            ) : (
+              <Row
+                key={row.id}
+                row={row}
+                active={row.entry.path === active}
+                selected={row.entry.path === selected}
+                onRef={(node) => {
+                  if (node) rows.current.set(row.entry.path, node)
+                  else rows.current.delete(row.entry.path)
+                }}
+                onActivate={activate}
+                onMenu={(entry, anchor) => {
+                  select(projectId, entry.path)
+                  setMenu({ entry, anchor })
+                }}
+              />
+            ),
+          )}
+        </div>
       </div>
 
       {menu ? (
@@ -94,6 +259,7 @@ export function FileTree({
             workspaceId={workspaceId}
             projectId={projectId}
             entry={menu.entry}
+            initialPrompt={menu.prompt}
             onDone={() => setMenu(null)}
           />
         </Popover>
@@ -102,119 +268,66 @@ export function FileTree({
   )
 }
 
-function Level({
-  workspaceId,
-  projectId,
-  path,
-  depth,
-  onMenu,
-}: {
-  workspaceId: string
-  projectId: string
-  path: string
-  depth: number
-  onMenu: (entry: DirEntry, anchor: DOMRect) => void
-}): React.ReactElement | null {
-  const entries = useTree((s) => s.entries[treeKey(projectId, path)])
-  const loading = useTree((s) => s.loading[treeKey(projectId, path)] === true)
-  const showHidden = useTree((s) => s.showHidden)
-
-  if (loading && !entries) {
-    return <div className={styles['status']}>Reading…</div>
-  }
-  if (!entries) return null
-
-  const visible = showHidden ? entries : entries.filter((entry) => !entry.hidden)
-
-  return (
-    <>
-      {visible.map((entry) => (
-        <Row
-          key={entry.path}
-          workspaceId={workspaceId}
-          projectId={projectId}
-          entry={entry}
-          depth={depth}
-          onMenu={onMenu}
-        />
-      ))}
-    </>
-  )
-}
-
 function Row({
-  workspaceId,
-  projectId,
-  entry,
-  depth,
+  row,
+  active,
+  selected,
+  onRef,
+  onActivate,
   onMenu,
 }: {
-  workspaceId: string
-  projectId: string
-  entry: DirEntry
-  depth: number
+  row: Extract<TreeRow, { type: 'entry' }>
+  active: boolean
+  selected: boolean
+  onRef: (node: HTMLButtonElement | null) => void
+  onActivate: (entry: DirEntry) => void
   onMenu: (entry: DirEntry, anchor: DOMRect) => void
 }): React.ReactElement {
-  const expanded = useTree((s) => s.expanded[treeKey(projectId, entry.path)] === true)
-  const selected = useTree((s) => s.selected[projectId] === entry.path)
-  const toggle = useTree((s) => s.toggle)
-  const select = useTree((s) => s.select)
-  const openFile = useEditor((s) => s.open)
-  const showPanel = useBeacon((s) => s.showPanel)
-
+  const { entry } = row
   const isDirectory = entry.kind === 'directory'
 
-  const activate = (): void => {
-    select(projectId, entry.path)
-    if (isDirectory) {
-      void toggle(workspaceId, projectId, entry.path)
-      return
-    }
-    // Opening a file is what brings the editor out; it starts hidden so an
-    // empty pane never takes up room.
-    void openFile(workspaceId, projectId, entry.path)
-    void showPanel('editor')
-  }
-
   return (
-    <>
-      <button
-        type="button"
-        className={styles['row']}
-        style={{ paddingLeft: `${8 + depth * 12}px` }}
-        data-selected={selected}
-        data-hidden={entry.hidden}
-        title={entry.path}
-        onClick={activate}
-        onContextMenu={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          select(projectId, entry.path)
-          onMenu(entry, rectAt(event.clientX, event.clientY))
-        }}
-      >
-        <span className={styles['twisty']} data-open={expanded}>
-          {isDirectory ? '▶' : ''}
-        </span>
-        <span className={`${styles['name']} ${isDirectory ? styles['dirName'] : ''}`}>
-          {entry.name}
-        </span>
-      </button>
-
-      {isDirectory && expanded ? (
-        <Level
-          workspaceId={workspaceId}
-          projectId={projectId}
-          path={entry.path}
-          depth={depth + 1}
-          onMenu={onMenu}
-        />
-      ) : null}
-    </>
+    <button
+      ref={onRef}
+      type="button"
+      role="treeitem"
+      aria-level={row.depth + 1}
+      aria-selected={selected}
+      {...(isDirectory ? { 'aria-expanded': row.expanded } : {})}
+      tabIndex={active ? 0 : -1}
+      className={styles['row']}
+      style={{ paddingLeft: `${8 + row.depth * 12}px` }}
+      data-selected={selected}
+      data-hidden={entry.hidden}
+      title={entry.path}
+      onClick={(event) => {
+        // WebKit does not focus a button when it is clicked, and the arrow
+        // keys have to carry on from wherever the pointer left off.
+        event.currentTarget.focus()
+        onActivate(entry)
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onMenu(entry, rectAt(event.clientX, event.clientY))
+      }}
+    >
+      <span className={styles['twisty']} data-open={row.expanded}>
+        {isDirectory ? '▶' : ''}
+      </span>
+      <span className={`${styles['name']} ${isDirectory ? styles['dirName'] : ''}`}>
+        {entry.name}
+      </span>
+    </button>
   )
 }
 
 /** A zero-size rect at the pointer, so a menu can anchor to a click. */
 function rectAt(x: number, y: number): DOMRect {
   return new DOMRect(x, y, 0, 0)
+}
+
+/** Where a row is, for a menu opened from the keyboard rather than a click. */
+function rectOf(element: HTMLElement | undefined): DOMRect {
+  return element?.getBoundingClientRect() ?? rectAt(0, 0)
 }

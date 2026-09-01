@@ -123,6 +123,22 @@ pub fn set_release_notices(state: State<'_, AppState>, enabled: bool) -> Command
     Ok(beacon.snapshot())
 }
 
+/// Whether the file tree lists dotfiles.
+#[tauri::command]
+pub fn set_show_hidden_files(state: State<'_, AppState>, shown: bool) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_show_hidden_files(shown)?;
+    Ok(beacon.snapshot())
+}
+
+/// Whether Beacon offers its own subagents to the sessions it starts.
+#[tauri::command]
+pub fn set_claude_agents(state: State<'_, AppState>, enabled: bool) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_claude_agents(enabled)?;
+    Ok(beacon.snapshot())
+}
+
 /// Everything this build has ever shipped, newest first.
 #[tauri::command]
 pub fn release_notes() -> CommandResult<Vec<beacon_core::releases::Release>> {

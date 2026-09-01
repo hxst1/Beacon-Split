@@ -12,8 +12,7 @@ use crate::error::{CoreError, Result};
 use crate::protocol::{
     Envelope, Event, Message, Outcome, PROTOCOL_VERSION, Reply, Request, Response, socket_path,
 };
-use crate::session::{SessionInfo, SessionKind};
-use crate::settings::ShellSpec;
+use crate::session::{SessionInfo, SessionKind, SessionPrefs};
 
 /// How long a request waits before giving up.
 ///
@@ -152,7 +151,7 @@ impl DaemonClient {
         slot: u32,
         cwd: &Path,
         size: (u16, u16),
-        shell: Option<ShellSpec>,
+        prefs: SessionPrefs,
     ) -> Result<SessionInfo> {
         match self.request(Request::Ensure {
             project: project.clone(),
@@ -161,7 +160,8 @@ impl DaemonClient {
             cwd: cwd.to_path_buf(),
             cols: size.0,
             rows: size.1,
-            shell,
+            shell: prefs.shell,
+            agents: Some(prefs.agents),
         })? {
             Reply::Session(info) => Ok(info),
             _ => Err(unexpected()),
@@ -204,7 +204,7 @@ impl DaemonClient {
         slot: u32,
         cwd: &Path,
         size: (u16, u16),
-        shell: Option<ShellSpec>,
+        prefs: SessionPrefs,
     ) -> Result<SessionInfo> {
         match self.request(Request::Restart {
             project: project.clone(),
@@ -213,7 +213,8 @@ impl DaemonClient {
             cwd: cwd.to_path_buf(),
             cols: size.0,
             rows: size.1,
-            shell,
+            shell: prefs.shell,
+            agents: Some(prefs.agents),
         })? {
             Reply::Session(info) => Ok(info),
             _ => Err(unexpected()),
@@ -238,6 +239,114 @@ impl DaemonClient {
     pub fn usage(&self) -> Result<Vec<crate::protocol::UsageReport>> {
         match self.request(Request::Usage {})? {
             Reply::Usage { reports } => Ok(reports),
+            _ => Err(unexpected()),
+        }
+    }
+
+    /// A project's Claude conversations, most recently active first, and which
+    /// one it is in.
+    pub fn workstreams(
+        &self,
+        project: &ProjectId,
+    ) -> Result<(
+        Vec<crate::workstreams::Workstream>,
+        Option<crate::workstreams::WorkstreamId>,
+    )> {
+        match self.request(Request::Workstreams {
+            project: project.clone(),
+        })? {
+            Reply::Workstreams {
+                workstreams,
+                current,
+            } => Ok((workstreams, current)),
+            _ => Err(unexpected()),
+        }
+    }
+
+    /// Starts a new conversation and puts the project's Claude in it.
+    pub fn start_workstream(
+        &self,
+        project: &ProjectId,
+        name: Option<String>,
+        cwd: &Path,
+        size: (u16, u16),
+        prefs: SessionPrefs,
+    ) -> Result<(crate::workstreams::Workstream, SessionInfo)> {
+        self.opened(Request::StartWorkstream {
+            project: project.clone(),
+            name,
+            cwd: cwd.to_path_buf(),
+            cols: size.0,
+            rows: size.1,
+            shell: prefs.shell,
+            agents: Some(prefs.agents),
+        })
+    }
+
+    /// Returns the project to a conversation it already has.
+    pub fn resume_workstream(
+        &self,
+        project: &ProjectId,
+        id: &crate::workstreams::WorkstreamId,
+        cwd: &Path,
+        size: (u16, u16),
+        prefs: SessionPrefs,
+    ) -> Result<(crate::workstreams::Workstream, SessionInfo)> {
+        self.opened(Request::ResumeWorkstream {
+            project: project.clone(),
+            id: id.clone(),
+            cwd: cwd.to_path_buf(),
+            cols: size.0,
+            rows: size.1,
+            shell: prefs.shell,
+            agents: Some(prefs.agents),
+        })
+    }
+
+    /// Starts a new conversation carrying another's history.
+    pub fn fork_workstream(
+        &self,
+        project: &ProjectId,
+        from: &crate::workstreams::WorkstreamId,
+        name: Option<String>,
+        cwd: &Path,
+        size: (u16, u16),
+        prefs: SessionPrefs,
+    ) -> Result<(crate::workstreams::Workstream, SessionInfo)> {
+        self.opened(Request::ForkWorkstream {
+            project: project.clone(),
+            from: from.clone(),
+            name,
+            cwd: cwd.to_path_buf(),
+            cols: size.0,
+            rows: size.1,
+            shell: prefs.shell,
+            agents: Some(prefs.agents),
+        })
+    }
+
+    /// Renames one, or takes its name away when given `None`.
+    pub fn rename_workstream(
+        &self,
+        project: &ProjectId,
+        id: &crate::workstreams::WorkstreamId,
+        name: Option<String>,
+    ) -> Result<()> {
+        self.request(Request::RenameWorkstream {
+            project: project.clone(),
+            id: id.clone(),
+            name,
+        })
+        .map(|_| ())
+    }
+
+    /// The three requests that end in a Claude session share a reply.
+    fn opened(&self, request: Request) -> Result<(crate::workstreams::Workstream, SessionInfo)> {
+        match self.request(request)? {
+            Reply::Workstream {
+                workstream,
+                session,
+            } => Ok((*workstream, session)),
             _ => Err(unexpected()),
         }
     }

@@ -122,9 +122,17 @@ loses Claude's.
   or quotes is never misread
 - Push and pull run off the IPC thread, and git is configured never to stop and
   ask for a password — there is no terminal here for it to ask on
+- Every invocation has a deadline, so nothing git waits for can take the panel
+  with it
+- A conflicted file is shown as one and kept out of the ordinary stage and
+  unstage flow, which used to mark it resolved with its markers still in place
 
 Not planned: branch switching, history, rebase, conflict resolution. The
 terminal panel is two keystrokes away and is better at all of them.
+
+Still open, and not covered by that list: there is no discard, so undoing an
+edit means the terminal; and nothing ever fetches, so "behind" reflects whoever
+last fetched rather than the remote as it is now.
 
 ## Milestone 6 — UX ✅
 
@@ -203,6 +211,14 @@ numbers are dimmed and labelled rather than left standing as current.
 A project that starts waiting raises a system notification, once per wait, and
 only when it is not already on screen in a focused window.
 
+Follow-up: notify once when Claude's five-hour allowance becomes available
+again. The last reliable status-line report already says when that window
+resets; the notification should be scheduled outside React so closing Beacon's
+window does not cancel it, persisted and deduplicated across restarts, and
+rescheduled rather than fired if a newer report moves the reset time. The same
+signal may later inform a Claude/Codex handoff, but it must not start or switch a
+billable session by itself.
+
 ## Milestone 9 — Handing it to someone else 🚧
 
 macOS first; Arch Linux is next and has never been built, so nothing here claims
@@ -240,11 +256,85 @@ Remaining:
 - The terminal and the editor follow the palette too — both draw their own
   colours and are rebuilt when it changes
 
+## Milestone 11 — Claude Code cockpit 🚧
+
+Making Beacon a better place to use Claude Code than a bare terminal, using
+Claude Code's own interfaces and inventing nothing. The audit this came from,
+and the ordered plan it produced, are in `docs/CLAUDE-COCKPIT.md`.
+
+Done:
+
+- **Workstreams.** A project holds several named Claude conversations instead of
+  one nameless session that is lost on restart. Beacon chooses each
+  conversation's id and hands it to Claude Code, so nothing reads a transcript —
+  see ADR-066. Start one, name it, resume it, fork it, and go back to it from a
+  chip in the panel header
+- Resuming a conversation that `claude agents --json` reports as running is
+  refused, with forking offered instead. Two Claudes in one conversation write
+  over each other's history
+- **Telemetry.** The status line already reported the allowance and the context;
+  it now carries the session id and name, the model, effort, the prompt cache
+  and the spend limit. Context health is four bands named for what you would do
+  about them, and the cache says what a cold one would cost to rebuild
+- Advice at the moment a number starts to mean something — one thing at a time,
+  dismissible, never acted on (ADR-070)
+- **Three subagents**, passed per session so nothing is written into anyone's
+  repository (ADR-069): explorer on Haiku, tester, and a reviewer with fresh
+  context. Each exists to keep a large pile of text out of the conversation
+  doing the work. A four-sentence routing policy travels with them, and one
+  switch turns both off
+- Subagent activity in the header while it runs, and gone six seconds later.
+  From outside, a session that has delegated a large search is indistinguishable
+  from one that has gone quiet
+- **Capability detection** by reading Claude Code's own `--help` rather than a
+  table of version guesses (ADR-068). A feature that is not available is not
+  there, rather than broken
+- A hook contract suite that runs the real binary: nothing on stdout, nothing on
+  stderr, exit zero, for every registered event and every malformed payload
+  (ADR-071)
+
+Not built, and not for want of trying:
+
+- **A shared task list.** `CLAUDE_CODE_TASK_LIST_ID` exists in the 2.1.252
+  binary and so do `TaskCreate`, `TaskList` and `TaskUpdate`, but no session
+  could be made to offer those tools — print mode, an interactive PTY, with
+  `CLAUDE_CODE_ENABLE_TASKS=1`, with Agent Teams switched on. No `TaskCreated`
+  hook ever fired, and none of it is documented. Building a task badge on that
+  would be exactly the invented optimisation this milestone exists to avoid
+
+Remaining:
+
+- A configuration audit: what a project's `CLAUDE.md`, rules, skills, agents and
+  MCP servers are costing it. Designed for, not built
+- Test and log output filtering before it reaches the main context. Only worth
+  doing if it can preserve exit codes and keep the full log, and it cannot yet
+- Agent Teams and parallel sessions, both explicitly opt-in and both needing
+  worktrees before two Claudes may touch one checkout
+
 ## Later — not scheduled
 
-Both of these were on the original "do not build" list. They are here because
-the list was ours to change, and they are worth doing eventually; neither is
-small, and both are their own milestone.
+These were on the original "do not build" list, or arrived after it. They are
+here because the list was ours to change and they are worth developing later;
+none should distract from making the workspace that already exists dependable.
+
+### Claude Code and Codex handoff
+
+Let a project run either the real Claude Code CLI or the real Codex CLI, chosen
+deliberately at first and eventually handed off automatically when one reaches a
+usage or context limit. The point is continuity rather than running two agents
+at once: spend the allowance available in one, then let the other continue the
+same piece of work instead of making the user reconstruct it.
+
+The handoff needs a provider-neutral brief: current objective, decisions made,
+commands and checks already run, files and uncommitted changes in play, known
+risks, and the next concrete step. That can make both agents start from nearly
+the same working context without pretending their private conversation state,
+tools, hooks, authentication or context accounting are interchangeable.
+
+Manual switching proves the boundary first. Automatic switching comes only
+after Beacon can explain why it wants to switch, preview exactly what will be
+handed over, and avoid starting another billable session silently. This is a
+later milestone; stabilising the current Claude workflow comes first.
 
 ### Docker
 

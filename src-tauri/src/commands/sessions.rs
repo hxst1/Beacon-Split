@@ -1,5 +1,5 @@
 use beacon_core::domain::{ProjectId, WorkspaceId};
-use beacon_core::session::{SessionId, SessionInfo, SessionKind};
+use beacon_core::session::{SessionId, SessionInfo, SessionKind, SessionPrefs};
 use tauri::State;
 
 use crate::error::CommandResult;
@@ -20,11 +20,14 @@ pub fn open_session(
     cols: u16,
     rows: u16,
 ) -> CommandResult<SessionInfo> {
-    let (cwd, shell) = {
+    let (cwd, prefs) = {
         let beacon = state.beacon();
         (
             beacon.resolve_project_path(&workspace_id, &project_id)?,
-            beacon.shell(),
+            SessionPrefs {
+                shell: beacon.shell(),
+                agents: beacon.claude_agents(),
+            },
         )
     };
     Ok(state.daemon()?.ensure(
@@ -33,7 +36,7 @@ pub fn open_session(
         slot,
         &cwd,
         (cols.max(2), rows.max(2)),
-        shell,
+        prefs,
     )?)
 }
 
@@ -87,11 +90,14 @@ pub fn restart_session(
     cols: u16,
     rows: u16,
 ) -> CommandResult<SessionInfo> {
-    let (cwd, shell) = {
+    let (cwd, prefs) = {
         let beacon = state.beacon();
         (
             beacon.resolve_project_path(&workspace_id, &project_id)?,
-            beacon.shell(),
+            SessionPrefs {
+                shell: beacon.shell(),
+                agents: beacon.claude_agents(),
+            },
         )
     };
     Ok(state.daemon()?.restart(
@@ -100,7 +106,7 @@ pub fn restart_session(
         slot,
         &cwd,
         (cols.max(2), rows.max(2)),
-        shell,
+        prefs,
     )?)
 }
 

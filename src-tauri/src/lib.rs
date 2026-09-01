@@ -7,6 +7,7 @@
 mod appearance;
 mod commands;
 mod error;
+mod notifications;
 mod state;
 
 use beacon_core::Beacon;
@@ -28,7 +29,6 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -62,8 +62,13 @@ pub fn run() {
             commands::reorder_project,
             commands::set_shell,
             commands::set_notifications,
+            commands::notification_permission,
+            commands::request_notification_permission,
+            commands::send_notification,
+            commands::open_notification_settings,
             commands::mark_releases_seen,
             commands::set_release_notices,
+            commands::set_show_hidden_files,
             commands::release_notes,
             commands::set_active_project,
             commands::reveal_project,
@@ -102,6 +107,13 @@ pub fn run() {
             commands::stop_daemon,
             commands::claude_hook_status,
             commands::claude_integration,
+            commands::claude_capabilities,
+            commands::set_claude_agents,
+            commands::list_workstreams,
+            commands::start_workstream,
+            commands::resume_workstream,
+            commands::fork_workstream,
+            commands::rename_workstream,
             commands::check_requirements,
             commands::daemon_available,
             commands::install_claude_status_line,
@@ -113,6 +125,13 @@ pub fn run() {
             commands::install_claude_hooks,
             commands::remove_claude_hooks,
         ]);
+
+    // Everywhere except macOS, where notifications go through
+    // `crate::notifications` instead: the plugin's desktop implementation
+    // answers `Granted` to every permission question without asking the system,
+    // and posts through an API macOS no longer delivers. See ADR-059.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_notification::init());
 
     let builder = if updates_itself {
         builder.plugin(tauri_plugin_updater::Builder::new().build())

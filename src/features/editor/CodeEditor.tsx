@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, indentOnInput } from '@codemirror/language'
-import { gotoLine, highlightSelectionMatches, search, searchKeymap } from '@codemirror/search'
+import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search'
 import { Compartment, EditorState } from '@codemirror/state'
 import {
   EditorView,
@@ -14,7 +14,7 @@ import {
 } from '@codemirror/view'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 
-import { languageFor } from './languages'
+import { languageFor, lineSeparatorOf } from './languages'
 import { beaconTheme } from './theme'
 import styles from './CodeEditor.module.css'
 
@@ -62,6 +62,9 @@ export function CodeEditor({
       state: EditorState.create({
         doc: initialText,
         extensions: [
+          // Without this CodeMirror joins every line with \n, so opening a
+          // CRLF file and saving it rewrites every line in the diff.
+          EditorState.lineSeparator.of(lineSeparatorOf(initialText)),
           lineNumbers(),
           highlightActiveLine(),
           highlightActiveLineGutter(),
@@ -77,8 +80,6 @@ export function CodeEditor({
           beaconTheme(),
           keymap.of([
             // Save before the defaults, so Cmd/Ctrl+S is ours everywhere.
-            // Go to line, on the binding every editor uses for it.
-            { key: 'Mod-g', preventDefault: true, run: gotoLine },
             {
               key: 'Mod-s',
               preventDefault: true,

@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -124,12 +125,20 @@ pub fn list_dir(root: &Path, relative: &str) -> Result<Vec<DirEntry>> {
 
     let mut entries = Vec::new();
     for entry in reader {
-        let entry = entry.map_err(|err| CoreError::io(&dir, err))?;
+        // A child we cannot stat — permission denied, or a file that vanished
+        // while the directory was being read — costs us that one row. Failing
+        // the listing instead leaves an expanded folder showing nothing, which
+        // reads as an empty directory rather than as a problem.
+        let Ok(entry) = entry else { continue };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
         let name = entry.file_name().to_string_lossy().into_owned();
-        let file_type = entry.file_type().map_err(|err| CoreError::io(&dir, err))?;
+        let path = relative_of(&root, &entry.path());
 
         let kind = if file_type.is_symlink() {
-            EntryKind::Symlink
+            symlink_kind(&root, &path)
         } else if file_type.is_dir() {
             EntryKind::Directory
         } else {
@@ -138,7 +147,7 @@ pub fn list_dir(root: &Path, relative: &str) -> Result<Vec<DirEntry>> {
 
         entries.push(DirEntry {
             hidden: name.starts_with('.'),
-            path: relative_of(&root, &entry.path()),
+            path,
             name,
             kind,
         });
@@ -149,6 +158,25 @@ pub fn list_dir(root: &Path, relative: &str) -> Result<Vec<DirEntry>> {
         folder_first.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(entries)
+}
+
+/// What a symlink behaves as, which is not always what it is.
+///
+/// A link to a directory — pnpm's `node_modules`, a package linked across a
+/// monorepo — has to expand like the directory it points at. Called a symlink
+/// it gets no twisty, and clicking it asks the editor to read a directory as a
+/// file. Following it is only safe once `resolve_within` has agreed the target
+/// is still inside the project, and `metadata` refuses a link that loops, so a
+/// link out of the project and a link back onto itself both stay symlinks:
+/// visible, and with nothing to open.
+fn symlink_kind(root: &Path, relative: &str) -> EntryKind {
+    let Ok(path) = resolve_within(root, relative) else {
+        return EntryKind::Symlink;
+    };
+    match std::fs::metadata(&path) {
+        Ok(metadata) if metadata.is_dir() => EntryKind::Directory,
+        _ => EntryKind::Symlink,
+    }
 }
 
 fn directory_rank(entry: &DirEntry) -> u8 {
@@ -213,11 +241,15 @@ pub fn revision(root: &Path, relative: &str) -> Result<Option<u64>> {
     }
 }
 
-/// Why a write was refused.
+/// How a write ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", tag = "outcome")]
 pub enum WriteOutcome {
-    Written,
+    /// The revision is the one the file now has, read straight after the
+    /// write. The editor needs it to save again, and asking for it in a second
+    /// call would leave a window in which someone else's write becomes the
+    /// stamp we believe is ours.
+    Written { revision: Option<u64> },
     /// The file changed since it was read. Nothing was written.
     Stale,
 }
@@ -248,8 +280,47 @@ pub fn write_file(
         }
     }
 
-    std::fs::write(&path, text).map_err(|err| CoreError::io(&path, err))?;
-    Ok(WriteOutcome::Written)
+    write_atomically(&path, text)?;
+
+    let revision = std::fs::metadata(&path)
+        .ok()
+        .and_then(|metadata| revision_of(&metadata));
+    Ok(WriteOutcome::Written { revision })
+}
+
+/// Writes through a temporary file in the same directory and renames it over
+/// the target.
+///
+/// `fs::write` truncates first and then fills, so a crash or a full disk
+/// halfway through leaves the user with a shorter file and no copy of what was
+/// there. A rename within one filesystem is atomic: the file is either the old
+/// one or the new one, never a half-written one.
+fn write_atomically(path: &Path, text: &str) -> Result<()> {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+
+    let mut temp = tempfile::Builder::new()
+        .prefix(&format!(".{name}."))
+        .suffix(".beacon")
+        .tempfile_in(parent)
+        .map_err(|err| CoreError::io(parent, err))?;
+
+    // The rename gives the file the temporary's permissions, so an executable
+    // script would come back not executable without this.
+    if let Ok(existing) = std::fs::metadata(path) {
+        let _ = temp.as_file().set_permissions(existing.permissions());
+    }
+
+    temp.write_all(text.as_bytes())
+        .map_err(|err| CoreError::io(path, err))?;
+    // Durability before visibility: the rename is atomic, but only for
+    // contents that actually reached the disk.
+    temp.as_file()
+        .sync_all()
+        .map_err(|err| CoreError::io(path, err))?;
+    temp.persist(path)
+        .map_err(|err| CoreError::io(path, err.error))?;
+    Ok(())
 }
 
 pub fn create_file(root: &Path, relative: &str) -> Result<()> {
@@ -282,13 +353,40 @@ pub fn create_dir(root: &Path, relative: &str) -> Result<()> {
 pub fn rename(root: &Path, from: &str, to: &str) -> Result<()> {
     let source = resolve_within(root, from)?;
     let target = resolve_within(root, to)?;
-    if target.exists() {
+    // `README.md` to `readme.md` is a rename people make, and on a
+    // case-insensitive volume the target "already exists" because it is the
+    // file being renamed. Only a target that is a different entry is a clash.
+    if target.exists() && !is_same_entry(&source, &target) {
         return Err(CoreError::invalid(format!(
             "{} already exists",
             target.file_name().unwrap_or_default().to_string_lossy()
         )));
     }
     std::fs::rename(&source, &target).map_err(|err| CoreError::io(&source, err))
+}
+
+/// Whether two paths name one entry on disk.
+///
+/// Compared by device and inode rather than by canonical path: macOS
+/// `realpath` hands back the spelling it was given, so `README.md` and
+/// `readme.md` canonicalise to two different strings while being one file —
+/// exactly the case this has to recognise.
+#[cfg(unix)]
+fn is_same_entry(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+#[cfg(not(unix))]
+fn is_same_entry(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// Copies a file or directory beside itself, as `name copy`, `name copy 2`, …
@@ -571,11 +669,82 @@ mod tests {
         let read = read_file(dir.path(), "README.md").unwrap();
 
         let outcome = write_file(dir.path(), "README.md", "# mine", read.revision).unwrap();
-        assert_eq!(outcome, WriteOutcome::Written);
+        assert!(matches!(outcome, WriteOutcome::Written { .. }));
         assert_eq!(
             std::fs::read_to_string(dir.path().join("README.md")).unwrap(),
             "# mine"
         );
+    }
+
+    #[test]
+    fn a_write_reports_the_revision_the_file_now_has() {
+        // The editor saves again from this stamp. If it did not come back with
+        // the write, the next save would be refused against one we made
+        // obsolete ourselves.
+        let dir = project();
+        let read = read_file(dir.path(), "README.md").unwrap();
+
+        let outcome = write_file(dir.path(), "README.md", "# mine", read.revision).unwrap();
+        let WriteOutcome::Written { revision: reported } = outcome else {
+            panic!("expected a write, got {outcome:?}");
+        };
+        assert_eq!(reported, revision(dir.path(), "README.md").unwrap());
+        assert_ne!(
+            reported, read.revision,
+            "the file changed, so its stamp did"
+        );
+    }
+
+    #[test]
+    fn saving_twice_in_a_row_is_not_a_conflict() {
+        let dir = project();
+        let read = read_file(dir.path(), "README.md").unwrap();
+
+        let WriteOutcome::Written { revision: first } =
+            write_file(dir.path(), "README.md", "# one", read.revision).unwrap()
+        else {
+            panic!("the first write should go through");
+        };
+        assert!(matches!(
+            write_file(dir.path(), "README.md", "# two", first).unwrap(),
+            WriteOutcome::Written { .. }
+        ));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("README.md")).unwrap(),
+            "# two"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_saved_script_is_still_executable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        // Writing through a temporary file and renaming means the file takes
+        // the temporary's permissions unless they are carried over. Saving a
+        // hook or a shell script must not disarm it.
+        let dir = project();
+        let script = dir.path().join("run.sh");
+        std::fs::write(&script, "#!/bin/sh\necho hi\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        write_file(dir.path(), "run.sh", "#!/bin/sh\necho bye\n", None).unwrap();
+
+        let mode = std::fs::metadata(&script).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755, "the executable bit was dropped");
+    }
+
+    #[test]
+    fn a_write_leaves_no_temporary_behind() {
+        let dir = project();
+        write_file(dir.path(), "README.md", "# mine", None).unwrap();
+
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".beacon"))
+            .collect();
+        assert!(leftovers.is_empty(), "left {leftovers:?} in the project");
     }
 
     #[test]
@@ -584,7 +753,7 @@ mod tests {
         std::fs::write(dir.path().join("README.md"), "# theirs").unwrap();
 
         let outcome = write_file(dir.path(), "README.md", "# mine", None).unwrap();
-        assert_eq!(outcome, WriteOutcome::Written);
+        assert!(matches!(outcome, WriteOutcome::Written { .. }));
     }
 
     #[test]
@@ -667,5 +836,89 @@ mod tests {
         let dir = project();
         assert!(create_file(dir.path(), "README.md").is_err());
         assert!(create_dir(dir.path(), "src").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_to_a_directory_in_the_project_is_listed_as_a_directory() {
+        // pnpm's `node_modules` and a monorepo's linked packages are these.
+        let dir = project();
+        std::os::unix::fs::symlink(dir.path().join("src"), dir.path().join("linked")).unwrap();
+
+        let entries = list_dir(dir.path(), "").unwrap();
+        let link = entries.iter().find(|entry| entry.name == "linked").unwrap();
+        assert_eq!(link.kind, EntryKind::Directory);
+
+        let inside: Vec<_> = list_dir(dir.path(), "linked")
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect();
+        assert_eq!(inside, vec!["main.rs"], "it has to expand like what it is");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_to_a_directory_outside_the_project_is_not_a_directory() {
+        let dir = project();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir(outside.path().join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(outside.path().join("elsewhere"), dir.path().join("escape"))
+            .unwrap();
+
+        let entries = list_dir(dir.path(), "").unwrap();
+        let link = entries.iter().find(|entry| entry.name == "escape").unwrap();
+        assert_eq!(
+            link.kind,
+            EntryKind::Symlink,
+            "offering to expand it would offer a way out of the project"
+        );
+        assert!(list_dir(dir.path(), "escape").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_that_loops_is_listed_without_being_followed() {
+        let dir = project();
+        std::os::unix::fs::symlink("loop", dir.path().join("loop")).unwrap();
+
+        let entries = list_dir(dir.path(), "").unwrap();
+        let link = entries.iter().find(|entry| entry.name == "loop").unwrap();
+        assert_eq!(link.kind, EntryKind::Symlink);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_that_points_at_nothing_still_appears() {
+        let dir = project();
+        std::os::unix::fs::symlink(dir.path().join("gone"), dir.path().join("dangling")).unwrap();
+
+        let entries = list_dir(dir.path(), "").unwrap();
+        let link = entries
+            .iter()
+            .find(|entry| entry.name == "dangling")
+            .unwrap();
+        assert_eq!(
+            link.kind,
+            EntryKind::Symlink,
+            "a broken link is something the user should be able to see and delete"
+        );
+    }
+
+    #[test]
+    fn renaming_a_file_to_a_different_case_is_allowed() {
+        // On a case-insensitive volume the target "exists" because it is the
+        // source, and this rename used to come back as "readme.md already
+        // exists".
+        let dir = project();
+        rename(dir.path(), "README.md", "readme.md").unwrap();
+
+        let names: Vec<_> = list_dir(dir.path(), "")
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect();
+        assert!(names.contains(&"readme.md".to_string()), "got: {names:?}");
+        assert!(!names.contains(&"README.md".to_string()), "got: {names:?}");
     }
 }

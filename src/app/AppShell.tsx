@@ -1,4 +1,6 @@
 import { ClipDrawer } from '@/features/clips/ClipDrawer'
+import { UnsavedOnQuit } from '@/features/editor/UnsavedOnQuit'
+import { NotificationPrompt } from '@/features/notifications/NotificationPrompt'
 import { CommandPalette } from '@/features/palette/CommandPalette'
 import { QuickOpen } from '@/features/palette/QuickOpen'
 import { SettingsScreen } from '@/features/settings/SettingsScreen'
@@ -27,6 +29,14 @@ export function AppShell(): React.ReactElement {
       {/* Outside the workbench on purpose: it overlays the layout rather than
           taking a share of it, so opening it costs no terminal width. */}
       <ClipDrawer />
+
+      {/* Asks for the macOS notification permission, once, and only while
+          macOS has never been asked. */}
+      <NotificationPrompt />
+
+      {/* Quitting is the one action that can throw away work which exists
+          nowhere else, so it is the one action Beacon asks about. */}
+      <UnsavedOnQuit />
 
       {overlay === 'palette' ? <CommandPalette onClose={close} /> : null}
       {overlay === 'quickOpen' ? <QuickOpen onClose={close} /> : null}

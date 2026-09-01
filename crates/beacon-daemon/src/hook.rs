@@ -25,16 +25,75 @@ fn report() -> Option<()> {
     std::io::stdin().read_to_string(&mut payload).ok()?;
     let event: serde_json::Value = serde_json::from_str(&payload).ok()?;
 
-    let (activity, detail) = interpret(&event)?;
+    // A subagent is not the session, so it does not get a session state.
+    if let Some(request) = agent_report(&event, &project) {
+        return send(&socket, request);
+    }
 
-    let line = serde_json::to_string(&Envelope {
-        // Nothing is waiting for a reply, so the correlation id is a formality.
-        id: 0,
-        request: Request::Report {
+    let (activity, detail) = interpret(&event)?;
+    let session = event
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+
+    send(
+        &socket,
+        Request::Report {
             project: ProjectId(project),
             activity,
             detail,
+            session,
         },
+    )
+}
+
+/// A subagent starting or finishing, when that is what this event is.
+///
+/// `agent_type` is optional because Claude Code reports it empty in practice —
+/// seen on a real `SubagentStop` — and an empty string on screen would read as
+/// a nameless agent rather than as an unnamed one.
+pub fn agent_report(event: &serde_json::Value, project: &str) -> Option<Request> {
+    let running = match event.get("hook_event_name")?.as_str()? {
+        "SubagentStart" => true,
+        "SubagentStop" => false,
+        _ => return None,
+    };
+
+    let text = |key: &str| -> Option<String> {
+        let value = event.get(key)?.as_str()?.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    };
+
+    Some(Request::ReportAgent {
+        project: ProjectId(project.to_string()),
+        agent: text("agent_id")?,
+        agent_type: text("agent_type"),
+        running,
+        // Only what fits on one line of a panel header. The whole message is a
+        // subagent's final answer, which can be pages, and none of it belongs
+        // in a status row.
+        summary: text("last_assistant_message").map(|message| first_line(&message, 100)),
+    })
+}
+
+/// The first line, cut to a length, without splitting a character in half.
+fn first_line(text: &str, limit: usize) -> String {
+    let line = text
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("");
+    if line.chars().count() <= limit {
+        return line.trim().to_string();
+    }
+    let cut: String = line.chars().take(limit).collect();
+    format!("{}…", cut.trim_end())
+}
+
+fn send(socket: &str, request: Request) -> Option<()> {
+    let line = serde_json::to_string(&Envelope {
+        // Nothing is waiting for a reply, so the correlation id is a formality.
+        id: 0,
+        request,
     })
     .ok()?;
 
@@ -142,6 +201,167 @@ mod tests {
             }))
             .unwrap();
             assert_eq!(activity, ClaudeActivity::Idle, "source {source}");
+        }
+    }
+
+    #[test]
+    fn a_report_carries_the_conversation_it_came_from() {
+        // Proof that the conversation exists, which is what decides whether the
+        // next start resumes it or tries to create one that is already there.
+        let event = serde_json::json!({
+            "hook_event_name": "Stop",
+            "session_id": "cafb8c86-53eb-49c4-a8b8-609e5cbc0f49"
+        });
+        assert_eq!(
+            event.get("session_id").and_then(|v| v.as_str()),
+            Some("cafb8c86-53eb-49c4-a8b8-609e5cbc0f49")
+        );
+        assert_eq!(interpret(&event).unwrap().0, ClaudeActivity::Done);
+    }
+
+    #[test]
+    fn a_session_that_only_opened_is_not_proof_of_a_conversation() {
+        // `SessionStart` fires before anything has been said, and Claude Code
+        // writes nothing until the first exchange. Treating it as proof is what
+        // made a restart answer "No conversation found with session ID".
+        let (activity, _) = event(serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "source": "startup",
+            "session_id": "cafb8c86-53eb-49c4-a8b8-609e5cbc0f49"
+        }))
+        .unwrap();
+        assert_eq!(activity, ClaudeActivity::Idle);
+    }
+
+    #[test]
+    fn a_subagent_starting_is_reported_as_an_agent_not_as_a_session_state() {
+        let request = agent_report(
+            &serde_json::json!({
+                "hook_event_name": "SubagentStart",
+                "agent_id": "a0718b64719533846",
+                "agent_type": "beacon-explorer"
+            }),
+            "pj_x",
+        )
+        .unwrap();
+
+        match request {
+            Request::ReportAgent {
+                agent,
+                agent_type,
+                running,
+                summary,
+                ..
+            } => {
+                assert_eq!(agent, "a0718b64719533846");
+                assert_eq!(agent_type.as_deref(), Some("beacon-explorer"));
+                assert!(running);
+                assert_eq!(summary, None);
+            }
+            other => panic!("expected an agent report, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_subagent_stopping_carries_one_line_of_what_it_found() {
+        let request = agent_report(
+            &serde_json::json!({
+                "hook_event_name": "SubagentStop",
+                "agent_id": "a0718b64719533846",
+                "agent_type": "beacon-explorer",
+                "last_assistant_message": "Found 4 relevant files.\n\nsrc/a.rs:12 — the parser\nsrc/b.rs:88 — the caller"
+            }),
+            "pj_x",
+        )
+        .unwrap();
+
+        match request {
+            Request::ReportAgent {
+                running, summary, ..
+            } => {
+                assert!(!running);
+                assert_eq!(summary.as_deref(), Some("Found 4 relevant files."));
+            }
+            other => panic!("expected an agent report, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_empty_agent_type_is_absent_rather_than_empty() {
+        // Seen on a real SubagentStop from Claude Code 2.1.252. An empty string
+        // on screen would read as a nameless agent rather than an unnamed one.
+        let request = agent_report(
+            &serde_json::json!({
+                "hook_event_name": "SubagentStop",
+                "agent_id": "a071",
+                "agent_type": ""
+            }),
+            "pj_x",
+        )
+        .unwrap();
+
+        assert!(matches!(
+            request,
+            Request::ReportAgent {
+                agent_type: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn a_subagent_event_without_an_id_is_not_reported() {
+        // A start and a stop pair up by id. One without an id would leave a row
+        // on screen that nothing could ever take away.
+        assert!(
+            agent_report(
+                &serde_json::json!({ "hook_event_name": "SubagentStart" }),
+                "pj_x"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn everything_else_is_not_an_agent_report() {
+        for name in ["Stop", "PreToolUse", "SessionStart", "Notification"] {
+            assert!(
+                agent_report(&serde_json::json!({ "hook_event_name": name }), "pj_x").is_none(),
+                "{name} was read as an agent"
+            );
+        }
+    }
+
+    #[test]
+    fn a_very_long_answer_is_cut_rather_than_wrapped_across_the_header() {
+        let long = "x".repeat(400);
+        let request = agent_report(
+            &serde_json::json!({
+                "hook_event_name": "SubagentStop",
+                "agent_id": "a071",
+                "last_assistant_message": long
+            }),
+            "pj_x",
+        )
+        .unwrap();
+
+        let Request::ReportAgent { summary, .. } = request else {
+            panic!("expected an agent report")
+        };
+        let summary = summary.unwrap();
+        assert_eq!(summary.chars().count(), 101);
+        assert!(summary.ends_with('…'));
+    }
+
+    #[test]
+    fn a_subagent_event_is_not_also_a_session_state() {
+        // Both hooks run through the same binary. A subagent finishing must not
+        // make the tab say the session is done.
+        for name in ["SubagentStart", "SubagentStop"] {
+            assert!(
+                interpret(&serde_json::json!({ "hook_event_name": name })).is_none(),
+                "{name} was read as a session state"
+            );
         }
     }
 

@@ -1,0 +1,103 @@
+/*
+ * The one dialog Beacon puts in front of you, for the one action it cannot undo.
+ * Built from the same material as the rest, and it does not shout.
+ */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 6vh 6vw;
+  background: var(--scrim);
+  animation: fade var(--dur-2) var(--ease);
+}
+
+.panel {
+  width: min(460px, 100%);
+  padding: 20px 22px 18px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--solid-1);
+  box-shadow:
+    0 1px 0 0 var(--edge-light) inset,
+    0 0 0 1px var(--accent-line),
+    var(--shadow-screen);
+  animation: rise var(--dur-2) var(--ease);
+}
+
+.title {
+  margin: 0 0 12px;
+  color: var(--fg-1);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.list {
+  max-height: 30vh;
+  margin: 0 0 18px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.project {
+  color: var(--fg-4);
+  flex: none;
+}
+
+/* The end of a path identifies the file; the start of one rarely does. */
+.path {
+  overflow: hidden;
+  color: var(--fg-2);
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.later,
+.save {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+
+.later {
+  border: 1px solid var(--line-2);
+  color: var(--fg-3);
+}
+
+.later:hover {
+  background: var(--surface-1);
+  color: var(--fg-1);
+}
+
+.save {
+  border: 1px solid var(--accent-line);
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  color: var(--fg-1);
+}
+
+.save:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 24%, transparent);
+}
+
+.save:disabled {
+  opacity: 0.6;
+}

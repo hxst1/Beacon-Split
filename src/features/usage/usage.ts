@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import { watchActivity } from '@/features/terminal/sessionBridge'
 import { ipc } from '@/ipc'
-import type { UsageReport } from '@/types/beacon'
+import type { PromptCache, UsageReport } from '@/types/beacon'
 
 /**
  * How long a usage report is presented as current.
@@ -142,4 +142,106 @@ export function levelOf(usedPercentage: number): 'fine' | 'warn' | 'low' {
 export function percent(value: number | undefined): number | null {
   if (value === undefined) return null
   return Math.max(0, Math.min(100, Math.round(value)))
+}
+
+/**
+ * How full the context is, in terms of what you would do about it.
+ *
+ * Bands rather than a bare number because the number on its own asks the reader
+ * to hold a threshold in their head. The upper two are the same 75 and 90 the
+ * allowance gauge uses: one vocabulary for "getting close" and "nearly gone",
+ * whichever meter is being read.
+ */
+export type ContextHealth = 'healthy' | 'growing' | 'high' | 'critical'
+
+export function contextHealth(usedPercentage: number): ContextHealth {
+  if (usedPercentage >= 90) return 'critical'
+  if (usedPercentage >= 75) return 'high'
+  if (usedPercentage >= 50) return 'growing'
+  return 'healthy'
+}
+
+/** The band in words, for a reader rather than a stylesheet. */
+export function healthLabel(health: ContextHealth): string {
+  switch (health) {
+    case 'healthy':
+      return 'healthy'
+    case 'growing':
+      return 'growing'
+    case 'high':
+      return 'getting full'
+    case 'critical':
+      return 'almost full'
+  }
+}
+
+/** Whether the cache is known to be cold, as opposed to not known at all. */
+export function cacheIsCold(cache: PromptCache | undefined, now: number): boolean {
+  if (cache?.warm !== true) return cache?.warm === false
+  // Warm, but only until it expires — and Claude Code re-runs the status line
+  // at that moment, so this is what the last report meant by the time it is
+  // read rather than a guess about the future.
+  return cache.expiresAt !== undefined && cache.expiresAt * 1000 <= now
+}
+
+/**
+ * Something worth saying about a conversation, or nothing.
+ *
+ * At most one at a time, and never acted on. Beacon does not compact, does not
+ * clear, and does not start a session on its own: the whole value here is
+ * telling someone what a number means at the moment it starts to matter, and an
+ * application that acts on its own advice would be making the decision that
+ * this exists to inform.
+ */
+export interface Advice {
+  /** Stable, so dismissing one does not dismiss the next. */
+  id: 'room-running-out' | 'cold-context' | 'growing'
+  title: string
+  detail: string
+}
+
+/**
+ * How much cache rebuilding has to be on the table before it is worth a word.
+ *
+ * Below this the advice would be true and not worth the interruption, which is
+ * the failure mode this whole surface has to avoid.
+ */
+export const COLD_CACHE_TOKENS = 20_000
+
+export function adviceFor(report: UsageReport | undefined, now: number): Advice | null {
+  if (!report) return null
+  const used = report.contextUsedPercentage
+
+  if (used !== undefined && used >= 90) {
+    return {
+      id: 'room-running-out',
+      title: 'Almost full',
+      detail:
+        'Start a clean workstream if you are moving on, or compact if you need this conversation to remember what it has done.',
+    }
+  }
+
+  const rebuild = report.promptCache?.recacheTokensIfCold ?? 0
+  if (cacheIsCold(report.promptCache, now) && rebuild >= COLD_CACHE_TOKENS) {
+    return {
+      id: 'cold-context',
+      title: 'Large cold context',
+      detail: `The next turn rebuilds about ${thousands(rebuild)} tokens of cache. A clean workstream would not.`,
+    }
+  }
+
+  if (used !== undefined && used >= 75) {
+    return {
+      id: 'growing',
+      title: 'Getting full',
+      detail: 'If you are moving on to something else, a clean workstream starts with the room back.',
+    }
+  }
+
+  return null
+}
+
+/** `45,000` — easier to size up at a glance than a bare number. */
+export function thousands(value: number): string {
+  return value.toLocaleString('en-US')
 }

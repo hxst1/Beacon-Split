@@ -81,9 +81,37 @@
   display: none;
 }
 
+/* Hover reveals the close control; a keyboard has no hover, and a control that
+   cannot be reached is not a control. */
+.tab:focus-within .closeWhenDirty {
+  display: grid;
+}
+
+.tab:focus-within .dot {
+  display: none;
+}
+
+/*
+ * Bars stack above the file, and the file takes what is left.
+ *
+ * A full-height message used to sit in here alongside the editor, which pushed
+ * the file you were reading out of view to tell you something about it.
+ */
 .body {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.body > .conflict,
+.body > .errorBar {
+  flex: none;
+}
+
+.body > :not(.conflict):not(.errorBar) {
+  flex: 1;
+  min-height: 0;
 }
 
 .empty {
@@ -99,7 +127,6 @@
 .notice {
   display: grid;
   place-items: center;
-  height: 100%;
   padding: 24px;
   color: var(--fg-4);
   font-size: var(--text-sm);
@@ -109,6 +136,21 @@
 .error {
   color: var(--danger);
   user-select: text;
+}
+
+/* Same shape as the conflict bar, in the colour that says something failed. */
+.errorBar {
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.errorBar .conflictAction {
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+  color: var(--danger);
+}
+
+.errorBar .conflictAction:hover {
+  background: color-mix(in oklab, var(--danger) 18%, transparent);
 }
 
 /*

@@ -1114,3 +1114,335 @@ an event.
 which the tests had no way to redirect. `BEACON_CONFIG_DIR` was added for the
 same reason the socket became an argument (ADR-033): a test that can rewrite the
 real clip book can delete somebody's work.
+
+## ADR-057: Finishing is announced only when the turn was long
+
+**Context.** Knowing that Claude is waiting was never the whole problem. With
+the window behind a browser, the other thing worth knowing is that a long turn
+has finished — and the `Stop` hook already reports it.
+
+**Decision.** A finished turn is announced, but only when Claude had been
+working for at least thirty seconds. The clock starts at the turn's first
+`working` report and is not stopped by a permission prompt.
+
+**Why.** `Stop` fires at the end of every turn, and most turns are seconds
+long — you were watching those, and announcing them would teach you to dismiss
+the next notification without reading it, which costs the waiting ones too.
+Duration is the only honest proxy for "you left" that does not require watching
+where the user is looking. Thirty seconds is roughly the point past which people
+switch windows.
+
+**Consequence.** A turn that ends just under the threshold says nothing, and the
+tab pulse remains the only signal for it. The alternative — announcing
+everything and letting the user filter — degrades the notification that matters
+most.
+
+## ADR-058: A notification points at a project, it does not open one
+
+**Context.** The obvious next step from a notification is landing on the project
+it names.
+
+**Decision.** Notifications name the workspace and project and do nothing on
+click beyond what macOS does for free, which is bringing Beacon to the front.
+
+**Why.** Reacting to a click needs a notification-response delegate registered
+with `UNUserNotificationCenter`, which means owning an Objective-C delegate
+class for the lifetime of the process — a large piece for a small gain. The
+available substitute — switching to the last announced
+project when the window regains focus — would move the user's project under them
+whenever they came back for an unrelated reason. Guessing wrong here is worse
+than not guessing.
+
+**Consequence.** The title carries the routing instead: `workspace › project`,
+because with the same repository open in two workspaces the project name alone
+does not say where to look.
+
+## ADR-059: macOS notifications bypass the plugin entirely
+
+**Context.** Notifications never arrived on macOS 26, and Beacon had no way to
+know. `dev.beacon.split` was not among the applications registered with the
+notification centre at all, while the application believed every notification
+had been delivered.
+
+**Decision.** On macOS, Beacon talks to `UserNotifications.framework` directly
+through `objc2-user-notifications`: it reads the real authorisation state,
+raises the system prompt once, and posts through `UNUserNotificationCenter`.
+`tauri-plugin-notification` stays, scoped to every other platform.
+
+**Why.** The plugin cannot do either thing that matters here. Its desktop
+implementation returns `Granted` from both `permission_state()` and
+`request_permission()` without consulting the system, so an application using it
+cannot distinguish being allowed from being silenced — and it posts through
+`NSUserNotificationCenter`, deprecated in macOS 11, which never raises an
+authorisation prompt. An application that has never been authorised and never
+asks is an application macOS has no reason to deliver for.
+
+**Consequence.** Four Objective-C dependencies on macOS, and one behaviour that
+has no equivalent elsewhere: an unbundled build reports `unavailable` rather
+than a permission. That is not an evasion — `tauri dev` runs the binary straight
+out of `target/`, with no bundle identity for macOS to attribute a notification
+to, so the honest answer is that there is nothing to ask about. Testing this
+feature means installing a build.
+
+## ADR-060: The application bundle is signed, even if only ad-hoc
+
+**Context.** Releases shipped with whatever signature the linker left behind:
+identity `beacon_split-<hash>` rather than `dev.beacon.split`, `Info.plist` not
+bound, and no sealed resources.
+
+**Decision.** `bundle.macOS.signingIdentity` is `-`, so `tauri build` signs the
+bundle ad-hoc as a bundle.
+
+**Why.** macOS keys a notification authorisation — and everything else in TCC —
+to the code signature, not to the path. A bundle whose signature does not seal
+its `Info.plist` has no stable identity to grant anything to, which is the
+difference between a permission that survives the next update and one that has
+to be granted again, or cannot be granted at all. An ad-hoc signature is enough
+for that; a Developer ID would additionally remove the Gatekeeper warning on
+first launch, and is a separate decision with a separate price.
+
+**Consequence.** The identity is stable across builds from the same
+configuration, so an allowed Beacon stays allowed. Changing the bundle
+identifier would still read as a different application to macOS, and would cost
+the user their answer.
+
+## ADR-061: A file is replaced, never truncated and refilled
+
+**Context.** Saving called `fs::write`, which truncates the file and then writes
+the new contents into it. Between those two steps the file on disk is short or
+empty, and a crash, a full disk or a lost power cable in that window leaves the
+user with a fragment and no copy of what was there. Beacon then read the new
+revision back in a second IPC call, so anything that touched the file between
+the write and the stat became the stamp Beacon believed was its own.
+
+**Decision.** Writes go to a temporary file in the same directory, take the
+original's permissions, are flushed to disk, and are renamed over the target.
+The revision is read inside the same call and returned with the outcome.
+
+**Why.** A rename within one filesystem is atomic: a reader sees either the old
+file or the new one, never a half-written one. Carrying the permissions over
+matters because the rename would otherwise hand the file the temporary's, and a
+saved shell script or git hook would come back not executable. Returning the
+revision with the write closes a window that was milliseconds wide and could
+silently license the next save to overwrite Claude's work.
+
+**Consequence.** Saving costs one extra file creation and an `fsync`. Editing a
+file whose directory is not writable now fails at save time rather than at
+write time, which is a clearer failure than a truncated file.
+
+## ADR-062: The text on screen lives in the store, not in the editor
+
+**Context.** Buffers were held only by the mounted CodeMirror instance, and that
+instance is destroyed constantly: switching tabs, hiding the editor panel, going
+fullscreen on another panel, switching project. Everything typed since the last
+save went with it. A separate `dirty` flag survived, so a tab could claim
+unsaved changes for text that no longer existed anywhere — and "Keep mine",
+reading a single ref shared by every tab, could write one file's text into
+another, or truncate a file to nothing.
+
+**Decision.** Each open file carries its `draft` — what is on screen — beside
+`saved`, what is believed to be on disk. CodeMirror is seeded from the draft and
+reports every change back to it. Dirtiness is `draft !== saved`, derived rather
+than tracked.
+
+**Why.** The view is disposable and the text is not. Deriving dirtiness removes
+a whole class of bug on its own: a flag kept next to the text can disagree with
+it, and every one of those disagreements is a way for work to go missing —
+including the case where a save completes while the user is still typing, and
+the tab reports clean for a buffer that never reached the disk.
+
+**Consequence.** Undo history and cursor position are still lost when the editor
+is unmounted; the text is not, which is the part that cannot be reconstructed.
+Beacon holds one copy of each open file in memory, bounded by the same 2 MB
+limit that decides what is editable at all.
+
+## ADR-063: Quitting is the one thing Beacon asks about
+
+**Context.** Beacon deliberately has no confirmation dialogs. Removing a project
+leaves the repository alone, trashing a file is recoverable from Finder, and the
+hint says so at the point of decision rather than in a modal. But quitting with
+unsaved buffers discarded them without a word, and nothing else in the
+application can put them back.
+
+**Decision.** Closing the window is intercepted while any open file has a draft
+that is not on disk. Beacon names the files, and offers to save them all, to
+quit anyway, or to stay.
+
+**Why.** The rule was never "no dialogs"; it was "do not ask about things that
+are not destructive". Quitting is the exception that proves it — it is the only
+action in Beacon that destroys work existing nowhere else, and it cannot be
+undone afterwards from Finder or from git.
+
+**Consequence.** A save that is refused because the file moved on disk does not
+quit: the window stays, and the tab says what happened. Quitting is otherwise
+untouched, and a session with nothing unsaved never sees this.
+
+## ADR-064: A conflict is shown, not quietly resolved
+
+**Context.** Unstaging ran `git restore --staged`. On an unmerged path that
+exits 0 and leaves the file as an ordinary modification — git considers the
+conflict resolved — while `<<<<<<<`, `=======` and `>>>>>>>` are still in the
+file. It was then one click from being committed. `stage_all` had the same
+effect through `git add --all`. Separately, a conflicted file was listed as both
+staged and unstaged, so it appeared twice with opposite buttons.
+
+**Decision.** Conflicted paths have their own section and are refused by stage,
+unstage and stage-all. Staging one is allowed only once its markers are gone,
+which is what "mark resolved" means. Committing is disabled while any conflict
+remains.
+
+**Why.** Beacon deliberately does not resolve conflicts — the terminal is better
+at it, and that is already written down. But not doing something is different
+from offering a button that appears to do it and instead destroys the evidence
+that it needs doing. The failure was silent, produced a commit that compiles
+nowhere, and was reachable by accident from the button next to it.
+
+**Consequence.** Resolving still happens in the terminal or the editor. Beacon's
+part is to show that a conflict exists, keep it out of the way of everything
+else, and accept it once it is genuinely resolved.
+
+## ADR-065: Every git invocation has a deadline
+
+**Context.** Git commands ran without a timeout. A commit whose hook runs the
+test suite, a push whose credential helper stalls despite `GIT_TERMINAL_PROMPT`,
+or a signing commit waiting on a pinentry that has no terminal to draw on, all
+left the panel with every control disabled and no way out but restarting Beacon.
+
+**Decision.** Everything goes through one runner: 30 seconds for local commands,
+180 for commit, push and pull. Output is drained on its own threads, the child
+is killed when the deadline passes, and the message names the usual causes.
+Auto-housekeeping is switched off so nothing git forks can outlive the command
+and hold its output pipe open past that deadline.
+
+**Why.** A hang is worse than a failure. A failure says what happened and leaves
+the application usable; a hang looks like a bug in Beacon and costs the user the
+window, including whatever else was running in it.
+
+**Consequence.** A genuinely slow hook can be stopped at three minutes, which is
+the wrong answer for someone whose pre-commit suite is slower than that. The
+message says to run it in a terminal, which is where a commit that takes that
+long belongs anyway.
+
+## ADR-066: Beacon chooses the conversation, rather than finding out which one it got
+
+**Context.** A Claude session in Beacon had no identity beyond "the Claude of
+this project". Naming, resuming and forking all need one, and the obvious place
+to find it is Claude Code's own transcript directory — which Anthropic documents
+as internal and free to change.
+
+**Decision.** Beacon generates the conversation's UUID and hands it to Claude
+Code with `--session-id`, on a new session and on a fork alike. The id is known
+before the process exists. Nothing reads a transcript, ever.
+
+**Why.** The alternative is discovering afterwards what Claude picked, which
+means either parsing a private file format or waiting for a report before the
+session can be addressed at all. Choosing it removes both problems and a whole
+class of state: there is no "pending, id unknown" for anything to handle.
+
+**Consequence.** It only works on a Claude Code that has the flag. Everything
+built on it is behind a capability check and simply is not there otherwise, so
+an older install keeps exactly the behaviour it had.
+
+## ADR-067: A conversation exists when something has been said in it, not when a process starts
+
+**Context.** Beacon recorded a workstream as started the moment it spawned a
+Claude with that id, and used that to decide between `--session-id` and
+`--resume`. Driving the real CLI showed the flag was wrong in both directions:
+a session opened and never typed into answered *"No conversation found with
+session ID"* on resume, while one that had had a single turn refused
+`--session-id` with *"already in use"*.
+
+**Decision.** The flag means "Claude Code has a conversation under this id", is
+called `resumable`, and is set only by proof from inside the session: a hook
+event that can only have happened during a turn, or a status line report showing
+tokens in the context window. A session merely opening is explicitly not proof.
+
+**Why.** Claude Code writes nothing until the first exchange. Two states that
+look identical from outside — a process that started, and a conversation that
+exists — are on opposite sides of the boundary that decides which flag works.
+
+**Consequence.** The proof arrives through Beacon's own hooks or its status
+line. Without either installed, a workstream opened and abandoned before its
+first turn can be asked to resume and will say so in the terminal. Both are one
+click away in Settings, and both are what the rest of the integration already
+depends on.
+
+## ADR-068: Capabilities are read from Claude Code, not from a table of versions
+
+**Context.** Nearly everything in the cockpit work rests on a flag or an event
+that arrived at some point in Claude Code's history. The usual way to handle
+that is a minimum version per feature.
+
+**Decision.** Beacon runs `claude --help` and `claude agents --help` once and
+reads the flags out of what they print. No version thresholds.
+
+**Why.** A table of minimum versions is a list of guesses about when each flag
+landed. Wrong entries fail silently — a feature quietly stops being offered, or
+is offered and breaks — and nobody finds out for months. The help text is the
+program describing itself, and it cannot be out of date.
+
+**Consequence.** Three short processes on the first session, cached for the life
+of the daemon. Things no help text lists — which hook events exist, whether a
+task list id is honoured — are deliberately absent from the capability set; the
+honest test for those is whether anything ever arrives.
+
+## ADR-069: Subagents are passed per session, never installed
+
+**Context.** Beacon offers three subagents. They could be written into
+`~/.claude/agents/`, into each project's `.claude/agents/`, or handed to each
+session with `--agents`.
+
+**Decision.** `--agents`, per session, exactly as ADR-054 does for the MCP
+server. Nothing is installed, nothing needs uninstalling, a deleted Beacon
+leaves no trace, and a Claude the user starts in their own terminal is
+unaffected. Confirmed against the real CLI: `--agents` merges with the agents
+already configured rather than replacing them.
+
+**Why.** Writing into a project would put Beacon's opinion into a repository
+that belongs to somebody else and probably into their git history. Writing at
+user level would change what every Claude on the machine does, including the
+ones Beacon did not start.
+
+**Consequence.** The agents exist only in sessions Beacon started, which is the
+whole scope of the feature. A user who wants them everywhere can copy them; a
+user who wants none can switch them off, because the descriptions cost context
+in every session whether they are used or not.
+
+## ADR-070: Beacon says what a number means and does nothing about it
+
+**Context.** Beacon can now see the context window filling, the prompt cache
+going cold, and how much of the allowance is left. All of it invites automation:
+compact at 85%, start a clean session when the cache expires.
+
+**Decision.** Advice only. At most one message at a time, dismissible, and no
+action is ever taken on its own — no automatic compact, no automatic clear, no
+session started or switched by Beacon.
+
+**Why.** The choice between compacting and starting clean turns on whether the
+next thing is the same piece of work, and Beacon cannot know that. Compacting
+also costs tokens, so guessing wrong is not free. An application that acts on
+its own advice has made the decision the advice existed to inform.
+
+**Consequence.** Beacon will sit there showing 94% while the user carries on,
+which is correct: they may be three minutes from finishing.
+
+## ADR-071: A hook prints nothing
+
+**Context.** Claude Code parses a hook's stdout — anything that starts with `{`
+and ends with `}` is read as JSON. A third-party plugin on this machine emitted
+two JSON objects from one `SessionStart` hook, and every session began with a
+parse error at the top of the transcript.
+
+**Decision.** Beacon's hook writes nothing to stdout, nothing to stderr, and
+always exits zero, whatever it is given. Reporting is a line on a unix socket.
+An integration suite runs the real binary against every registered event and
+every malformed payload we could think of and asserts all three.
+
+**Why.** There is no way to get JSON wrong if you never emit any. A hook is
+registered once and then runs on every turn of every session on the machine,
+including long after anyone remembers it is there, so its failure mode has to be
+nothing at all.
+
+**Consequence.** Beacon cannot use the parts of the hook contract that need
+stdout — injecting context, denying a tool. It has never wanted to: it observes
+sessions, it does not steer them.

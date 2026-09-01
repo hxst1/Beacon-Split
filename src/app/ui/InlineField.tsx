@@ -10,6 +10,14 @@ interface InlineFieldProps {
   /** `accent` and `icon` are empty strings unless those pickers were shown. */
   onSubmit: (value: string, accent: string, icon: string) => void
   onCancel: () => void
+  /**
+   * Says what is wrong with a value, or `null` when nothing is.
+   *
+   * Without one, a form with an empty field simply ignored the submit and sat
+   * there looking broken. The default answers for the case every one of these
+   * forms shares: a thing being named needs a name.
+   */
+  validate?: (value: string) => string | null
   /** Shows the accent picker, starting from this colour. */
   withAccent?: string | undefined
   /** Shows the icon picker, starting from this emoji. */
@@ -28,16 +36,19 @@ export function InlineField({
   submitLabel,
   onSubmit,
   onCancel,
+  validate = requireAName,
   withAccent,
   withIcon,
 }: InlineFieldProps): React.ReactElement {
   const [value, setValue] = useState(initialValue)
   const [accent, setAccent] = useState(withAccent ?? '')
   const [icon, setIcon] = useState(withIcon ?? '')
+  const [problem, setProblem] = useState<string | null>(null)
 
   const submit = (): void => {
-    const trimmed = value.trim()
-    if (trimmed) onSubmit(trimmed, accent, icon)
+    const wrong = validate(value)
+    setProblem(wrong)
+    if (!wrong) onSubmit(value.trim(), accent, icon)
   }
 
   return (
@@ -48,12 +59,24 @@ export function InlineField({
         value={value}
         autoFocus
         spellCheck={false}
-        onChange={(event) => setValue(event.target.value)}
+        aria-label={label}
+        aria-invalid={problem !== null}
+        onChange={(event) => {
+          setValue(event.target.value)
+          // The complaint goes as soon as the user answers it.
+          setProblem(null)
+        }}
         onKeyDown={(event) => {
           if (event.key === 'Enter') submit()
           if (event.key === 'Escape') onCancel()
         }}
       />
+
+      {problem ? (
+        <span className={styles['problem']} role="alert">
+          {problem}
+        </span>
+      ) : null}
 
       {withAccent ? (
         <div className={styles['swatches']}>
@@ -107,4 +130,8 @@ export function InlineField({
       </div>
     </div>
   )
+}
+
+function requireAName(value: string): string | null {
+  return value.trim() ? null : 'Enter a name'
 }

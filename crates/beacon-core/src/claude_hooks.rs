@@ -25,7 +25,10 @@ const PREVIOUS_STATUS_LINE: &str = "beacon-splitPreviousStatusLine";
 ///
 /// Deliberately few. Every hook is a process Claude has to start, and only
 /// events that change what someone would *do* about a project earn one.
-const EVENTS: &[&str] = &[
+///
+/// Public so the hook itself can be checked against it: an event registered
+/// here that nothing reads is a process started for nothing, on every turn.
+pub const EVENTS: &[&str] = &[
     "PermissionRequest",
     "Notification",
     "PreToolUse",
@@ -37,6 +40,12 @@ const EVENTS: &[&str] = &[
     // install to refresh — rather than as absent.
     "SessionStart",
     "SessionEnd",
+    // Added after the rest, and last for the same reason. A subagent is the
+    // only thing Beacon shows that it could not otherwise know about: from
+    // outside, a session delegating a large search looks exactly like a session
+    // that has gone quiet.
+    "SubagentStart",
+    "SubagentStop",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

@@ -6,7 +6,9 @@
 //! not kill live Claude sessions, and everything here is meant to move there
 //! unchanged.
 
+pub mod agents;
 pub mod appearance;
+pub mod claude;
 pub mod claude_hooks;
 pub mod client;
 pub mod clips;
@@ -29,6 +31,7 @@ pub mod state;
 pub mod store;
 pub mod tools;
 pub mod ui_state;
+pub mod workstreams;
 
 pub use error::{CoreError, Result};
 pub use layout::{LayoutNode, LayoutPreset, PanelId, SplitDirection};

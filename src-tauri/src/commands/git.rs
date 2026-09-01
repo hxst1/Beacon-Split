@@ -9,8 +9,13 @@ use crate::state::AppState;
 ///
 /// Returns `None` when the project is not a repository, which is a normal state
 /// rather than an error to report.
+///
+/// Off-thread like the rest of this file. The panel asks for this every two
+/// seconds without being told to, and every git command here is allowed to
+/// take its timeout before giving up — an IPC worker held for that long is one
+/// that is not answering keystrokes.
 #[tauri::command]
-pub fn git_status(
+pub async fn git_status(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
@@ -18,14 +23,17 @@ pub fn git_status(
     let root = state
         .beacon()
         .resolve_project_path(&workspace_id, &project_id)?;
-    if !git::is_repository(&root) {
-        return Ok(None);
-    }
-    Ok(Some(git::status(&root)?))
+    run_off_thread(move || {
+        if !git::is_repository(&root) {
+            return Ok(None);
+        }
+        git::status(&root).map(Some)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_diff(
+pub async fn git_diff(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
@@ -36,11 +44,11 @@ pub fn git_diff(
     let root = state
         .beacon()
         .resolve_project_path(&workspace_id, &project_id)?;
-    Ok(git::diff(&root, &path, staged, untracked)?)
+    run_off_thread(move || git::diff(&root, &path, staged, untracked)).await
 }
 
 #[tauri::command]
-pub fn git_stage(
+pub async fn git_stage(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
@@ -49,12 +57,15 @@ pub fn git_stage(
     let root = state
         .beacon()
         .resolve_project_path(&workspace_id, &project_id)?;
-    git::stage(&root, &path)?;
-    Ok(git::status(&root)?)
+    run_off_thread(move || {
+        git::stage(&root, &path)?;
+        git::status(&root)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_unstage(
+pub async fn git_unstage(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
@@ -63,12 +74,15 @@ pub fn git_unstage(
     let root = state
         .beacon()
         .resolve_project_path(&workspace_id, &project_id)?;
-    git::unstage(&root, &path)?;
-    Ok(git::status(&root)?)
+    run_off_thread(move || {
+        git::unstage(&root, &path)?;
+        git::status(&root)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_stage_all(
+pub async fn git_stage_all(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
@@ -76,12 +90,20 @@ pub fn git_stage_all(
     let root = state
         .beacon()
         .resolve_project_path(&workspace_id, &project_id)?;
-    git::stage_all(&root)?;
-    Ok(git::status(&root)?)
+    run_off_thread(move || {
+        git::stage_all(&root)?;
+        git::status(&root)
+    })
+    .await
 }
 
+/// Commits, which is as slow as the repository's own hooks make it.
+///
+/// A pre-commit hook is somebody's whole test suite, so this belongs on the
+/// blocking pool for the same reason push and pull do: an IPC worker held for
+/// two minutes is one that is not answering anything else.
 #[tauri::command]
-pub fn git_commit(
+pub async fn git_commit(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
@@ -91,8 +113,11 @@ pub fn git_commit(
         .beacon()
         .resolve_project_path(&workspace_id, &project_id)?;
     // The message is the user's; nothing here logs it.
-    git::commit(&root, &message)?;
-    Ok(git::status(&root)?)
+    run_off_thread(move || {
+        git::commit(&root, &message)?;
+        git::status(&root)
+    })
+    .await
 }
 
 /// Push and pull talk to a network and can take as long as they like.
@@ -100,7 +125,8 @@ pub fn git_commit(
 /// They run on the blocking pool rather than on an IPC worker, so a slow remote
 /// cannot stall the commands that keep the window responsive. Git itself is
 /// configured never to stop and ask for a password — there is no terminal here
-/// for it to ask on, and it would simply hang.
+/// for it to ask on, and it would simply hang — and stops waiting for anything
+/// that will not finish, so a control the user cannot use never stays that way.
 #[tauri::command]
 pub async fn git_push(
     state: State<'_, AppState>,
@@ -125,9 +151,10 @@ pub async fn git_pull(
     run_off_thread(move || git::pull(&root)).await
 }
 
-async fn run_off_thread<F>(work: F) -> CommandResult<String>
+async fn run_off_thread<T, F>(work: F) -> CommandResult<T>
 where
-    F: FnOnce() -> beacon_core::Result<String> + Send + 'static,
+    T: Send + 'static,
+    F: FnOnce() -> beacon_core::Result<T> + Send + 'static,
 {
     tauri::async_runtime::spawn_blocking(work)
         .await

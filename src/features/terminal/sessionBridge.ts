@@ -1,6 +1,7 @@
 import { listen } from '@tauri-apps/api/event'
 
 import type {
+  AgentActivity,
   Clip,
   SessionActivity,
   SessionExit,
@@ -48,6 +49,8 @@ export interface ActivityWatcher {
   onClaudeActivity?: (report: SessionActivity) => void
   /** Claude Code said what a project's session is costing. */
   onUsage?: (report: UsageReport) => void
+  /** A subagent started or finished inside a project's Claude session. */
+  onAgent?: (report: AgentActivity) => void
   /** Claude filed something for the user to copy. */
   onClip?: (clip: Clip) => void
   /** The drawer changed wholesale — something was forgotten, or all of it. */
@@ -121,6 +124,9 @@ function ensureListening(): Promise<void> {
     }),
     listen<UsageReport>('session:usage', ({ payload }) => {
       for (const watcher of watchers) watcher.onUsage?.(payload)
+    }),
+    listen<AgentActivity>('session:agent', ({ payload }) => {
+      for (const watcher of watchers) watcher.onAgent?.(payload)
     }),
     listen<Clip>('clips:added', ({ payload }) => {
       for (const watcher of watchers) watcher.onClip?.(payload)

@@ -18,6 +18,9 @@ import type {
   Release,
   Requirement,
   Integration,
+  ClaudeCapabilities,
+  Workstreams,
+  OpenedWorkstream,
   UsageReport,
   GitStatus,
   EnvEntry,
@@ -25,6 +28,7 @@ import type {
   WriteOutcome,
   HostPlatform,
   LayoutNode,
+  NotificationPermission,
   LayoutPreset,
   PanelId,
   ScrollbackSnapshot,
@@ -100,6 +104,29 @@ export const ipc = {
   setReleaseNotices: (enabled: boolean) =>
     invoke<Snapshot>('set_release_notices', { enabled }),
 
+  /** Whether the file tree lists dotfiles. */
+  setShowHiddenFiles: (shown: boolean) =>
+    invoke<Snapshot>('set_show_hidden_files', { shown }),
+
+  /** Whether Beacon offers its own subagents. Takes effect on the next session. */
+  setClaudeAgents: (enabled: boolean) => invoke<Snapshot>('set_claude_agents', { enabled }),
+
+  /**
+   * What macOS will do with a notification right now.
+   *
+   * Asked every time rather than cached: the answer lives in System Settings
+   * and can change while Beacon is running.
+   */
+  notificationPermission: () => invoke<NotificationPermission>('notification_permission'),
+
+  /** Raises the system prompt. Returns before the user has answered it. */
+  requestNotificationPermission: () => invoke<void>('request_notification_permission'),
+
+  sendNotification: (title: string, body: string) =>
+    invoke<void>('send_notification', { title, body }),
+
+  openNotificationSettings: () => invoke<void>('open_notification_settings'),
+
   /** Everything this build has ever shipped, newest first. */
   releaseNotes: () => invoke<Release[]>('release_notes'),
 
@@ -158,6 +185,65 @@ export const ipc = {
   claudeHookStatus: () => invoke<HookStatus>('claude_hook_status'),
 
   claudeIntegration: () => invoke<Integration>('claude_integration'),
+
+  /** What the installed Claude Code can do. Cached in the backend. */
+  claudeCapabilities: () => invoke<ClaudeCapabilities>('claude_capabilities'),
+
+  // ---- Workstreams ----
+
+  /** A project's Claude conversations, most recently active first. */
+  listWorkstreams: (projectId: string) => invoke<Workstreams>('list_workstreams', { projectId }),
+
+  /**
+   * Starts a new conversation and moves the project's Claude into it.
+   *
+   * The gesture the feature exists for: finishing one thing and starting the
+   * next without carrying the first one's context into it.
+   */
+  startWorkstream: (
+    workspaceId: string,
+    projectId: string,
+    name: string | null,
+    cols: number,
+    rows: number,
+  ) =>
+    invoke<OpenedWorkstream>('start_workstream', { workspaceId, projectId, name, cols, rows }),
+
+  /**
+   * Returns the project to a conversation it already has.
+   *
+   * Refused when that conversation is open in another Claude: two processes in
+   * one conversation write over each other's history.
+   */
+  resumeWorkstream: (
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    cols: number,
+    rows: number,
+  ) => invoke<OpenedWorkstream>('resume_workstream', { workspaceId, projectId, id, cols, rows }),
+
+  /** Starts a new conversation carrying another's history. */
+  forkWorkstream: (
+    workspaceId: string,
+    projectId: string,
+    from: string,
+    name: string | null,
+    cols: number,
+    rows: number,
+  ) =>
+    invoke<OpenedWorkstream>('fork_workstream', {
+      workspaceId,
+      projectId,
+      from,
+      name,
+      cols,
+      rows,
+    }),
+
+  /** Renames one, or takes its name away when given nothing. */
+  renameWorkstream: (projectId: string, id: string, name: string | null) =>
+    invoke<void>('rename_workstream', { projectId, id, name }),
 
   /** Everything in the clip drawer, newest first. */
   sessionClips: () => invoke<Clip[]>('session_clips'),

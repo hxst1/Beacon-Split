@@ -3,11 +3,17 @@ import { useEffect, useState } from 'react'
 import { Popover } from '@/app/ui/Popover'
 
 import { selectActiveProject, useBeacon } from '@/app/store'
+import type { UsageReport } from '@/types/beacon'
 import {
+  adviceFor,
+  cacheIsCold,
+  contextHealth,
+  healthLabel,
   howLongAgo,
   isStale,
   levelOf,
   percent,
+  thousands,
   untilReset,
   useAccountUsage,
   useProjectUsage,
@@ -45,6 +51,7 @@ export function UsageMeter(): React.ReactElement | null {
   if (sessionUsed === null && contextUsed === null) return null
 
   const stale = isStale(account ?? projectUsage, now)
+  const advice = adviceFor(projectUsage?.report, now)
   const resets = untilReset(account?.report.fiveHourResetsAt, now)
   const weekUsed = percent(account?.report.sevenDayUsedPercentage)
   const reportedAt = account?.at ?? projectUsage?.at
@@ -147,9 +154,16 @@ export function UsageMeter(): React.ReactElement | null {
                     </span>
                   </div>
                 ) : null}
-                {contextUsed >= 75 ? (
+                <div className={styles['line']}>
+                  <span className={styles['lineLabel']}>Health</span>
+                  <span className={styles['lineValue']}>
+                    {healthLabel(contextHealth(contextUsed))}
+                  </span>
+                </div>
+                <Cache report={projectUsage?.report} now={now} />
+                {advice ? (
                   <div className={styles['note']}>
-                    Getting full. A `/clear` starts the conversation over and gives the room back.
+                    <strong>{advice.title}.</strong> {advice.detail}
                   </div>
                 ) : null}
               </>
@@ -171,7 +185,50 @@ export function UsageMeter(): React.ReactElement | null {
   )
 }
 
-/** `128,000` — easier to size up at a glance than a bare number. */
-function thousands(value: number): string {
-  return value.toLocaleString('en-US')
+/**
+ * What the prompt cache is doing, when Claude Code has said anything about it.
+ *
+ * Absent until the first API response, and absence is shown as absence: a cache
+ * reported as cold before there has been a request to cache would read as a
+ * warning about something that has not happened yet.
+ */
+function Cache({
+  report,
+  now,
+}: {
+  report: UsageReport | undefined
+  now: number
+}): React.ReactElement | null {
+  const cache = report?.promptCache
+  if (!cache) return null
+
+  const cold = cacheIsCold(cache, now)
+  const expires = untilReset(cache.expiresAt, now)
+  const ratio = cache.hitRatio === undefined ? null : Math.round(cache.hitRatio * 100)
+
+  return (
+    <>
+      <div className={styles['line']}>
+        <span className={styles['lineLabel']}>Cache</span>
+        <span className={styles['lineValue']}>
+          {cold ? 'cold' : 'warm'}
+          {ratio !== null ? ` · ${ratio}% hits` : ''}
+        </span>
+      </div>
+      {!cold && expires ? (
+        <div className={styles['line']}>
+          <span className={styles['lineLabel']}>Goes cold in</span>
+          <span className={styles['lineValue']}>{expires}</span>
+        </div>
+      ) : null}
+      {cold && cache.recacheTokensIfCold ? (
+        <div className={styles['line']}>
+          <span className={styles['lineLabel']}>Rebuilds</span>
+          <span className={styles['lineValue']}>
+            {thousands(cache.recacheTokensIfCold)} tokens
+          </span>
+        </div>
+      ) : null}
+    </>
+  )
 }

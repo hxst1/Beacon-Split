@@ -1,0 +1,99 @@
+/*
+ * Asked once, so it is allowed to be a screen rather than a banner — but it is
+ * still built from the same material as everything else, and it never shouts.
+ */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 6vh 6vw;
+  background: var(--scrim);
+  animation: fade var(--dur-2) var(--ease);
+}
+
+.panel {
+  width: min(420px, 100%);
+  padding: 20px 22px 18px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--solid-1);
+  box-shadow:
+    0 1px 0 0 var(--edge-light) inset,
+    0 0 0 1px var(--accent-line),
+    var(--shadow-screen);
+  animation: rise var(--dur-2) var(--ease);
+}
+
+.title {
+  margin: 0 0 12px;
+  color: var(--fg-1);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.body {
+  margin: 0 0 12px;
+  color: var(--fg-2);
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+
+.note {
+  margin: 0 0 18px;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.later {
+  flex: 1;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.later:hover {
+  color: var(--fg-2);
+}
+
+.allow {
+  padding: 6px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+.allow:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+.allow:disabled {
+  color: var(--fg-4);
+  cursor: default;
+}
+
+.settingsLink {
+  margin-top: 12px;
+  color: var(--accent-text);
+  font-size: var(--text-xs);
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(-8px) scale(0.995); }
+}

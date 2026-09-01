@@ -6,6 +6,7 @@ use crate::clips::{Clip, ClipKind};
 use crate::domain::{ClipId, ProjectId};
 use crate::session::{SessionId, SessionInfo, SessionKind};
 use crate::settings::ShellSpec;
+use crate::workstreams::{Workstream, WorkstreamId};
 
 /// The wire contract between Beacon and its session daemon.
 ///
@@ -35,7 +36,21 @@ use crate::settings::ShellSpec;
 /// for that with a forced daemon replacement would kill every running session
 /// on upgrade, which is a far worse trade than a report that goes missing until
 /// the daemon is next restarted.
-pub const PROTOCOL_VERSION: u32 = 4;
+///
+/// `UsageReport` grew the rest of the status line payload without a version for
+/// the same reason. Every field it gained is optional in both directions: an
+/// older daemon ignores what it does not recognise, and a newer client reads a
+/// missing field as unknown, which is what it already does for a plan that
+/// reports no rate limits. Nothing is left waiting on either side.
+///
+/// Version 5 added the workstream requests — `Workstreams`, `StartWorkstream`,
+/// `ResumeWorkstream`, `ForkWorkstream` and `RenameWorkstream` — and
+/// `ReportAgent`, which says a subagent started or stopped. Six new requests,
+/// so by the rule above the number had to move, and upgrading to it replaces a
+/// running daemon and the sessions it holds. Paid once, knowingly: an older
+/// daemon would reject every one of them, leaving a window that can list
+/// conversations it cannot open.
+pub const PROTOCOL_VERSION: u32 = 5;
 
 /// Newline-delimited JSON, one message per line.
 ///
@@ -80,15 +95,48 @@ pub enum ClaudeActivity {
 #[serde(rename_all = "camelCase")]
 pub struct UsageReport {
     pub project: ProjectId,
+    /// The conversation Claude Code is in, as it identifies it.
+    ///
+    /// The reason this is worth carrying: it is how a running session can be
+    /// matched to a workstream Beacon started, without reading a transcript.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// The name given with `--name` or `/rename`, when there is one.
+    ///
+    /// Absent for an automatic display name like `beacon-split-b7`, so this
+    /// says "the user named it", not "it has a name".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The model's identifier, kept beside its display name so a routing
+    /// decision can be made on something stable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    /// Reasoning effort, when the model has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<bool>,
     /// How much of the context window this session is using, 0..100.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_used_percentage: Option<f32>,
+    /// What is left, as Claude Code says it rather than as `100 - used`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_remaining_percentage: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_used_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_size: Option<u64>,
+    /// The prompt cache, when there has been an API response to observe.
+    ///
+    /// Grouped rather than flattened like the rate limits, because it arrives
+    /// as a group: nothing is known about the cache until the first response,
+    /// and then all of it is. A flat set of options would suggest the fields
+    /// can go missing one at a time, which is true of a rate-limit window and
+    /// not of this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache: Option<PromptCache>,
     /// How much of the five-hour allowance is gone, 0..100.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub five_hour_used_percentage: Option<f32>,
@@ -99,6 +147,71 @@ pub struct UsageReport {
     pub seven_day_used_percentage: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seven_day_resets_at: Option<i64>,
+    /// The spend limit, for accounts behind a gateway that sets one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spend_limit_used_percentage: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spend_limit_resets_at: Option<i64>,
+    /// The worktree the session is working in, when it is in one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<String>,
+}
+
+impl UsageReport {
+    /// A report about a project that has said nothing yet.
+    ///
+    /// Every field unknown rather than zero, which is the distinction the whole
+    /// type exists to keep: "not reported" and "none used" look identical on a
+    /// gauge and mean opposite things.
+    pub fn unknown(project: ProjectId) -> Self {
+        Self {
+            project,
+            session_id: None,
+            session_name: None,
+            model: None,
+            model_id: None,
+            effort: None,
+            thinking: None,
+            context_used_percentage: None,
+            context_remaining_percentage: None,
+            context_used_tokens: None,
+            context_size: None,
+            prompt_cache: None,
+            five_hour_used_percentage: None,
+            five_hour_resets_at: None,
+            seven_day_used_percentage: None,
+            seven_day_resets_at: None,
+            spend_limit_used_percentage: None,
+            spend_limit_resets_at: None,
+            worktree: None,
+        }
+    }
+}
+
+/// What the prompt cache is doing, as Claude Code reports it.
+///
+/// The number that changes a decision is `recache_tokens_if_cold`: a large
+/// context whose cache has gone cold will be paid for again on the next turn,
+/// and that is the moment a clean workstream is worth more than continuing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptCache {
+    /// Whether the cache is currently warm.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warm: Option<bool>,
+    /// 0..1, not a percentage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hit_ratio: Option<f32>,
+    /// Unix seconds when a warm cache goes cold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+    /// What the next turn would cost to write again if the cache were cold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recache_tokens_if_cold: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub misses: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_rebuilds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,6 +235,13 @@ pub enum Request {
         /// configured when the daemon happened to start.
         #[serde(default)]
         shell: Option<ShellSpec>,
+        /// Whether Beacon's own subagents are offered to a Claude session.
+        ///
+        /// Sent by the client for the same reason the shell is: the preference
+        /// belongs to the person, and the daemon reads no settings. Absent
+        /// means "the client did not say", which is treated as yes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agents: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
     Write { id: SessionId, data: String },
@@ -143,6 +263,13 @@ pub enum Request {
         rows: u16,
         #[serde(default)]
         shell: Option<ShellSpec>,
+        /// Whether Beacon's own subagents are offered to a Claude session.
+        ///
+        /// Sent by the client for the same reason the shell is: the preference
+        /// belongs to the person, and the daemon reads no settings. Absent
+        /// means "the client did not say", which is treated as yes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agents: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
     CloseProject { project: ProjectId },
@@ -157,10 +284,20 @@ pub enum Request {
         /// What it is doing, when there is something worth naming — the tool it
         /// just started, for instance.
         detail: Option<String>,
+        /// Which conversation is doing it.
+        ///
+        /// Carried because an event that can only happen inside a turn is proof
+        /// that the conversation exists — which is what decides whether the
+        /// next start resumes it or creates it. Optional so a hook payload
+        /// without one, or an older daemon, costs the proof and nothing else.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session: Option<String>,
     },
     /// Reported by Claude Code's status line, running inside a session.
     #[serde(rename_all = "camelCase")]
-    ReportUsage { usage: UsageReport },
+    /// Boxed so one large report does not set the size of every message on
+    /// the wire. `Box` is transparent to serde, so the line is unchanged.
+    ReportUsage { usage: Box<UsageReport> },
     /// Filed by the MCP server running inside a Claude session: something the
     /// user asked for in order to paste it somewhere else.
     ///
@@ -199,6 +336,97 @@ pub enum Request {
     /// `params` field, and `#[serde(flatten)]` cannot read an adjacently tagged
     /// enum back without one.
     List {},
+    /// Reported by a Claude Code hook when a subagent starts or stops.
+    ///
+    /// Separate from `Report` because it is about something inside a session
+    /// rather than about the session, and because it is the only thing in the
+    /// protocol that is deliberately forgotten: an agent that ran for twelve
+    /// seconds is worth seeing while it runs and worth nothing afterwards.
+    #[serde(rename_all = "camelCase")]
+    ReportAgent {
+        project: ProjectId,
+        /// Claude Code's id for this subagent, so a start and a stop pair up.
+        agent: String,
+        /// Which agent it is. Claude Code sometimes reports this empty.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent_type: Option<String>,
+        running: bool,
+        /// A short line about what it found, on the way out.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+    },
+    /// A project's conversations, and which one it is in.
+    #[serde(rename_all = "camelCase")]
+    Workstreams { project: ProjectId },
+    /// Starts a new conversation and moves the project into it.
+    ///
+    /// Carries the same session arguments as `Ensure` because that is what it
+    /// ends in: the project's Claude is replaced by one started in the new
+    /// conversation, and it needs a size and a directory like any other.
+    #[serde(rename_all = "camelCase")]
+    StartWorkstream {
+        project: ProjectId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        cwd: PathBuf,
+        cols: u16,
+        rows: u16,
+        #[serde(default)]
+        shell: Option<ShellSpec>,
+        /// Whether Beacon's own subagents are offered to a Claude session.
+        ///
+        /// Sent by the client for the same reason the shell is: the preference
+        /// belongs to the person, and the daemon reads no settings. Absent
+        /// means "the client did not say", which is treated as yes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agents: Option<bool>,
+    },
+    /// Returns to a conversation the project already has.
+    #[serde(rename_all = "camelCase")]
+    ResumeWorkstream {
+        project: ProjectId,
+        id: WorkstreamId,
+        cwd: PathBuf,
+        cols: u16,
+        rows: u16,
+        #[serde(default)]
+        shell: Option<ShellSpec>,
+        /// Whether Beacon's own subagents are offered to a Claude session.
+        ///
+        /// Sent by the client for the same reason the shell is: the preference
+        /// belongs to the person, and the daemon reads no settings. Absent
+        /// means "the client did not say", which is treated as yes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agents: Option<bool>,
+    },
+    /// Starts a new conversation carrying another's history.
+    #[serde(rename_all = "camelCase")]
+    ForkWorkstream {
+        project: ProjectId,
+        from: WorkstreamId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        cwd: PathBuf,
+        cols: u16,
+        rows: u16,
+        #[serde(default)]
+        shell: Option<ShellSpec>,
+        /// Whether Beacon's own subagents are offered to a Claude session.
+        ///
+        /// Sent by the client for the same reason the shell is: the preference
+        /// belongs to the person, and the daemon reads no settings. Absent
+        /// means "the client did not say", which is treated as yes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agents: Option<bool>,
+    },
+    /// Renames one, or takes its name away when told `None`.
+    #[serde(rename_all = "camelCase")]
+    RenameWorkstream {
+        project: ProjectId,
+        id: WorkstreamId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
     /// Asks the daemon to stop. Used when a client finds a version it does not
     /// speak.
     Shutdown {},
@@ -251,6 +479,20 @@ pub enum Reply {
     Clips {
         clips: Vec<Clip>,
     },
+    /// A project's conversations, most recently active first.
+    #[serde(rename_all = "camelCase")]
+    Workstreams {
+        workstreams: Vec<Workstream>,
+        /// Which one the project is in, when it is in one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        current: Option<WorkstreamId>,
+    },
+    /// One conversation, and the session now running it.
+    #[serde(rename_all = "camelCase")]
+    Workstream {
+        workstream: Box<Workstream>,
+        session: SessionInfo,
+    },
     Done,
 }
 
@@ -289,7 +531,7 @@ pub enum Event {
         code: Option<i32>,
     },
     /// A project's Claude session reported what it is costing.
-    Usage(UsageReport),
+    Usage(Box<UsageReport>),
     /// A clip was filed, by this window's session or by another's.
     ///
     /// Broadcast rather than answered to the sender: the sender is the MCP
@@ -300,6 +542,19 @@ pub enum Event {
     /// drift from one that missed an event.
     #[serde(rename_all = "camelCase")]
     Clips { clips: Vec<Clip> },
+    /// A subagent started or finished inside a project's Claude session.
+    ///
+    /// Broadcast and kept nowhere. It is activity, not history.
+    #[serde(rename_all = "camelCase")]
+    Agent {
+        project: ProjectId,
+        agent: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent_type: Option<String>,
+        running: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+    },
     /// A project's Claude session said what it is doing.
     #[serde(rename_all = "camelCase")]
     Activity {
@@ -350,6 +605,7 @@ mod tests {
                 cols: 80,
                 rows: 24,
                 shell: None,
+                agents: Some(true),
             },
         };
 
@@ -378,6 +634,7 @@ mod tests {
                 cols: 80,
                 rows: 24,
                 shell: None,
+                agents: None,
             },
             Request::Write {
                 id: id.clone(),
@@ -394,21 +651,25 @@ mod tests {
                 project: project.clone(),
                 kind: SessionKind::Claude,
                 slot: 0,
-                cwd,
+                cwd: cwd.clone(),
                 cols: 80,
                 rows: 24,
                 shell: None,
+                agents: Some(false),
             },
-            Request::CloseProject { project },
+            Request::CloseProject {
+                project: project.clone(),
+            },
             Request::List {},
             Request::Shutdown {},
             Request::Report {
                 project: ProjectId("pj_y".into()),
                 activity: ClaudeActivity::Waiting,
                 detail: Some("Bash".into()),
+                session: Some("cafb8c86-53eb-49c4-a8b8-609e5cbc0f49".into()),
             },
             Request::ReportUsage {
-                usage: sample_usage(),
+                usage: Box::new(sample_usage()),
             },
             Request::Usage {},
             Request::Clip {
@@ -421,6 +682,49 @@ mod tests {
             Request::ForgetClips {
                 id: Some(ClipId("cl_x".into())),
             },
+            Request::Workstreams {
+                project: ProjectId("pj_y".into()),
+            },
+            Request::StartWorkstream {
+                project: ProjectId("pj_y".into()),
+                name: Some("auth-refactor".into()),
+                cwd: cwd.clone(),
+                cols: 80,
+                rows: 24,
+                shell: None,
+                agents: Some(true),
+            },
+            Request::ResumeWorkstream {
+                project: ProjectId("pj_y".into()),
+                id: WorkstreamId("cafb8c86-53eb-49c4-a8b8-609e5cbc0f49".into()),
+                cwd: cwd.clone(),
+                cols: 80,
+                rows: 24,
+                shell: None,
+                agents: None,
+            },
+            Request::ForkWorkstream {
+                project: ProjectId("pj_y".into()),
+                from: WorkstreamId("cafb8c86-53eb-49c4-a8b8-609e5cbc0f49".into()),
+                name: None,
+                cwd,
+                cols: 80,
+                rows: 24,
+                shell: None,
+                agents: Some(true),
+            },
+            Request::RenameWorkstream {
+                project: ProjectId("pj_y".into()),
+                id: WorkstreamId("cafb8c86-53eb-49c4-a8b8-609e5cbc0f49".into()),
+                name: Some("payments-bug".into()),
+            },
+            Request::ReportAgent {
+                project: ProjectId("pj_y".into()),
+                agent: "a0718b64719533846".into(),
+                agent_type: Some("beacon-explorer".into()),
+                running: false,
+                summary: Some("Found 4 relevant files".into()),
+            },
         ];
 
         // A guard, not a formality. Adding a request without moving
@@ -428,7 +732,7 @@ mod tests {
         // replaced, which is exactly what happened once already.
         assert_eq!(
             requests.len(),
-            16,
+            22,
             "the set of requests changed: PROTOCOL_VERSION must change with it"
         );
 
@@ -592,15 +896,13 @@ mod tests {
 
     fn sample_usage() -> UsageReport {
         UsageReport {
-            project: ProjectId("pj_x".into()),
             model: Some("claude-sonnet-4-6".into()),
             context_used_percentage: Some(37.5),
             context_used_tokens: Some(75_000),
             context_size: Some(200_000),
             five_hour_used_percentage: Some(12.0),
             five_hour_resets_at: Some(1_800_000_000),
-            seven_day_used_percentage: None,
-            seven_day_resets_at: None,
+            ..UsageReport::unknown(ProjectId("pj_x".into()))
         }
     }
 

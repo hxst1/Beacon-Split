@@ -27,6 +27,7 @@ pub const ACTIONS: &[(&str, &str)] = &[
     // pressed.
     ("panel.focusNext", "mod+alt+arrowright"),
     ("panel.focusPrevious", "mod+alt+arrowleft"),
+    ("editor.save", "mod+s"),
     ("session.restartClaude", "mod+shift+r"),
     ("project.next", "mod+shift+]"),
     ("project.previous", "mod+shift+["),

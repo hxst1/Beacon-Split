@@ -1,3 +1,4 @@
+import { useEditor } from '@/features/editor/openFiles'
 import { panelsOf, prune } from '@/lib/layout'
 import { hasPrimaryModifier, isMac } from '@/lib/platform'
 import type { ActionBinding, PanelId } from '@/types/beacon'
@@ -30,6 +31,21 @@ const HANDLERS: Record<string, () => void> = {
   'panel.focusNext': () => shiftFocus(1),
   'panel.focusPrevious': () => shiftFocus(-1),
 
+  // Bound at the application level, not only inside CodeMirror: the file with
+  // unsaved changes is the one you were just editing, and Cmd+S doing nothing
+  // because focus had moved to a tab or the tree is how work gets lost.
+  'editor.save': () => {
+    const store = useBeacon.getState()
+    const workspace = store.snapshot?.activeWorkspace
+    const project = activeProjectId(store)
+    if (!workspace || !project) return
+
+    const editor = useEditor.getState()
+    const open = editor.byProject[project] ?? []
+    const active = open.find((file) => file.path === editor.active[project]) ?? open.at(-1)
+    if (active) void editor.save(workspace, project, active.path)
+  },
+
   'session.restartClaude': () => {
     const store = useBeacon.getState()
     const project = activeProjectId(store)
@@ -52,6 +68,7 @@ export const ACTION_TITLES: Record<string, string> = {
   'panel.fullscreen': 'Fullscreen the focused panel',
   'panel.focusNext': 'Focus the next panel',
   'panel.focusPrevious': 'Focus the previous panel',
+  'editor.save': 'Save the file',
   'session.restartClaude': 'Restart Claude',
   'project.next': 'Next project',
   'project.previous': 'Previous project',

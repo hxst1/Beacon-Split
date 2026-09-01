@@ -91,6 +91,18 @@ interface BeaconState {
   stopProject: (projectId: string) => Promise<void>
   /** Replaces one of the project's sessions with a fresh one. */
   restartSession: (projectId: string, kind: SessionKind, slot?: number) => Promise<void>
+  /**
+   * Throws away a session's view and builds it again.
+   *
+   * The half of a restart that belongs to the window: the process has already
+   * been replaced by whoever called this. Separate because switching
+   * workstreams replaces a Claude session too, and the view has to be rebuilt
+   * the same way — without going through `restartSession`, which would start a
+   * second one.
+   */
+  rebuildSession: (projectId: string, kind: SessionKind, slot?: number) => void
+  /** Says something went wrong, in the one place the window says such things. */
+  notify: (message: string) => void
   /** Moves a project among its siblings; tab order is project order. */
   reorderProject: (projectId: string, to: number) => Promise<void>
   moveProject: (projectId: string, targetWorkspaceId: string) => Promise<void>
@@ -114,6 +126,10 @@ interface BeaconState {
   setNotifications: (enabled: boolean) => Promise<void>
   markReleasesSeen: () => Promise<void>
   setReleaseNotices: (enabled: boolean) => Promise<void>
+  /** Whether the file tree lists dotfiles. */
+  setShowHiddenFiles: (shown: boolean) => Promise<void>
+  /** Whether Beacon offers its own subagents. Takes effect on the next session. */
+  setClaudeAgents: (enabled: boolean) => Promise<void>
   setBinding: (action: string, binding: string | null) => Promise<string | null>
   resetBindings: () => Promise<void>
   /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
@@ -233,6 +249,18 @@ export const useBeacon = create<BeaconState>((set, get) => {
       await run(() => ipc.reorderProject(workspaceId, projectId, to))
     },
 
+    rebuildSession: (projectId, kind, slot = 0) => {
+      disposeFor(projectId, kind, slot)
+      set((state) => {
+        const key = `${projectId}:${kind}:${slot}`
+        return {
+          sessionEpoch: { ...state.sessionEpoch, [key]: (state.sessionEpoch[key] ?? 0) + 1 },
+        }
+      })
+    },
+
+    notify: (message) => set({ notice: message }),
+
     restartSession: async (projectId, kind, slot = 0) => {
       const workspaceId = requireWorkspace()
       if (!workspaceId) return
@@ -240,13 +268,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
         // The view is rebuilt from scratch, so its size is measured again
         // anyway; these are only the grid the new process starts with.
         await ipc.restartSession(workspaceId, projectId, kind, slot, 80, 24)
-        disposeFor(projectId, kind, slot)
-        set((state) => {
-          const key = `${projectId}:${kind}:${slot}`
-          return {
-            sessionEpoch: { ...state.sessionEpoch, [key]: (state.sessionEpoch[key] ?? 0) + 1 },
-          }
-        })
+        get().rebuildSession(projectId, kind, slot)
       } catch (error) {
         set({ notice: errorMessage(error) })
       }
@@ -294,6 +316,10 @@ export const useBeacon = create<BeaconState>((set, get) => {
     markReleasesSeen: () => run(() => ipc.markReleasesSeen()),
 
     setReleaseNotices: (enabled) => run(() => ipc.setReleaseNotices(enabled)),
+
+    setShowHiddenFiles: (shown) => run(() => ipc.setShowHiddenFiles(shown)),
+
+    setClaudeAgents: (enabled) => run(() => ipc.setClaudeAgents(enabled)),
 
     setBinding: async (action, binding) => {
       try {

@@ -96,6 +96,10 @@ export interface Snapshot {
   unseenReleases: Release[]
   /** Whether a new version announces itself, rather than waiting to be asked. */
   releaseNotices: boolean
+  /** Whether the file tree lists dotfiles. */
+  showHiddenFiles: boolean
+  /** Whether Beacon offers its own subagents to the sessions it starts. */
+  claudeAgents: boolean
   projectsHome: string
 }
 
@@ -157,6 +161,21 @@ export type Activity = 'working' | 'idle' | 'stopped' | 'waiting' | 'done'
  * `waiting` or `done` that has quietly stopped being true.
  */
 export type ClaudeActivity = 'working' | 'waiting' | 'done' | 'idle' | 'ended'
+
+/**
+ * What macOS will currently do with a notification from Beacon.
+ *
+ * `unavailable` is not a refusal: it means this build is not a bundled
+ * application — every `tauri dev` run — so macOS has nothing to attribute a
+ * notification to. It calls for different advice than `denied`, which is why it
+ * is not folded into it.
+ */
+export type NotificationPermission =
+  | 'notDetermined'
+  | 'denied'
+  | 'authorized'
+  | 'provisional'
+  | 'unavailable'
 
 export interface SessionActivity {
   project: string
@@ -260,6 +279,109 @@ export interface Integration {
 }
 
 /**
+ * A subagent starting or finishing inside a Claude session.
+ *
+ * Kept nowhere: it is activity, not history. An agent that ran for twelve
+ * seconds is worth seeing while it runs and worth nothing afterwards.
+ */
+export interface AgentActivity {
+  project: string
+  /** Claude Code's id, so a start and a stop pair up. */
+  agent: string
+  /** Which agent it is. Claude Code sometimes reports this empty, hence absent. */
+  agentType?: string
+  running: boolean
+  /** One line of what it found, on the way out. */
+  summary?: string
+}
+
+/**
+ * One piece of work, and the Claude conversation that belongs to it.
+ *
+ * The id is the conversation's, chosen by Beacon and handed to Claude Code with
+ * `--session-id`. Nothing here is read out of a transcript.
+ */
+export interface Workstream {
+  id: string
+  project: string
+  /**
+   * What it was called, if it was called anything.
+   *
+   * Absent rather than defaulted: a name Beacon invented would be
+   * indistinguishable from one you chose.
+   */
+  name?: string
+  /** Unix seconds. */
+  createdAt: number
+  lastActiveAt: number
+  /** The conversation this was forked from. */
+  forkedFrom?: string
+  /**
+   * Whether the conversation exists as far as Claude Code is concerned.
+   *
+   * Not the same as "Beacon has started a process with this id": Claude Code
+   * writes nothing until the first exchange, so a session opened and never
+   * typed into leaves nothing to resume or fork.
+   */
+  resumable: boolean
+  model?: string
+  contextUsedPercentage?: number
+}
+
+/** A project's conversations, most recently active first. */
+export interface Workstreams {
+  workstreams: Workstream[]
+  /** Which one the project is in, when it is in one. */
+  current?: string
+}
+
+/** One conversation, and the Claude session now running it. */
+export interface OpenedWorkstream {
+  workstream: Workstream
+  session: SessionInfo
+}
+
+/** What to show for a conversation nobody named. */
+export function workstreamLabel(workstream: Workstream): string {
+  return workstream.name ?? workstream.id.split('-')[0]!
+}
+
+/**
+ * What the installed Claude Code offers Beacon.
+ *
+ * Read out of the CLI's own `--help`, not out of a table of version numbers, so
+ * a feature that is missing hides itself instead of failing. Some things cannot
+ * be asked about at all — which hook events exist, whether a task list id is
+ * honoured — and are deliberately absent here: the honest test for those is
+ * whether anything ever arrives.
+ */
+export interface ClaudeCapabilities {
+  /** Exactly what `claude --version` printed. */
+  version?: string
+  parsedVersion?: { major: number; minor: number; patch: number }
+  /** `--session-id`: Beacon chooses the conversation's id when it starts one. */
+  assignedSessionId: boolean
+  /** `-n, --name` */
+  namedSessions: boolean
+  resume: boolean
+  forkSession: boolean
+  worktree: boolean
+  /** `--agents`: agents that live for one session and write nothing to the repo. */
+  sessionAgents: boolean
+  sessionSettings: boolean
+  appendSystemPrompt: boolean
+  effort: boolean
+  model: boolean
+  /** `claude agents --json`: which sessions exist, said rather than inferred. */
+  sessionListing: boolean
+}
+
+/** Whether named, resumable workstreams are possible at all. */
+export function supportsWorkstreams(capabilities: ClaudeCapabilities): boolean {
+  return capabilities.assignedSessionId && capabilities.namedSessions && capabilities.resume
+}
+
+/**
  * What a Claude session is costing, as Claude Code reports it.
  *
  * Every field is optional because Claude Code fills in what it knows. A missing
@@ -267,15 +389,55 @@ export interface Integration {
  */
 export interface UsageReport {
   project: string
+  /** The conversation Claude Code is in. How a session becomes addressable. */
+  sessionId?: string
+  /**
+   * The name set with `--name` or `/rename`.
+   *
+   * Absent for an automatic display name like `beacon-split-b7`, so this says
+   * "the user named it", not "it has a name".
+   */
+  sessionName?: string
   model?: string
+  /** The model's identifier, for decisions that need something stable. */
+  modelId?: string
+  /** Reasoning effort, when the model has one. */
+  effort?: string
+  thinking?: boolean
   contextUsedPercentage?: number
+  /** What is left, as Claude Code states it rather than as `100 - used`. */
+  contextRemainingPercentage?: number
   contextUsedTokens?: number
   contextSize?: number
+  /** Absent until there has been an API response to observe. */
+  promptCache?: PromptCache
   fiveHourUsedPercentage?: number
   /** Unix seconds. */
   fiveHourResetsAt?: number
   sevenDayUsedPercentage?: number
   sevenDayResetsAt?: number
+  spendLimitUsedPercentage?: number
+  spendLimitResetsAt?: number
+  /** The worktree the session is working in, when it is in one. */
+  worktree?: string
+}
+
+/**
+ * What the prompt cache is doing.
+ *
+ * The number that changes a decision is `recacheTokensIfCold`: a large context
+ * whose cache has gone cold is paid for again on the next turn, and that is the
+ * moment a clean workstream is worth more than continuing.
+ */
+export interface PromptCache {
+  warm?: boolean
+  /** 0..1, not a percentage. */
+  hitRatio?: number
+  /** Unix seconds when a warm cache goes cold. */
+  expiresAt?: number
+  recacheTokensIfCold?: number
+  misses?: number
+  expectedRebuilds?: number
 }
 
 // ---- files ------------------------------------------------------------------
@@ -305,7 +467,16 @@ export type FileContents =
  */
 export type FileRead = FileContents & { revision?: number }
 
-export type WriteOutcome = 'written' | 'stale' 
+/**
+ * How a write ended.
+ *
+ * A successful write carries the revision the file now has: reading it back in
+ * a second call would leave a window in which someone else's write becomes the
+ * stamp Beacon believes is its own.
+ */
+export type WriteOutcome =
+  | { outcome: 'written'; revision?: number }
+  | { outcome: 'stale' }
 
 /**
  * One assignment in a `.env` file.
@@ -343,6 +514,12 @@ export interface GitEntry {
   staged: FileState
   /** What has changed since, in the working tree. */
   unstaged: FileState
+  /**
+   * Unmerged: the path has conflict stages in the index rather than one entry.
+   * Reported by the backend because the two states alone do not say so — `AA`
+   * and `DD` are conflicts that never mention `U`.
+   */
+  conflicted: boolean
 }
 
 export interface GitStatus {

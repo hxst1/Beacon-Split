@@ -26,6 +26,10 @@ export function useShortcuts(): void {
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!hasPrimaryModifier(event)) return
+      // Whatever has focus got there first. The editor handles Cmd+S and its
+      // own search bindings itself and marks them handled; running the
+      // application binding as well would do the same thing twice.
+      if (event.defaultPrevented) return
 
       const pressed = bindingOf(event)
       if (!pressed) return
@@ -47,8 +51,13 @@ export function useShortcuts(): void {
           (binding.action === 'palette.open' || binding.action === 'quickOpen.open'),
       )
       if (!overlayAction) {
+        // A plain field is left alone: its native editing shortcuts do not mark
+        // themselves handled, so an application binding would quietly shadow
+        // one. The code editor is not in that position — it claims what it
+        // wants above — and shortcuts dying whenever the cursor was in a file
+        // made half the keyboard layer feel broken.
         const target = event.target as HTMLElement | null
-        if (target?.tagName === 'INPUT' || target?.isContentEditable) return
+        if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return
       }
 
       if (runBinding(event, bindings)) event.preventDefault()

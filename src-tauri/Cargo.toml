@@ -22,7 +22,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"
-tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
@@ -33,5 +32,31 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # macOS can only ever add an effect — passing it `None` removes nothing — and
 # which discards the result, so a failure is silent. Both matter for a setting
 # the user toggles.
-[target.'cfg(target_os = "macos")'.dependencies]
 window-vibrancy = "0.6"
+
+# macOS notifications are done natively rather than through
+# tauri-plugin-notification: only UserNotifications.framework can report the
+# real authorisation state and raise the system prompt. See ADR-059.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+tauri-plugin-notification = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSError", "NSBundle"] }
+block2 = "0.6"
+
+[target.'cfg(target_os = "macos")'.dependencies.objc2-user-notifications]
+version = "0.3"
+default-features = false
+features = [
+  "std",
+  "alloc",
+  "block2",
+  "UNUserNotificationCenter",
+  "UNNotificationSettings",
+  "UNNotificationContent",
+  "UNNotificationRequest",
+  "UNNotificationTrigger",
+  "UNNotificationSound",
+  "UNError",
+]

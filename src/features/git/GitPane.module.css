@@ -56,6 +56,10 @@
   padding: 4px 0 8px;
 }
 
+.list:focus {
+  outline: none;
+}
+
 .section {
   display: flex;
   align-items: center;
@@ -65,6 +69,12 @@
   font-size: var(--text-xs);
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.hint {
+  padding: 0 10px 4px;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
 }
 
 .row {
@@ -128,7 +138,14 @@
   transition: opacity var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 
-.row:hover .stage {
+/*
+ * Revealed on focus as well as on hover. Hidden behind `opacity: 0`, the
+ * button still took focus and still painted its focus ring — invisibly — so
+ * tabbing through the list went through a control nobody could see.
+ */
+.row:hover .stage,
+.row:focus-within .stage,
+.stage:focus-visible {
   opacity: 1;
 }
 
@@ -196,15 +213,97 @@
   color: var(--danger);
 }
 
+.diffView {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.diffHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-width: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-1);
+  font-size: var(--text-xs);
+}
+
+.back {
+  flex: none;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-3);
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.back:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
+.diffPath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffBadge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-sm);
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.diffAction {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.diffAction:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--fg-1);
+}
+
+.diffAction:disabled {
+  opacity: 0.35;
+}
+
 .diff {
-  border-top: 1px solid var(--line-1);
-  max-height: 45%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 6px 0;
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
   user-select: text;
+}
+
+.diff:focus {
+  outline: none;
+}
+
+/* Focused to be scrolled, not to be edited, so the ring is drawn quietly. */
+.diff:focus-visible {
+  outline: 1px solid var(--accent-line);
+  outline-offset: -1px;
 }
 
 .diffLine {

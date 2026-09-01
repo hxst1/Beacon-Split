@@ -9,6 +9,7 @@ import { startActivityTracking } from '@/features/terminal/activity'
 import { checkForUpdate } from '@/features/releases/updates'
 import { startNotifications } from '@/features/terminal/notify'
 import { startUsageTracking } from '@/features/usage/usage'
+import { startAgentTracking } from '@/features/workstreams/agents'
 
 export function App(): React.ReactElement {
   const status = useBeacon((s) => s.status)
@@ -23,6 +24,7 @@ export function App(): React.ReactElement {
       startConnectionTracking(),
       startActivityTracking(),
       startUsageTracking(),
+      startAgentTracking(),
       startClipTracking(),
       startSystemThemeTracking(),
       startNotifications(),

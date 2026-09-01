@@ -69,6 +69,20 @@ pub struct Settings {
     /// shows there is something to read, and reading it is a click away.
     #[serde(default = "yes")]
     pub release_notices: bool,
+    /// Whether Beacon offers its own subagents to the sessions it starts.
+    ///
+    /// On by default, and a switch because it is not free: the agents'
+    /// descriptions and the routing policy sit in the main conversation's
+    /// context in every session, used or not. Somebody whose projects already
+    /// define their own agents should be able to say so.
+    #[serde(default = "yes")]
+    pub claude_agents: bool,
+    /// Whether the file tree lists dotfiles.
+    ///
+    /// Off by default: `.git` and friends are noise most of the time, and the
+    /// toggle is right there in the panel for the times they are not.
+    #[serde(default)]
+    pub show_hidden_files: bool,
     /// How the window looks. Stored whole rather than only when changed: unlike
     /// a shortcut, every field here is always in effect.
     #[serde(default)]
@@ -96,6 +110,8 @@ impl Default for Settings {
             notifications: true,
             last_seen_version: None,
             release_notices: true,
+            show_hidden_files: false,
+            claude_agents: true,
             appearance: Appearance::default(),
         }
     }

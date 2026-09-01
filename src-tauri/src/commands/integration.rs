@@ -1,3 +1,4 @@
+use beacon_core::claude::{self, Capabilities};
 use beacon_core::claude_hooks::{self, HookStatus};
 use beacon_core::client::daemon_binary_path;
 use beacon_core::requirements::{self, Requirement};
@@ -112,4 +113,14 @@ pub fn remove_claude_hooks() -> CommandResult<HookStatus> {
 #[tauri::command]
 pub fn claude_hook_command() -> String {
     hook_command()
+}
+
+/// What the installed Claude Code can do, so a feature built on a flag it does
+/// not have can hide rather than fail.
+///
+/// Worked out once per process and cached in `beacon-core`: it costs three
+/// short processes and cannot change under a running binary.
+#[tauri::command]
+pub fn claude_capabilities() -> Capabilities {
+    claude::capabilities().clone()
 }

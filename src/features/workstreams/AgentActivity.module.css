@@ -1,0 +1,68 @@
+/*
+ * A row that appears while work is delegated and then goes away.
+ *
+ * It has to be noticeable enough to answer "is it stuck?" and quiet enough that
+ * a session which delegates constantly does not turn the header into a status
+ * feed. So: a dot, a word, a number, and no colour.
+ */
+.activity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  animation: appear var(--dur-2) var(--ease);
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--fg-3);
+  animation: breathe 1.6s var(--ease) infinite;
+}
+
+/* Finished: it stops moving. The row itself leaves a few seconds later. */
+.dot[data-done='true'] {
+  background: var(--fg-4);
+  animation: none;
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.label {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.more {
+  opacity: 0.8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity,
+  .dot {
+    animation: none;
+  }
+}

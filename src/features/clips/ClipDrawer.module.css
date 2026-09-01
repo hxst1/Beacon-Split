@@ -11,9 +11,18 @@
 
 /* ---- the tab ------------------------------------------------------------- */
 
+/*
+ * Anchored to the bottom of the window rather than to its middle.
+ *
+ * Centred, it landed on the right edge of whichever panel occupied the middle
+ * of the right column — in the default layout, exactly over the git pane's
+ * Pull and Push buttons. The bottom-right corner is the one stretch of that
+ * edge nothing else claims: panel actions sit at the top of their panel, and
+ * the drawer itself stops above the status bar.
+ */
 .tab {
   position: fixed;
-  top: 50%;
+  bottom: calc(var(--statusbar-height) + 12px);
   right: 0;
   z-index: 45;
   display: flex;
@@ -22,7 +31,6 @@
   width: 18px;
   height: 76px;
   padding: 0;
-  transform: translateY(-50%);
   border: 1px solid var(--line-1);
   border-right: none;
   border-radius: var(--radius-md) 0 0 var(--radius-md);
