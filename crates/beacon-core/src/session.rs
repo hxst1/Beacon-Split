@@ -313,9 +313,14 @@ pub struct SessionManager {
     /// One session per (project, kind, slot), so switching tabs reuses rather
     /// than respawns, and a project can hold several terminals at once.
     by_project: Mutex<HashMap<(ProjectId, SessionKind, u32), SessionId>>,
-    /// Where `claude` lives, worked out once. `None` means it was looked for
-    /// and not found.
-    claude_path: OnceLock<Option<PathBuf>>,
+    /// Where `claude` lives, worked out once.
+    ///
+    /// Only an answer is kept. Finding it means asking the user's login shell,
+    /// which is allowed a few seconds and can miss that deadline on a machine
+    /// that is briefly busy — right after an upgrade, say. Remembering that
+    /// miss would leave a daemon that outlives the window telling every
+    /// session for the rest of the day that Claude Code is not installed.
+    claude_path: OnceLock<PathBuf>,
     /// The socket a Claude session's hooks should report to.
     ///
     /// Only the daemon knows this, and only Claude sessions are told: a shell
@@ -422,17 +427,20 @@ impl SessionManager {
                 Ok(command)
             }
             SessionKind::Claude => {
-                let path = self
-                    .claude_path
-                    .get_or_init(|| resolve_program("claude"))
-                    .as_ref()
-                    .ok_or_else(|| {
-                        CoreError::invalid(
-                            "could not find the claude command. Install Claude Code, or make sure \
-                             it is on the PATH your login shell sets.",
-                        )
-                    })?;
-                let mut command = CommandBuilder::new(path);
+                let path = match self.claude_path.get() {
+                    Some(path) => path.clone(),
+                    None => {
+                        let found = resolve_program("claude").ok_or_else(|| {
+                            CoreError::invalid(
+                                "could not find the claude command. Install Claude Code, or make \
+                                 sure it is on the PATH your login shell sets.",
+                            )
+                        })?;
+                        let _ = self.claude_path.set(found.clone());
+                        found
+                    }
+                };
+                let mut command = CommandBuilder::new(&path);
 
                 // Merged with whatever the user has configured, never replacing
                 // it: `--strict-mcp-config` would silently switch off every MCP

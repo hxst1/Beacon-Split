@@ -620,3 +620,76 @@ fn a_hook_outside_beacon_does_nothing_at_all() {
 
     assert!(hook.wait().unwrap().success());
 }
+
+/// A daemon left over from the previous version is swapped out quietly.
+///
+/// This is what every upgrade that moves the protocol runs into: the window
+/// opens, finds the old version's daemon still listening, and has to replace
+/// it. The swap is expected, so nothing about it may reach the window as a
+/// connection lost — a window told that on its very first paint shows every
+/// pane the daemon went away, and there is no daemon going away here.
+#[test]
+fn a_daemon_from_another_version_is_replaced_without_a_word() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+
+    let dir = tempfile::tempdir().unwrap();
+    let socket = private_socket(dir.path());
+    let listener = UnixListener::bind(&socket).expect("the stand-in should bind");
+
+    // Two connections on one socket: the first speaks last version's protocol
+    // and hangs up when asked to stop, the second is the daemon that replaced
+    // it. From the client's side that is exactly an upgrade.
+    let versions = [
+        beacon_core::protocol::PROTOCOL_VERSION - 1,
+        beacon_core::protocol::PROTOCOL_VERSION,
+    ];
+    let stand_in = std::thread::spawn(move || {
+        for version in versions {
+            let Ok((stream, _)) = listener.accept() else {
+                return;
+            };
+            let mut writer = stream.try_clone().expect("a writable half");
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let message: serde_json::Value = match serde_json::from_str(&line) {
+                    Ok(message) => message,
+                    Err(_) => continue,
+                };
+                let id = message["id"].as_u64().unwrap_or_default();
+
+                // Asked to stop, it stops — by dropping the connection, which
+                // is all a client ever sees of a daemon exiting.
+                if message["method"] == "shutdown" {
+                    break;
+                }
+
+                let reply = serde_json::json!({
+                    "id": id,
+                    "ok": { "result": "greeting", "version": version, "pid": 1, "sessions": 0 },
+                });
+                let _ = writeln!(writer, "{reply}");
+                let _ = writer.flush();
+            }
+        }
+    });
+
+    let recorder = Arc::new(Recorder::default());
+    let client = DaemonClient::connect_at(
+        &daemon_binary(),
+        &socket,
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    )
+    .expect("should end up on the daemon that replaced the old one");
+
+    assert_eq!(
+        *recorder.disconnects.lock().unwrap(),
+        0,
+        "a planned swap was reported to the window as a daemon lost"
+    );
+
+    drop(client);
+    // Not joined: the stand-in is still holding the connection this client
+    // opened, and waiting for it to notice would be waiting for the test's own
+    // reader thread to be torn down first.
+    drop(stand_in);
+}

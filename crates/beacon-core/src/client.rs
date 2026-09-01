@@ -60,6 +60,20 @@ struct Shared {
     stopped: AtomicBool,
     /// Guards against two reconnect loops racing each other.
     reconnecting: AtomicBool,
+    /// Which connection is the live one.
+    ///
+    /// A reader thread outlives the stream it reads: it notices the end only
+    /// after the connection is gone, by which time another may already have
+    /// taken its place. Without this it would tear that replacement down —
+    /// which is how a planned daemon swap ends with a window convinced it is
+    /// offline.
+    generation: AtomicU64,
+    /// Set while a daemon is being deliberately replaced, so the disconnect
+    /// that follows is not reported to the window as a daemon lost.
+    replacing: AtomicBool,
+    /// One connection attempt at a time, so a reconnect loop and a caller
+    /// cannot each start a daemon of their own.
+    opening: Mutex<()>,
 }
 
 /// A connection to the session daemon.
@@ -100,6 +114,9 @@ impl DaemonClient {
             events,
             stopped: AtomicBool::new(false),
             reconnecting: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
+            replacing: AtomicBool::new(false),
+            opening: Mutex::new(()),
         });
 
         let client = Self { shared };
@@ -117,14 +134,16 @@ impl DaemonClient {
 
         // A daemon left over from another version would answer in a shape we do
         // not understand, and a half-understood session is worse than a new one.
+        //
+        // This is the first thing that happens after an upgrade that moved the
+        // protocol, so it has to be quiet: the swap is expected, and a window
+        // that has not finished opening should not be told the daemon was lost.
         tracing::info!(
             theirs = greeting.version,
             ours = PROTOCOL_VERSION,
             "replacing a daemon speaking a different protocol"
         );
-        let _ = client.shutdown();
-
-        client.shared.open()?;
+        client.shared.replace()?;
         client.hello()?;
         Ok(client)
     }
@@ -387,7 +406,16 @@ impl Drop for DaemonClient {
 
 impl Shared {
     /// Connects to a running daemon, or starts one and waits for it.
+    ///
+    /// One attempt at a time, and a no-op when somebody else got there first:
+    /// a reconnect loop racing a caller would otherwise start a second daemon
+    /// and leave the window attached twice, hearing every event two times.
     fn open(self: &Arc<Self>) -> Result<()> {
+        let _one_at_a_time = self.opening.lock_or_recover();
+        if self.stream.lock_or_recover().is_some() {
+            return Ok(());
+        }
+
         let stream = match connect_once(&self.socket) {
             Some(stream) => stream,
             None => {
@@ -398,12 +426,43 @@ impl Shared {
         self.adopt(stream)
     }
 
+    /// Stops the daemon on the other end and connects to the one that takes
+    /// its place, without any of it reaching the window as a lost connection.
+    ///
+    /// For an upgrade: the daemon still listening is the one the previous
+    /// version left behind, and swapping it is the expected thing to happen,
+    /// not a failure to report.
+    fn replace(self: &Arc<Self>) -> Result<()> {
+        self.replacing.store(true, Ordering::SeqCst);
+
+        // Answered, or cut off mid-answer when the daemon goes first. Either
+        // is a success here; what matters is that it is no longer listening.
+        let _ = self.request(Request::Shutdown {});
+
+        // The reader thread may not have noticed the end yet, and a stream
+        // nobody can write to would make `open` decide there was nothing to do.
+        self.forget_connection();
+
+        let result = self.open();
+        self.replacing.store(false, Ordering::SeqCst);
+        result
+    }
+
+    /// Drops the current connection and retires its reader.
+    fn forget_connection(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        *self.stream.lock_or_recover() = None;
+    }
+
     /// Takes over a connection and starts reading from it.
     fn adopt(self: &Arc<Self>, stream: UnixStream) -> Result<()> {
         let reader_half = stream
             .try_clone()
             .map_err(|err| CoreError::session("could not use the daemon socket", err))?;
 
+        // Claimed before the reader starts, so it can tell its own connection
+        // from the one that outlives it.
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         *self.stream.lock_or_recover() = Some(stream);
 
         let shared = Arc::clone(self);
@@ -431,14 +490,20 @@ impl Shared {
                     }
                 }
 
-                shared.handle_disconnect();
+                shared.handle_disconnect(generation);
             })
             .map_err(|err| CoreError::session("could not start the daemon reader", err))?;
 
         Ok(())
     }
 
-    fn handle_disconnect(self: &Arc<Self>) {
+    fn handle_disconnect(self: &Arc<Self>, generation: u64) {
+        // A newer connection is already in place; this reader is reporting the
+        // end of a stream nobody is using any more.
+        if self.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
+
         *self.stream.lock_or_recover() = None;
 
         // Wake anything still waiting rather than leaving it to time out.
@@ -446,10 +511,13 @@ impl Shared {
             let _ = waiting.send(Outcome::Err("the daemon went away".into()));
         }
 
-        self.events.disconnected();
-        if self.stopped.load(Ordering::SeqCst) {
+        // A daemon we are deliberately swapping out, or a client on its way
+        // out: neither is a connection anybody needs to hear about losing.
+        if self.replacing.load(Ordering::SeqCst) || self.stopped.load(Ordering::SeqCst) {
             return;
         }
+
+        self.events.disconnected();
         self.start_reconnecting();
     }
 
