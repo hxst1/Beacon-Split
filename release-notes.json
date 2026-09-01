@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.5.1",
+    "date": "2026-09-01",
+    "summary": "Updating no longer greets you with a window that thinks it is offline.",
+    "changes": [
+      "The first launch after an update stopped saying the daemon went away. An update that moves the protocol finds the previous version's daemon still running and has to swap it, which is expected — but the swap was announced as a failure, and every panel in a window that had not finished opening said so. Nothing took it back, because the notice that clears it only follows a real reconnection.",
+      "A connection that has been replaced can no longer take its replacement with it. A reader notices its stream ended some time after it did, by which point another connection may already be in place; it used to pull that one down too, and one planned swap became a window that stayed offline until it was restarted.",
+      "Beacon no longer starts two daemons at once. The window opening and the reconnect loop could each start one, which left it attached twice and hearing every event two times.",
+      "Not finding the claude command is no longer remembered. Where Claude Code lives comes from your login shell, which is given four seconds to answer and can miss that on a machine that is briefly busy — right after an update, say. The daemon outlives the window, so one missed answer used to mean every session for the rest of the day was told Claude Code was not installed."
+    ]
+  },
+  {
     "version": "0.5.0",
     "date": "2026-09-01",
     "summary": "A project holds several named Claude conversations, and you can tell which one you are in.",
