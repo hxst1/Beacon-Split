@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.5.2",
+    "date": "2026-09-11",
+    "summary": "Resume works on a conversation you have not spoken in yet, the splitters move again, and files appear the moment something makes them.",
+    "changes": [
+      "Resume no longer answers \"No conversation found with session ID\". Beacon treated starting a Claude as proof that a conversation existed, but Claude Code writes nothing until the first exchange — so a session you opened and never typed into left nothing to go back to, and asking to resume it replaced the panel with an error. Whether a conversation exists is now decided by something having been said in it.",
+      "A fork you have not typed in yet keeps the history it was forked from. Looking at another conversation and coming back — or a daemon that had been replaced in between — used to start it as an empty conversation wearing the same name, with the history it was forked from silently gone.",
+      "A missing MCP configuration no longer costs you the whole panel. Beacon writes that file once, into the temporary directory macOS sweeps every few days; when it was swept, Claude Code was handed a path to nothing and refused to start at all. It is written again when it is missing, and if it cannot be, the session starts without the clip drawer and says so rather than failing.",
+      "The splitters work again once a panel is hidden. Hiding one changes the shape of the layout, and the splitters were still reporting where they used to be — so a drag resized a split that was not on screen and the panels sat there, unmovable, however hard you pulled.",
+      "Files appear in the tree as they are made. The tree re-read when the window regained focus, which never happens when the thing writing the files is the Claude in the panel beside it, so a new file stayed invisible until you clicked away and back or pressed refresh."
+    ]
+  },
+  {
     "version": "0.5.1",
     "date": "2026-09-01",
     "summary": "Updating no longer greets you with a window that thinks it is offline.",
