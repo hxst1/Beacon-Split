@@ -446,6 +446,19 @@ with scrolling and selection.
 the window is in the background. A watcher becomes worth revisiting if a
 repository large enough to make `git status` slow turns up.
 
+**Amended (0.5.2).** Focus was the wrong signal for the case Beacon exists for.
+A Claude writing a file, or a shell creating one, is *inside this window* — so
+the window never loses the focus it would need to get back, and the tree stayed
+wrong until someone clicked away and returned or pressed refresh. It now also
+re-reads when the project's own sessions report something: Claude Code saying
+it started a tool or stopped, and any session writing to its terminal. Neither
+is a filesystem event and neither proves a file was created, but between them
+they cover every way a file appears without anyone leaving the window, and a
+directory listing is cheap enough to be wrong about. Reports are coalesced —
+they settle for 400ms, and cannot hold the tree back for more than two seconds
+— so a streaming turn costs one re-read rather than hundreds. The decision above
+stands: still no watcher, and still nothing on a blind timer.
+
 ## ADR-026: Commands live in one registry
 
 **Context.** The palette needs a list of everything Beacon can do, and the

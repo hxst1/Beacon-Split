@@ -4,8 +4,10 @@ import { Popover } from '@/app/ui/Popover'
 import { useBeacon } from '@/app/store'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 import { useEditor } from '@/features/editor/openFiles'
+import { watchActivity } from '@/features/terminal/sessionBridge'
 import type { DirEntry } from '@/types/beacon'
 import { FileMenu, type MenuPrompt } from './FileMenu'
+import { liveTree } from './liveTree'
 import { parentOf, useTree, visibleRows, type TreeRow } from './treeStore'
 import styles from './FileTree.module.css'
 
@@ -69,6 +71,23 @@ export function FileTree({
     }, [refreshAll, workspaceId, projectId]),
     null,
   )
+
+  // ...which covers a file made in another application, and nothing made in
+  // this one. A Claude writing a file in the panel beside this tree never takes
+  // the window's focus away to give it back, so the tree also listens to the
+  // sessions themselves — see `liveTree`.
+  useEffect(() => {
+    const live = liveTree(projectId, () => void refreshAll(workspaceId, projectId))
+    const stop = watchActivity({
+      onOutput: (project) => live.report(project),
+      onClaudeActivity: (report) => live.report(report.project),
+    })
+
+    return () => {
+      live.cancel()
+      stop()
+    }
+  }, [refreshAll, workspaceId, projectId])
 
   const visible = useMemo(
     () => visibleRows({ entries, expanded, loading, showHidden }, projectId),
