@@ -4,6 +4,7 @@ import type {
   AgentActivity,
   Clip,
   SessionActivity,
+  SessionDegraded,
   SessionExit,
   SessionOutput,
   UsageReport,
@@ -39,8 +40,9 @@ let listening: Promise<void> | null = null
  * panels are not mounted, so they listen here rather than through a terminal.
  */
 export interface ActivityWatcher {
-  onOutput: (project: string) => void
-  onExit: (project: string, sessionId: string) => void
+  /** A session wrote something. Optional: not everything cares what, or which. */
+  onOutput?: (project: string) => void
+  onExit?: (project: string, sessionId: string) => void
   /** The daemon connection dropped. Sessions are still running. */
   onDetached?: () => void
   /** A connection is live again, possibly to a different daemon. */
@@ -55,6 +57,14 @@ export interface ActivityWatcher {
   onClip?: (clip: Clip) => void
   /** The drawer changed wholesale — something was forgotten, or all of it. */
   onClips?: (clips: Clip[]) => void
+  /**
+   * A session started without something it was meant to have.
+   *
+   * Not a failure — the session is running. It is here so the gap is said out
+   * loud instead of being found later as a feature that mysteriously does
+   * nothing.
+   */
+  onDegraded?: (report: SessionDegraded) => void
 }
 
 const watchers = new Set<ActivityWatcher>()
@@ -99,7 +109,7 @@ function deliver(attachment: Attachment, chunk: SessionOutput): void {
 function ensureListening(): Promise<void> {
   listening ??= Promise.all([
     listen<SessionOutput>('session:output', ({ payload }) => {
-      for (const watcher of watchers) watcher.onOutput(payload.project)
+      for (const watcher of watchers) watcher.onOutput?.(payload.project)
 
       const attachment = attachments.get(payload.id)
       if (!attachment) return
@@ -110,7 +120,7 @@ function ensureListening(): Promise<void> {
       deliver(attachment, payload)
     }),
     listen<SessionExit>('session:exit', ({ payload }) => {
-      for (const watcher of watchers) watcher.onExit(payload.project, payload.id)
+      for (const watcher of watchers) watcher.onExit?.(payload.project, payload.id)
       attachments.get(payload.id)?.sink.onExit?.(payload.code)
     }),
     listen('session:detached', () => {
@@ -133,6 +143,9 @@ function ensureListening(): Promise<void> {
     }),
     listen<{ clips: Clip[] }>('clips:replaced', ({ payload }) => {
       for (const watcher of watchers) watcher.onClips?.(payload.clips)
+    }),
+    listen<SessionDegraded>('session:degraded', ({ payload }) => {
+      for (const watcher of watchers) watcher.onDegraded?.(payload)
     }),
   ]).then(() => undefined)
 

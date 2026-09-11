@@ -200,6 +200,18 @@ pub(crate) const STRIPPED_ENV: &[&str] = &[
 /// `BEACON_PROJECT`, and it gets them by being a child of a session that
 /// already has them. Writing them into this file instead would freeze one
 /// project's id into a file every project's session reads.
+/// Makes sure the runtime directory is there and readable only by its owner.
+///
+/// The permissions are the access control — on Linux the temporary directory is
+/// shared between users, and a session is a shell — so a directory recreated
+/// here has to be as closed as the one the daemon made at startup.
+fn ensure_private_dir(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::create_dir_all(dir)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+}
+
 fn write_mcp_config(dir: &Path) -> std::io::Result<PathBuf> {
     let binary = std::env::current_exe()?;
     let path = dir.join("mcp.json");
@@ -270,6 +282,15 @@ pub trait SessionEvents: Send + Sync + 'static {
     /// did something without keeping its own session-to-project map.
     fn output(&self, id: &SessionId, project: &ProjectId, offset: u64, bytes: &[u8]);
     fn exited(&self, id: &SessionId, project: &ProjectId, code: Option<i32>);
+
+    /// A session started, but without something it was meant to have.
+    ///
+    /// Defaulted to silence so that a listener which only cares about output
+    /// stays as short as it was. The daemon overrides it, because the window is
+    /// the only place the user can be told.
+    fn degraded(&self, project: &ProjectId, summary: &str) {
+        let _ = (project, summary);
+    }
 }
 
 /// A session as the UI sees it.
@@ -355,9 +376,10 @@ impl SessionManager {
 
     /// Says which conversation a project's Claude should be started in.
     ///
-    /// Set before starting one, and updated to [`ClaudeStart::Resume`] once it
-    /// has started, so the next spawn continues rather than colliding with a
-    /// conversation id that is already in use.
+    /// Set before every start, by whoever knows whether the conversation
+    /// exists. The manager does not know and must not guess: spawning a process
+    /// is not the same as a conversation being written, and a session that was
+    /// opened and never typed into leaves nothing to resume.
     pub fn set_claude_launch(&self, project: ProjectId, launch: ClaudeLaunch) {
         self.claude_launch.lock_or_recover().insert(project, launch);
     }
@@ -391,6 +413,50 @@ impl SessionManager {
         *self.mcp_config.lock_or_recover() = config;
     }
 
+    /// The MCP configuration to hand this session, written again if it is gone.
+    ///
+    /// It lives in the per-user temporary directory, which macOS sweeps: files
+    /// left untouched for a few days are deleted, and this one is written once,
+    /// on the day the daemon started. A daemon that has been up for a week
+    /// therefore held a path to a file that no longer existed, passed
+    /// `--mcp-config` pointing at it anyway, and Claude Code refused to start —
+    /// *"MCP config file not found"* — so a swept file cost the entire panel.
+    ///
+    /// Checked here rather than rewritten on a timer, because the only moment
+    /// the answer matters is the moment a session starts. A rewrite that fails
+    /// means starting without the flag: the clip drawer is worth one file, and
+    /// never worth the session.
+    fn mcp_config(&self, project: &ProjectId) -> Option<PathBuf> {
+        let path = self.mcp_config.lock_or_recover().clone()?;
+        if path.is_file() {
+            return Some(path);
+        }
+
+        let dir = path.parent()?;
+        tracing::info!(path = %path.display(), "the mcp configuration was swept; writing it again");
+
+        let restored = ensure_private_dir(dir).and_then(|()| write_mcp_config(dir));
+        match restored {
+            Ok(path) => {
+                *self.mcp_config.lock_or_recover() = Some(path.clone());
+                Some(path)
+            }
+            Err(err) => {
+                // Not fatal, and deliberately not sticky: the next session
+                // tries again, and until one succeeds sessions start with
+                // everything but the clip drawer. Said out loud, because a
+                // feature that is quietly absent is a puzzle later.
+                tracing::warn!(error = %err, "could not write the mcp configuration again");
+                self.events.degraded(
+                    project,
+                    "Beacon's MCP configuration is missing and could not be written, so the clip \
+                     drawer is off for this session. Everything else works.",
+                );
+                None
+            }
+        }
+    }
+
     /// The command for a session kind.
     ///
     /// Shells run as login shells, like every terminal emulator: without that a
@@ -399,6 +465,7 @@ impl SessionManager {
     /// files print ends up in the panel above it.
     fn command_for(
         &self,
+        project: &ProjectId,
         kind: SessionKind,
         shell: Option<&ShellSpec>,
         launch: Option<&ClaudeLaunch>,
@@ -446,7 +513,7 @@ impl SessionManager {
                 // it: `--strict-mcp-config` would silently switch off every MCP
                 // server they set up themselves, which is not a trade Beacon
                 // gets to make on their behalf for a drawer.
-                if let Some(config) = self.mcp_config.lock_or_recover().as_ref() {
+                if let Some(config) = self.mcp_config(project) {
                     // `--mcp-config` takes a *list*, so the separated form
                     // swallows whatever argument comes after it. Nothing does
                     // today; writing it joined means nothing ever can.
@@ -539,7 +606,7 @@ impl SessionManager {
         let launch = (kind == SessionKind::Claude)
             .then(|| self.claude_launch(&project))
             .flatten();
-        let mut command = self.command_for(kind, shell, launch.as_ref())?;
+        let mut command = self.command_for(&project, kind, shell, launch.as_ref())?;
         command.cwd(cwd);
         prepare_environment(&mut command);
 
@@ -558,20 +625,14 @@ impl SessionManager {
             .spawn_command(command)
             .map_err(|err| CoreError::session("could not start the session", err))?;
 
-        // The conversation exists now. Every later start of it — after a crash,
-        // after a restart, after the window came back — has to resume, because
-        // `--session-id` on a conversation already in use is refused.
-        if let Some(launch) = launch
-            && launch.start != ClaudeStart::Resume
-        {
-            self.set_claude_launch(
-                project.clone(),
-                ClaudeLaunch {
-                    start: ClaudeStart::Resume,
-                    ..launch
-                },
-            );
-        }
+        // Nothing is flipped to `Resume` here, deliberately. Having started a
+        // process says only that Claude Code was asked to open the
+        // conversation, and Claude Code writes nothing until the first
+        // exchange: a session opened and never typed into leaves no
+        // conversation, and `--resume` on it answers *"No conversation found
+        // with session ID"*. What the next start uses is decided from a report
+        // out of the session itself, by whoever sets the launch.
+
         // The slave must be closed here or the reader never sees EOF when the
         // child exits.
         drop(pair.slave);
@@ -896,6 +957,119 @@ mod tests {
             let back: ClaudeLaunch = serde_json::from_str(&line).unwrap();
             assert_eq!(back, original);
         }
+    }
+
+    /// The bug: the file is written once, on the day the daemon starts, into a
+    /// directory macOS sweeps. Days later every session was launched with
+    /// `--mcp-config` pointing at nothing, and Claude Code refused to start.
+    #[test]
+    fn a_swept_mcp_configuration_is_written_again_rather_than_pointed_at() {
+        struct Silent;
+        impl SessionEvents for Silent {
+            fn output(&self, _: &SessionId, _: &ProjectId, _: u64, _: &[u8]) {}
+            fn exited(&self, _: &SessionId, _: &ProjectId, _: Option<i32>) {}
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let manager = SessionManager::new(Arc::new(Silent));
+        let project = ProjectId("pj_x".into());
+        manager.set_hook_socket(dir.path().join("daemon.sock"));
+
+        let config = manager
+            .mcp_config(&project)
+            .expect("a configuration to start with");
+        assert!(config.is_file());
+
+        std::fs::remove_file(&config).unwrap();
+        assert_eq!(manager.mcp_config(&project).as_ref(), Some(&config));
+        assert!(
+            config.is_file(),
+            "the swept file should have been written again"
+        );
+    }
+
+    /// The sweep can take the directory with it. Restoring it must not leave it
+    /// open to anyone else on the machine.
+    #[test]
+    fn a_restored_runtime_directory_stays_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        struct Silent;
+        impl SessionEvents for Silent {
+            fn output(&self, _: &SessionId, _: &ProjectId, _: u64, _: &[u8]) {}
+            fn exited(&self, _: &SessionId, _: &ProjectId, _: Option<i32>) {}
+        }
+
+        let parent = tempfile::tempdir().unwrap();
+        let runtime = parent.path().join("beacon-split-test");
+        std::fs::create_dir(&runtime).unwrap();
+
+        let manager = SessionManager::new(Arc::new(Silent));
+        let project = ProjectId("pj_x".into());
+        manager.set_hook_socket(runtime.join("daemon.sock"));
+        assert!(manager.mcp_config(&project).is_some());
+
+        std::fs::remove_dir_all(&runtime).unwrap();
+        let config = manager
+            .mcp_config(&project)
+            .expect("the directory to be restored");
+
+        assert!(config.is_file());
+        let mode = std::fs::metadata(&runtime).unwrap().permissions().mode();
+        assert_eq!(
+            mode & 0o777,
+            0o700,
+            "the runtime directory must stay private"
+        );
+    }
+
+    /// What must never happen again: the file is gone, it cannot be written,
+    /// and the answer is to start the session without the clip drawer while
+    /// saying so — not to hand Claude Code a path to nothing and let it refuse
+    /// to start at all.
+    #[test]
+    fn a_configuration_that_cannot_be_restored_is_reported_and_left_behind() {
+        #[derive(Default)]
+        struct Recorder {
+            said: Mutex<Vec<String>>,
+        }
+        impl SessionEvents for Recorder {
+            fn output(&self, _: &SessionId, _: &ProjectId, _: u64, _: &[u8]) {}
+            fn exited(&self, _: &SessionId, _: &ProjectId, _: Option<i32>) {}
+            fn degraded(&self, _: &ProjectId, summary: &str) {
+                self.said.lock_or_recover().push(summary.to_string());
+            }
+        }
+
+        let parent = tempfile::tempdir().unwrap();
+        let runtime = parent.path().join("beacon-split-test");
+        std::fs::create_dir(&runtime).unwrap();
+
+        let recorder = Arc::new(Recorder::default());
+        let manager = SessionManager::new(Arc::clone(&recorder) as Arc<dyn SessionEvents>);
+        let project = ProjectId("pj_x".into());
+
+        manager.set_hook_socket(runtime.join("daemon.sock"));
+        assert!(manager.mcp_config(&project).is_some(), "written at startup");
+
+        // The sweep took it, and the directory cannot be made again: something
+        // else is sitting on the name.
+        std::fs::remove_dir_all(&runtime).unwrap();
+        std::fs::write(&runtime, b"in the way").unwrap();
+
+        assert_eq!(
+            manager.mcp_config(&project),
+            None,
+            "a session must start without the flag rather than with a broken one"
+        );
+
+        let said = recorder.said.lock_or_recover().clone();
+        assert_eq!(said.len(), 1, "the user should be told exactly once");
+        assert!(
+            said[0].contains("clip drawer"),
+            "the message should name what is missing, not the plumbing: {}",
+            said[0]
+        );
     }
 
     #[test]

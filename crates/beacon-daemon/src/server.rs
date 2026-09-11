@@ -127,6 +127,13 @@ impl SessionEvents for Broadcaster {
             code,
         });
     }
+
+    fn degraded(&self, project: &ProjectId, summary: &str) {
+        self.send(&Event::Degraded {
+            project: project.clone(),
+            summary: summary.to_string(),
+        });
+    }
 }
 
 struct Daemon {
@@ -363,28 +370,44 @@ fn prepare_claude(daemon: &Daemon, project: &ProjectId, agents: bool) {
         return;
     };
 
-    // Already knows, and knows more than this does: the manager flips a launch
-    // to `Resume` the moment the conversation exists, and overwriting it would
-    // ask Claude Code to create one that is already in use.
-    if daemon
-        .sessions
-        .claude_launch(project)
-        .is_some_and(|launch| launch.session_id == stream.id.as_str())
-    {
-        return;
-    }
+    let start = start_for(&stream);
+    set_launch(daemon, project, &stream, start, agents);
+}
 
-    set_launch(
-        daemon,
-        project,
-        &stream,
-        if stream.resumable {
-            ClaudeStart::Resume
-        } else {
-            ClaudeStart::New
-        },
-        agents,
-    );
+/// Which flag the next start of a conversation uses.
+///
+/// A function of the conversation and nothing else. Everything it needs is
+/// recorded on the workstream and survives a daemon that went away: deciding
+/// this from what the project happened to be launched with last time is how it
+/// went wrong before, in both of its halves.
+///
+/// `resumable` is the first question because it is the one Claude Code is
+/// strict about — `--session-id` is refused once a conversation exists,
+/// `--resume` until it does. It means "something has been said in it", not
+/// "Beacon has started a process for it": a session opened and never typed into
+/// writes nothing, and resuming it answers *"No conversation found with session
+/// ID"*, which is what pressing Resume used to do.
+///
+/// `forked_from` is the second, and is read from the book rather than from the
+/// launch the manager is holding. The manager's copy is per project and lives
+/// only in the process, so looking there lost the ancestry of a fork nobody had
+/// typed in yet as soon as the user glanced at another conversation and came
+/// back — or as soon as the daemon was replaced. The book remembers, so the
+/// fork is repeated and its history is carried, instead of being replaced by an
+/// empty conversation wearing the same id.
+///
+/// Taking no launch is the guard: there is nothing here that a stale one could
+/// mislead.
+fn start_for(stream: &Workstream) -> ClaudeStart {
+    if stream.resumable {
+        ClaudeStart::Resume
+    } else if let Some(from) = &stream.forked_from {
+        ClaudeStart::Fork {
+            from: from.to_string(),
+        }
+    } else {
+        ClaudeStart::New
+    }
 }
 
 /// Absent means the client did not say, which is treated as yes.
@@ -487,17 +510,8 @@ fn resume_workstream(
         .ok_or_else(|| CoreError::invalid("that conversation is not one of this project's"))?;
     daemon.persist_workstreams();
 
-    set_launch(
-        daemon,
-        &project,
-        &stream,
-        if stream.resumable {
-            ClaudeStart::Resume
-        } else {
-            ClaudeStart::New
-        },
-        agents,
-    );
+    let start = start_for(&stream);
+    set_launch(daemon, &project, &stream, start, agents);
     into_claude(daemon, &project, stream, cwd, size, shell)
 }
 
@@ -865,5 +879,58 @@ trait LockOrRecover<T> {
 impl<T> LockOrRecover<T> for Mutex<T> {
     fn lock_or_recover(&self) -> std::sync::MutexGuard<'_, T> {
         self.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ID: &str = "0c40d249-ee07-4eac-ab8c-608e71f2c9e1";
+    const PARENT: &str = "cafb8c86-53eb-49c4-a8b8-609e5cbc0f49";
+
+    fn workstream(resumable: bool) -> Workstream {
+        let mut book = WorkstreamBook::default();
+        let mut stream = book.start(ProjectId("pj_x".into()), None);
+        stream.id = WorkstreamId(ID.into());
+        stream.resumable = resumable;
+        stream
+    }
+
+    fn fork(resumable: bool) -> Workstream {
+        let mut stream = workstream(resumable);
+        stream.forked_from = Some(WorkstreamId(PARENT.into()));
+        stream
+    }
+
+    #[test]
+    fn a_conversation_nobody_has_spoken_in_is_created_rather_than_resumed() {
+        // The bug this guards: Beacon had already started a Claude for this
+        // conversation, so the launch said `Resume` — but nothing was typed,
+        // Claude Code wrote nothing, and pressing Resume answered "No
+        // conversation found with session ID".
+        assert_eq!(start_for(&workstream(false)), ClaudeStart::New);
+    }
+
+    #[test]
+    fn a_conversation_that_exists_is_resumed() {
+        assert_eq!(start_for(&workstream(true)), ClaudeStart::Resume);
+    }
+
+    #[test]
+    fn a_fork_nobody_has_spoken_in_is_forked_again_rather_than_emptied() {
+        // Starting it as new would keep the id and lose the history it was
+        // forked from, which is the whole reason it exists.
+        assert_eq!(
+            start_for(&fork(false)),
+            ClaudeStart::Fork {
+                from: PARENT.into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_fork_that_has_been_spoken_in_is_resumed_rather_than_forked_twice() {
+        assert_eq!(start_for(&fork(true)), ClaudeStart::Resume);
     }
 }

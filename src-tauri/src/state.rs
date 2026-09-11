@@ -88,6 +88,13 @@ struct ActivityPayload {
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct DegradedPayload {
+    project: ProjectId,
+    summary: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AgentPayload {
     project: ProjectId,
     agent: String,
@@ -115,6 +122,9 @@ pub const EVENT_AGENT: &str = "session:agent";
 pub const EVENT_CLIP: &str = "clips:added";
 /// The drawer changed wholesale — something was forgotten, or all of it was.
 pub const EVENT_CLIPS: &str = "clips:replaced";
+/// A session started without something it was meant to have. Not a failure:
+/// the session is running, and this is what keeps the gap from being silent.
+pub const EVENT_DEGRADED: &str = "session:degraded";
 /// Raised when the connection drops. Sessions keep running; this window is no
 /// longer watching them.
 pub const EVENT_DETACHED: &str = "session:detached";
@@ -183,6 +193,9 @@ impl DaemonEvents for WebviewEvents {
             // goes.
             Event::Clip(clip) => self.app.emit(EVENT_CLIP, clip),
             Event::Clips { clips } => self.app.emit(EVENT_CLIPS, ClipsPayload { clips }),
+            Event::Degraded { project, summary } => self
+                .app
+                .emit(EVENT_DEGRADED, DegradedPayload { project, summary }),
         };
 
         if let Err(err) = delivered {

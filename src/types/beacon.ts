@@ -185,6 +185,18 @@ export interface SessionActivity {
 }
 
 /**
+ * A session that started without something it was meant to have.
+ *
+ * Deliberately not an error: the session is running and the user can work. The
+ * daemon writes `summary` for a person to read, because it is the only layer
+ * that knows what actually went missing.
+ */
+export interface SessionDegraded {
+  project: string
+  summary: string
+}
+
+/**
  * What a clip is, so the drawer can label it and pick a typeface.
  *
  * `command` and `variable` are shown monospaced and never wrapped: a line break

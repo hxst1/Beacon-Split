@@ -50,7 +50,7 @@ use crate::workstreams::{Workstream, WorkstreamId};
 /// running daemon and the sessions it holds. Paid once, knowingly: an older
 /// daemon would reject every one of them, leaving a window that can list
 /// conversations it cannot open.
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 /// Newline-delimited JSON, one message per line.
 ///
@@ -562,6 +562,17 @@ pub enum Event {
         activity: ClaudeActivity,
         detail: Option<String>,
     },
+    /// A session started, but without something it was meant to have.
+    ///
+    /// Not an error, and deliberately not a refusal: the session is running and
+    /// the user can work. It exists because the alternative to saying so is a
+    /// feature that is quietly not there, which is discovered much later and
+    /// much more expensively than a line in the status bar.
+    ///
+    /// `summary` is written to be read by a person, because the daemon is the
+    /// only layer that knows what actually went wrong.
+    #[serde(rename_all = "camelCase")]
+    Degraded { project: ProjectId, summary: String },
 }
 
 /// One line from the daemon: either a reply, or something that just happened.
@@ -745,6 +756,60 @@ mod tests {
             let back: Envelope = serde_json::from_str(&line)
                 .unwrap_or_else(|err| panic!("{line} did not round-trip: {err}"));
             assert_eq!(back.id, index as u64);
+        }
+    }
+
+    /// The same guard the requests and replies have, for the same reason: a
+    /// client from before an event existed cannot parse it, so the version has
+    /// to move with the set.
+    #[test]
+    fn every_event_survives_a_round_trip() {
+        let events = vec![
+            Event::Output {
+                id: SessionId("sn_x".into()),
+                project: ProjectId("pj_x".into()),
+                offset: 0,
+                data: "aGk=".into(),
+            },
+            Event::Exit {
+                id: SessionId("sn_x".into()),
+                project: ProjectId("pj_x".into()),
+                code: Some(0),
+            },
+            Event::Usage(Box::new(sample_usage())),
+            Event::Clip(sample_clip()),
+            Event::Clips {
+                clips: vec![sample_clip()],
+            },
+            Event::Agent {
+                project: ProjectId("pj_x".into()),
+                agent: "a0718b64719533846".into(),
+                agent_type: Some("beacon-explorer".into()),
+                running: true,
+                summary: None,
+            },
+            Event::Activity {
+                project: ProjectId("pj_x".into()),
+                activity: ClaudeActivity::Working,
+                detail: Some("Edit".into()),
+            },
+            Event::Degraded {
+                project: ProjectId("pj_x".into()),
+                summary: "The clip drawer is unavailable.".into(),
+            },
+        ];
+
+        assert_eq!(
+            events.len(),
+            8,
+            "the set of events changed: PROTOCOL_VERSION must change with it"
+        );
+
+        for event in events {
+            let line = serde_json::to_string(&event).unwrap();
+            let back: Message = serde_json::from_str(&line)
+                .unwrap_or_else(|err| panic!("{line} did not round-trip: {err}"));
+            assert!(matches!(back, Message::Event(_)));
         }
     }
 
