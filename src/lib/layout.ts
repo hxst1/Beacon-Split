@@ -24,6 +24,52 @@ export function prune(node: LayoutNode, hidden: readonly PanelId[]): LayoutNode 
   return { ...node, first, second }
 }
 
+/**
+ * Translates a path in the pruned tree back into the tree it was pruned from.
+ *
+ * The two are not the same shape. `prune` collapses a split that lost a child,
+ * so the moment any panel is hidden the splitters on screen sit at different
+ * paths from the splits that hold their fractions. Dragging one used to write
+ * into whatever the same path happened to name in the stored tree — a split
+ * that was not on screen, or a panel, which is no split at all and swallowed
+ * the change. Either way the panels did not move, and no amount of dragging
+ * helped, because the thing being resized was never the thing being dragged.
+ *
+ * Returns `null` when the path names nothing, which is what a caller should
+ * ignore rather than guess about.
+ */
+export function sourcePath(node: LayoutNode, hidden: readonly PanelId[], path: Path): Path | null {
+  const taken: Path = []
+  let current = node
+  let step = 0
+
+  for (;;) {
+    if (current.type === 'panel') return null
+
+    const first = prune(current.first, hidden)
+    const second = prune(current.second, hidden)
+    if (!first && !second) return null
+
+    // A split with one surviving child is not in the pruned tree at all, so it
+    // answers to no step: walk through it without spending one.
+    if (!first || !second) {
+      const surviving: Step = first ? 'first' : 'second'
+      taken.push(surviving)
+      current = surviving === 'first' ? current.first : current.second
+      continue
+    }
+
+    // A split the user can see. If the path ends here, this is the one.
+    if (step === path.length) return taken
+
+    const next = path[step]
+    if (!next) return null
+    step += 1
+    taken.push(next)
+    current = next === 'first' ? current.first : current.second
+  }
+}
+
 /** Returns a copy of the tree with one split's fraction replaced. */
 export function withFraction(node: LayoutNode, path: Path, fraction: number): LayoutNode {
   if (node.type === 'panel') return node

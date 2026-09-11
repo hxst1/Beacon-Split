@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { panelsOf, prune, withFraction } from './layout'
-import type { LayoutNode } from '@/types/beacon'
+import { panelsOf, prune, sourcePath, withFraction } from './layout'
+import type { LayoutNode, PanelId } from '@/types/beacon'
 
 /** The default arrangement: Claude beside the editor, files over git, terminal below. */
 const tree: LayoutNode = {
@@ -82,5 +82,56 @@ describe('withFraction', () => {
     const before = JSON.stringify(tree)
     withFraction(tree, ['first', 'second'], 0.2)
     expect(JSON.stringify(tree)).toBe(before)
+  })
+})
+
+describe('sourcePath', () => {
+  it('is the identity when nothing is hidden', () => {
+    expect(sourcePath(tree, [], [])).toEqual([])
+    expect(sourcePath(tree, [], ['first'])).toEqual(['first'])
+    expect(sourcePath(tree, [], ['first', 'second'])).toEqual(['first', 'second'])
+  })
+
+  /**
+   * The bug this exists for: hiding the terminal collapses the root, so every
+   * splitter the user can see is one level deeper in the stored tree than it
+   * looks. Dragging them wrote fractions into splits that were not on screen,
+   * and the panels sat there refusing to move.
+   */
+  it('follows a collapsed root down to the split that is really being dragged', () => {
+    const hidden: PanelId[] = ['terminal']
+
+    // What looks like the root is the claude/editor-and-sidebar split.
+    expect(sourcePath(tree, hidden, [])).toEqual(['first'])
+    // What looks like its first child is the claude|editor split.
+    expect(sourcePath(tree, hidden, ['first'])).toEqual(['first', 'first'])
+    // And its second is files|git.
+    expect(sourcePath(tree, hidden, ['second'])).toEqual(['first', 'second'])
+  })
+
+  it('sees through a split that lost a child further down', () => {
+    // Hiding the editor collapses claude|editor, so the visible first child of
+    // the root's first child is the files|git split.
+    expect(sourcePath(tree, ['editor'], ['first'])).toEqual(['first'])
+    expect(sourcePath(tree, ['editor'], ['first', 'second'])).toEqual(['first', 'second'])
+  })
+
+  it('resizes the split the user is actually pointing at', () => {
+    const hidden: PanelId[] = ['terminal']
+    const target = sourcePath(tree, hidden, ['first'])!
+    const resized = withFraction(tree, target, 0.3)
+
+    const root = resized as Extract<LayoutNode, { type: 'split' }>
+    const column = root.first as Extract<LayoutNode, { type: 'split' }>
+    const claudeEditor = column.first as Extract<LayoutNode, { type: 'split' }>
+
+    expect(claudeEditor.fraction).toBe(0.3)
+    // The splits nobody touched are untouched — including the hidden one.
+    expect(root.fraction).toBe(tree.fraction)
+    expect(column.fraction).toBe(0.74)
+  })
+
+  it('gives nothing back for a path that leads nowhere', () => {
+    expect(sourcePath(tree, ['claude', 'editor', 'files', 'git', 'terminal'], [])).toBeNull()
   })
 })

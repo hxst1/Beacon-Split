@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { EmptyProjects } from '@/features/projects/EmptyProjects'
-import { prune, withFraction } from '@/lib/layout'
+import { prune, sourcePath, withFraction } from '@/lib/layout'
 import type { Path } from '@/lib/layout'
 import type { PanelId, Project } from '@/types/beacon'
 import { ClaudePanel } from './panels/ClaudePanel'
@@ -71,7 +71,16 @@ export function Workbench(): React.ReactElement {
       <LayoutView
         node={visible}
         render={render}
-        onResize={(path: Path, fraction: number) => setDraft(withFraction(draft, path, fraction))}
+        onResize={(path: Path, fraction: number) => {
+          // The splitter's path is a path through the *pruned* tree, and the
+          // draft is the whole one. Hiding a panel collapses a split and moves
+          // every path below it, so this has to be translated rather than
+          // reused — otherwise dragging writes a fraction into a split that is
+          // not on screen and nothing appears to move.
+          const target = sourcePath(draft, hidden, path)
+          if (!target) return
+          setDraft(withFraction(draft, target, fraction))
+        }}
         onCommit={() => void setLayout(draft)}
       />
     </div>
