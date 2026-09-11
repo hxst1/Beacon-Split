@@ -32,17 +32,43 @@ if ('IntersectionObserver' in window && !reduced.matches) {
     el.style.transitionDelay = `${(i % 2) * 70}ms`;
   });
 
+  const show = (el) => {
+    el.classList.add('is-in');
+    io.unobserve(el);
+  };
+
+  // Any overlap at all, rather than a fraction of the element.
+  //
+  // A fraction is the wrong test for something taller than the window: six per
+  // cent of a long section is hundreds of pixels, so arriving at that section
+  // from a link — `#faq`, say — could put its top just below the line and
+  // leave the whole thing invisible until you scrolled. The negative bottom
+  // margin is what delays the reveal on the way up; the threshold was only
+  // ever meant to do the same job twice.
   const io = new IntersectionObserver(
     (entries) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        e.target.classList.add('is-in');
-        io.unobserve(e.target);
-      }
+      for (const e of entries) if (e.isIntersecting) show(e.target);
     },
-    { rootMargin: '0px 0px -12% 0px', threshold: 0.06 },
+    { rootMargin: '0px 0px -12% 0px', threshold: 0 },
   );
   targets.forEach((el) => io.observe(el));
+
+  /*
+   * Somebody who arrived at a section rather than scrolled to it.
+   *
+   * The nav links jump straight to `#what`, `#platforms`, `#faq` and `#open`,
+   * and so does anyone following a link to one. That must never be a blank
+   * screen waiting for a scroll it will not get: what was asked for is shown
+   * at once, and only what is still ahead of them animates.
+   */
+  const revealHash = () => {
+    const target = location.hash && document.querySelector(location.hash);
+    if (!target) return;
+    for (const el of targets) if (target.contains(el) || el.contains(target)) show(el);
+  };
+
+  revealHash();
+  addEventListener('hashchange', revealHash);
 }
 
 /* ── the hero moment ──────────────────────────────────────────────── */
@@ -120,4 +146,81 @@ for (const btn of document.querySelectorAll('[data-copy]')) {
       btn.classList.remove('is-done');
     }, 2000);
   });
+}
+
+/* ── downloads ────────────────────────────────────────────────────── */
+
+/*
+ * Fills the install section from the latest GitHub release.
+ *
+ * The links in the HTML are written out for a real release and work on their
+ * own — with this file blocked, with no network beyond GitHub itself, and for
+ * anything that reads the page without running scripts. What they cannot be is
+ * current: they were true the day somebody typed them, and the version, the
+ * two URLs and both file sizes went stale one release later every time.
+ *
+ * So this asks, and only replaces what it got an answer for. Anything missing
+ * or refused — the API is rate limited by IP and says so plainly — leaves the
+ * written-out release in place, which is a slightly old download rather than a
+ * broken one.
+ */
+const fillDownloads = async (dl) => {
+  const repo = dl.dataset.dlRepo;
+  if (!repo) return;
+
+  const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+    headers: { Accept: 'application/vnd.github+json' },
+  });
+  if (!response.ok) return;
+
+  const release = await response.json();
+  const tag = typeof release.tag_name === 'string' ? release.tag_name : '';
+  const version = tag.replace(/^v/, '');
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  if (!version || assets.length === 0) return;
+
+  for (const card of dl.querySelectorAll('[data-dl-asset]')) {
+    // Matched on the suffix the build produces rather than on the whole name,
+    // which carries the version and would need this to know it in advance.
+    const suffix = `_${card.dataset.dlAsset}.dmg`;
+    const asset = assets.find((a) => typeof a.name === 'string' && a.name.endsWith(suffix));
+    if (!asset?.browser_download_url) continue;
+
+    card.href = asset.browser_download_url;
+    const size = card.querySelector('[data-dl-size]');
+    if (size && typeof asset.size === 'number') {
+      size.textContent = `${(asset.size / 1024 / 1024).toFixed(1)} MB`;
+    }
+  }
+
+  for (const el of document.querySelectorAll('[data-dl-version]')) el.textContent = version;
+};
+
+const downloads = document.querySelector('[data-dl-repo]');
+
+if (downloads) {
+  // Asked for only once somebody has scrolled to the downloads.
+  //
+  // This page says it has no telemetry and no server, and it should not then
+  // reach a third party on load for something most visitors never look at. A
+  // request made because you went looking for the download is part of getting
+  // the download; one made because you opened the page is not.
+  //
+  // Nothing waits for it and a failure is not worth a word: the written-out
+  // release is already on screen and already works.
+  const ask = () => fillDownloads(downloads).catch(() => {});
+
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        io.disconnect();
+        ask();
+      },
+      { rootMargin: '400px 0px' },
+    );
+    io.observe(downloads);
+  } else {
+    ask();
+  }
 }

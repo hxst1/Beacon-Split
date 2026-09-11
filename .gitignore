@@ -6,3 +6,6 @@ target/
 .vite/
 src-tauri/gen/schemas/
 src-tauri/binaries/
+
+# Written at deploy time by site/set-origin.sh, which needs a domain to exist.
+site/sitemap.xml

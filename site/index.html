@@ -10,11 +10,140 @@
 <meta property="og:title" content="Beacon Split — know which project is waiting for you">
 <meta property="og:description" content="An agent-first development workspace for running several Claude Code sessions at once. Free, open source, macOS.">
 <meta property="og:image" content="/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Beacon Split window: three project tabs, one of them amber because its Claude session is waiting for an answer.">
+<meta property="og:site_name" content="Beacon Split">
+<meta property="og:locale" content="en">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta name="twitter:title" content="Beacon Split — know which project is waiting for you">
+<meta name="twitter:description" content="An agent-first development workspace for running several Claude Code sessions at once. Free, open source, macOS.">
+<meta name="twitter:image" content="/og.png">
+<meta name="twitter:image:alt" content="The Beacon Split window: three project tabs, one of them amber because its Claude session is waiting for an answer.">
+<meta name="theme-color" content="#08080b">
+<meta name="color-scheme" content="dark">
+<!--
+  The two faces the first screen is made of, asked for before the stylesheet
+  that references them has been parsed. The rest are found the ordinary way:
+  they are below the fold or in a weight the hero does not use.
+-->
+<link rel="preload" href="/fonts/inter-400-W0Q5nw.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/instrument-sans-500-ZuWi3g.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/styles.css">
+
+<!--
+  What Beacon is, for the machines that answer questions about it.
+
+  Deliberately without a version number: this document is read before any
+  script runs, so a version here would be whatever was true the day it was
+  written. The install section gets its version from the GitHub release at
+  load, and `downloadUrl` points at whatever is latest rather than at a tag.
+-->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Beacon Split",
+  "applicationCategory": "DeveloperApplication",
+  "applicationSubCategory": "Integrated development environment",
+  "operatingSystem": "macOS",
+  "processorRequirements": "Apple Silicon or Intel",
+  "softwareRequirements": "Claude Code and git on the PATH",
+  "description": "An agent-first development workspace. Run several Claude Code sessions at once, each with real terminals, files and git, and a project tab that says the moment one stops and needs an answer. Sessions run in a background daemon, so they outlive the window.",
+  "license": "https://github.com/hxst1/Beacon-Split/blob/main/LICENSE",
+  "codeRepository": "https://github.com/hxst1/Beacon-Split",
+  "downloadUrl": "https://github.com/hxst1/Beacon-Split/releases/latest",
+  "isAccessibleForFree": true,
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "hxst1",
+    "url": "https://github.com/hxst1"
+  },
+  "sameAs": ["https://github.com/hxst1/Beacon-Split"]
+}
+</script>
+
+<!--
+  The same answers as the FAQ section below, which is the condition for using
+  this markup at all: it may not say anything the page does not.
+-->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is Beacon Split?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A desktop workspace for working with several Claude Code sessions at once. Each project gets a Claude session, real terminals, a file tree with an editor, and git — and its tab tells you what that project's session is doing, so you know which one has stopped and is waiting for an answer without checking each in turn."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Beacon Split cost anything?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. It is free and open source under AGPL-3.0. There is no account, no telemetry, no server and nothing to buy later."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I need my own Claude subscription?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Beacon runs Claude Code as Anthropic publishes it and never asks for, handles, stores or forwards a Claude credential. You sign in yourself and your usage is billed to you under your own agreement with Anthropic. Beacon is not affiliated with or endorsed by Anthropic."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which platforms does Beacon Split run on?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "macOS today, on both Apple Silicon and Intel. A Linux build is being worked on and has never been run, so nothing is claimed about it. Windows is not planned."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why does macOS say the app is damaged?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The build is not signed with an Apple Developer ID, so Gatekeeper refuses it the first time. After dragging Beacon to Applications, clear the quarantine flag once with: xattr -dr com.apple.quarantine \"/Applications/Beacon Split.app\". Signing and notarisation need an Apple Developer membership and are on the roadmap."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Beacon Split send my code anywhere?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Beacon has no server and collects no telemetry. Everything it does happens on your machine. The only thing that leaves it is whatever you send to Claude Code yourself, under your own Anthropic account."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What happens to a session when I close the window?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It keeps running. Sessions live in a background daemon rather than in the window, with their output buffered, so closing Beacon and reopening it puts you back where you were instead of starting again."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is this different from a terminal with tmux, or from an editor?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Beacon does not reimplement Claude Code, a shell or an editor: it runs the real ones. What it adds is knowing what each project's Claude session is doing across every project at once, which a terminal multiplexer cannot tell you and an editor built around a human typing was not shaped for."
+      }
+    }
+  ]
+}
+</script>
 </head>
 <body>
 
@@ -29,6 +158,7 @@
     <nav class="nav__links" aria-label="Primary">
       <a href="#what">What it does</a>
       <a href="#platforms">Platforms</a>
+      <a href="#faq">Questions</a>
       <a href="#open">Open source</a>
       <a class="nav__gh" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33C3.81 14.36 3.34 13 3.34 13c-.36-.93-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.23 1.88.87 2.34.67.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
@@ -60,7 +190,7 @@
         <a class="btn btn--ghost btn--lg" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">View the source</a>
       </div>
       <p class="cta__meta">
-        v0.1.0 · Apple Silicon &amp; Intel · <strong>Free</strong>, AGPL-3.0 · No account, no server
+        v<span data-dl-version>0.5.1</span> · Apple Silicon &amp; Intel · <strong>Free</strong>, AGPL-3.0 · No account, no server
       </p>
     </div>
 
@@ -85,7 +215,7 @@
   </div>
 
   <!-- The product, drawn from Beacon's own design tokens -->
-  <div class="stage">
+  <div class="stage" role="img" aria-label="The Beacon window. A workspace called Personal holds three project tabs — beacon-split, api-gateway and docs-site — each with a dot for what its Claude session is doing, and the title bar shows 3 hours 12 minutes of allowance left. Below, a Claude panel runs a session while Files and Git sit beside it.">
     <div class="win" id="win">
       <div class="win__accent" aria-hidden="true"></div>
 
@@ -95,7 +225,7 @@
           <span class="ws__dot"></span><span class="ws__icon">◆</span>Personal<span class="ws__chev">▾</span>
         </button>
         <span class="tbar__div" aria-hidden="true"></span>
-        <div class="tabs" role="tablist" aria-label="Projects (illustration)">
+        <div class="tabs">
           <span class="tab is-active"><i class="st" data-state="idle"></i>beacon-split</span>
           <span class="tab" id="tabB"><i class="st" data-state="working" id="dotB"></i>api-gateway</span>
           <span class="tab"><i class="st" data-state="done"></i>docs-site</span>
@@ -327,7 +457,7 @@
       <li class="plat">
         <i class="st st--lg" data-state="working"></i>
         <div class="plat__b">
-          <h4 class="plat__t">macOS <span class="plat__s plat__s--on">Available now</span></h4>
+          <h3 class="plat__t">macOS <span class="plat__s plat__s--on">Available now</span></h3>
           <p class="plat__d">
             Apple Silicon and Intel builds ship with every release. Apple Silicon is the one it's
             developed and tested on daily.
@@ -337,7 +467,7 @@
       <li class="plat">
         <i class="st st--lg" data-state="stopped"></i>
         <div class="plat__b">
-          <h4 class="plat__t">Linux <span class="plat__s plat__s--soon">Being built</span></h4>
+          <h3 class="plat__t">Linux <span class="plat__s plat__s--soon">Being built</span></h3>
           <p class="plat__d">
             Arch first, and it has never been built there, so nothing claims it works yet. The work
             is real and bounded: condition the window configuration by platform (vibrancy and the
@@ -354,7 +484,7 @@
       <li class="plat">
         <i class="st st--lg" data-state="off"></i>
         <div class="plat__b">
-          <h4 class="plat__t">Windows <span class="plat__s">Not planned</span></h4>
+          <h3 class="plat__t">Windows <span class="plat__s">Not planned</span></h3>
           <p class="plat__d">Not on the roadmap. Said here so you don't have to go looking.</p>
         </div>
       </li>
@@ -371,28 +501,40 @@
       no server, nothing to buy later.
     </p>
 
-    <div class="dl">
-      <a class="dlc" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.1.0/Beacon.Split_0.1.0_aarch64.dmg">
+    <!--
+      Written out for a specific release so the page works with no script and
+      with no network beyond the download itself, and filled in from the latest
+      GitHub release when it can be. What is here is the floor, not the answer:
+      see `main.js`. If these ever have to be edited by hand, the fetch is
+      broken — fix that instead.
+    -->
+    <div class="dl" data-dl-repo="hxst1/Beacon-Split">
+      <a class="dlc" data-dl-asset="aarch64" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_aarch64.dmg">
         <span class="dlc__t">Apple Silicon</span>
-        <span class="dlc__s">M1 and newer · .dmg · 6.8 MB</span>
+        <span class="dlc__s">M1 and newer · .dmg · <span data-dl-size>6.5 MB</span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
-      <a class="dlc" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.1.0/Beacon.Split_0.1.0_x64.dmg">
+      <a class="dlc" data-dl-asset="x64" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_x64.dmg">
         <span class="dlc__t">Intel</span>
-        <span class="dlc__s">x86-64 · .dmg · 5.3 MB</span>
+        <span class="dlc__s">x86-64 · .dmg · <span data-dl-size>4.8 MB</span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
     </div>
 
+    <p class="body body--fine dl__ver">
+      Version <b data-dl-version>0.5.1</b> ·
+      <a href="https://github.com/hxst1/Beacon-Split/releases" target="_blank" rel="noopener">every release, with what changed in each</a>
+    </p>
+
     <div class="gate">
-      <h4 class="gate__t">macOS will say it's damaged. It isn't.</h4>
+      <h3 class="gate__t">macOS will say it's damaged. It isn't.</h3>
       <p class="gate__d">
         The build isn't signed with an Apple Developer ID, so Gatekeeper refuses it the first time.
         Clear the quarantine flag once, after dragging Beacon to Applications:
       </p>
       <div class="cmd">
         <code id="cmd">xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"</code>
-        <button class="cmd__c" type="button" data-copy="#cmd" aria-label="Copy command">Copy</button>
+        <button class="cmd__c" type="button" data-copy="#cmd" aria-label="Copy command" aria-live="polite">Copy</button>
       </div>
       <p class="gate__d gate__d--fine">
         That removes a check macOS applies to software it cannot verify. It's a reasonable thing to
@@ -407,6 +549,78 @@
       session uses, and tells you exactly what's missing and how to install it.
       Updates arrive in place, and you're told what changed before anything happens.
     </p>
+  </div>
+</section>
+
+<!-- ── Questions ────────────────────────────────────────────────────── -->
+<!--
+  Plain answers to what people actually ask before downloading, and the same
+  ones a machine gets asked when somebody says "what is Beacon Split". The
+  FAQPage markup in the head repeats these word for word — if one changes,
+  both change, or the markup is a claim the page does not make.
+-->
+<section class="band" id="faq">
+  <div class="wrap wrap--tight">
+    <h2 class="h2">Questions worth answering before you download.</h2>
+
+    <dl class="faq">
+      <dt class="faq__q">What is Beacon Split?</dt>
+      <dd class="faq__a">
+        A desktop workspace for working with several Claude Code sessions at once. Each project
+        gets a Claude session, real terminals, a file tree with an editor, and git — and its tab
+        tells you what that project's session is doing, so you know which one has stopped and is
+        waiting for an answer without checking each in turn.
+      </dd>
+
+      <dt class="faq__q">Does Beacon Split cost anything?</dt>
+      <dd class="faq__a">
+        No. It is free and open source under AGPL-3.0. There is no account, no telemetry, no server
+        and nothing to buy later.
+      </dd>
+
+      <dt class="faq__q">Do I need my own Claude subscription?</dt>
+      <dd class="faq__a">
+        Yes. Beacon runs Claude Code as Anthropic publishes it and never asks for, handles, stores
+        or forwards a Claude credential. You sign in yourself and your usage is billed to you under
+        your own agreement with Anthropic. Beacon is not affiliated with or endorsed by Anthropic.
+      </dd>
+
+      <dt class="faq__q">Which platforms does Beacon Split run on?</dt>
+      <dd class="faq__a">
+        macOS today, on both Apple Silicon and Intel. A Linux build is being worked on and has
+        never been run, so nothing is claimed about it. Windows is not planned.
+      </dd>
+
+      <dt class="faq__q">Why does macOS say the app is damaged?</dt>
+      <dd class="faq__a">
+        The build is not signed with an Apple Developer ID, so Gatekeeper refuses it the first time.
+        After dragging Beacon to Applications, clear the quarantine flag once with:
+        <code>xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"</code>. Signing and
+        notarisation need an Apple Developer membership and are on the roadmap.
+      </dd>
+
+      <dt class="faq__q">Does Beacon Split send my code anywhere?</dt>
+      <dd class="faq__a">
+        No. Beacon has no server and collects no telemetry. Everything it does happens on your
+        machine. The only thing that leaves it is whatever you send to Claude Code yourself, under
+        your own Anthropic account.
+      </dd>
+
+      <dt class="faq__q">What happens to a session when I close the window?</dt>
+      <dd class="faq__a">
+        It keeps running. Sessions live in a background daemon rather than in the window, with
+        their output buffered, so closing Beacon and reopening it puts you back where you were
+        instead of starting again.
+      </dd>
+
+      <dt class="faq__q">How is this different from a terminal with tmux, or from an editor?</dt>
+      <dd class="faq__a">
+        Beacon does not reimplement Claude Code, a shell or an editor: it runs the real ones. What
+        it adds is knowing what each project's Claude session is doing across every project at
+        once, which a terminal multiplexer cannot tell you and an editor built around a human
+        typing was not shaped for.
+      </dd>
+    </dl>
   </div>
 </section>
 
@@ -428,7 +642,7 @@
     </p>
 
     <div class="help">
-      <h4 class="help__t">Where help goes furthest</h4>
+      <h3 class="help__t">Where help goes furthest</h3>
       <ol class="help__l">
         <li><b>The Linux build.</b> Nobody has run it there yet. Bounded, and the highest value.</li>
         <li><b>Detached panels.</b> Pop a panel into its own window. The daemon already makes this window management, not a session change.</li>
