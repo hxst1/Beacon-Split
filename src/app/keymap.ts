@@ -18,6 +18,7 @@ const HANDLERS: Record<string, () => void> = {
   'quickOpen.open': () => useBeacon.getState().setOverlay('quickOpen'),
   'settings.open': () => useBeacon.getState().setOverlay('settings'),
 
+  'panel.toggle.codex': () => void useBeacon.getState().togglePanel('codex'),
   'panel.toggle.files': () => void useBeacon.getState().togglePanel('files'),
   'panel.toggle.git': () => void useBeacon.getState().togglePanel('git'),
   'panel.toggle.editor': () => void useBeacon.getState().togglePanel('editor'),
@@ -61,6 +62,7 @@ export const ACTION_TITLES: Record<string, string> = {
   'palette.open': 'Command palette',
   'quickOpen.open': 'Quick open',
   'settings.open': 'Settings',
+  'panel.toggle.codex': 'Toggle Codex',
   'panel.toggle.files': 'Toggle Files',
   'panel.toggle.git': 'Toggle Git',
   'panel.toggle.editor': 'Toggle the editor',

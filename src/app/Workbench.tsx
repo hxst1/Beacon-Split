@@ -4,7 +4,7 @@ import { EmptyProjects } from '@/features/projects/EmptyProjects'
 import { prune, sourcePath, withFraction } from '@/lib/layout'
 import type { Path } from '@/lib/layout'
 import type { PanelId, Project } from '@/types/beacon'
-import { ClaudePanel } from './panels/ClaudePanel'
+import { AgentPanel } from './panels/AgentPanel'
 import { EditorPanel } from './panels/EditorPanel'
 import { FilesPanel } from './panels/FilesPanel'
 import { GitPanel } from './panels/GitPanel'
@@ -93,7 +93,13 @@ function renderPanel(panel: PanelId, workspaceId: string, project: Project): Rea
     case 'claude':
       // The one panel that takes the keyboard unasked, because it is what the
       // window is for and typing into it is the first thing anyone does.
-      return <ClaudePanel workspaceId={workspaceId} project={project} autoFocus />
+      return <AgentPanel agent="claude" workspaceId={workspaceId} project={project} autoFocus />
+    case 'codex':
+      // The second agent does not take the keyboard: it is shown because
+      // somebody asked for it, not because it is where they were going.
+      return (
+        <AgentPanel agent="codex" workspaceId={workspaceId} project={project} autoFocus={false} />
+      )
     case 'files':
       return <FilesPanel workspaceId={workspaceId} project={project} />
     case 'editor':
@@ -102,5 +108,15 @@ function renderPanel(panel: PanelId, workspaceId: string, project: Project): Rea
       return <GitPanel workspaceId={workspaceId} project={project} />
     case 'terminal':
       return <TerminalPanel workspaceId={workspaceId} project={project} />
+    default:
+      // A panel added to the layout and forgotten here used to draw nothing:
+      // the switch returned `undefined`, which is a perfectly good
+      // `ReactNode`, so the mistake reached the window as an empty box. This
+      // makes it a compile error instead.
+      return unreachable(panel)
   }
+}
+
+function unreachable(panel: never): never {
+  throw new Error(`no component for the ${String(panel)} panel`)
 }

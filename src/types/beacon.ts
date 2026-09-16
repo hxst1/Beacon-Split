@@ -39,7 +39,7 @@ export interface Workspace {
 }
 
 /** The panels Beacon can place. */
-export type PanelId = 'claude' | 'editor' | 'files' | 'git' | 'terminal'
+export type PanelId = 'claude' | 'codex' | 'editor' | 'files' | 'git' | 'terminal'
 
 export type SplitDirection = 'row' | 'column'
 
