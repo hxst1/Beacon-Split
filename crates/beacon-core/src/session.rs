@@ -57,6 +57,19 @@ impl SessionKind {
     ///
     /// The upside falls out of that key: two agents in one project are two
     /// kinds, so they no more collide than a shell and a Claude do today.
+    /// The kind of session an agent runs in.
+    ///
+    /// The inverse of [`SessionKind::agent`], and the reason both exist: the
+    /// daemon holds conversations by agent and sessions by kind, so it crosses
+    /// between them often enough that writing the match out each time was
+    /// three chances to write it differently.
+    pub fn for_agent(agent: AgentKind) -> Self {
+        match agent {
+            AgentKind::Claude => SessionKind::Claude,
+            AgentKind::Codex => SessionKind::Codex,
+        }
+    }
+
     pub fn agent(self) -> Option<AgentKind> {
         match self {
             SessionKind::Shell => None,

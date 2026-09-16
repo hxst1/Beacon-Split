@@ -347,17 +347,13 @@ fn handle(daemon: Arc<Daemon>, stream: UnixStream) {
 /// to start one lives in the process and the book lives on disk: a daemon that
 /// has just come back knows which conversation a project was in, and nothing
 /// else about it.
-fn prepare_claude(daemon: &Daemon, project: &ProjectId, agents: bool) {
+fn prepare_agent(daemon: &Daemon, project: &ProjectId, agent: AgentKind, agents: bool) {
     let created = {
         let mut book = daemon.workstreams.lock_or_recover();
-        match book.current(project) {
+        match book.current(project, agent) {
             Some(_) => false,
             None => {
-                // Claude, explicitly: this is the path that gives a project a
-                // conversation when it has none, and it is reached from the
-                // Claude panel. The request below will say which agent once
-                // there is a second panel to ask from.
-                book.start(project.clone(), None, AgentKind::Claude);
+                book.start(project.clone(), None, agent);
                 true
             }
         }
@@ -369,7 +365,7 @@ fn prepare_claude(daemon: &Daemon, project: &ProjectId, agents: bool) {
     let Some(stream) = daemon
         .workstreams
         .lock_or_recover()
-        .current(project)
+        .current(project, agent)
         .cloned()
     else {
         return;
@@ -469,8 +465,9 @@ fn set_launch(
     );
 }
 
-/// Replaces the project's Claude with one in the given conversation.
-fn into_claude(
+/// Replaces the project's session for this conversation's agent with one
+/// started in that conversation.
+fn into_agent(
     daemon: &Daemon,
     project: &ProjectId,
     stream: Workstream,
@@ -478,9 +475,10 @@ fn into_claude(
     size: (u16, u16),
     shell: Option<&ShellSpec>,
 ) -> Result<Reply> {
+    let kind = SessionKind::for_agent(stream.agent);
     let id = daemon
         .sessions
-        .restart_for(project, SessionKind::Claude, 0, cwd, size, shell)?;
+        .restart_for(project, kind, 0, cwd, size, shell)?;
 
     Ok(Reply::Workstream {
         workstream: Box::new(stream),
@@ -505,19 +503,34 @@ fn resume_workstream(
     shell: Option<&ShellSpec>,
     agents: bool,
 ) -> Result<Reply> {
+    // Which agent's conversation this is decides which of the project's
+    // current conversations it is being compared against, and which session
+    // would have to be replaced.
+    let Some(agent) = daemon
+        .workstreams
+        .lock_or_recover()
+        .get(&id)
+        .map(|stream| stream.agent)
+    else {
+        return Err(CoreError::invalid(
+            "that conversation is not one of this project's",
+        ));
+    };
+    let kind = SessionKind::for_agent(agent);
+
     let current = daemon
         .workstreams
         .lock_or_recover()
-        .current(&project)
+        .current(&project, agent)
         .map(|stream| stream.id.clone());
 
-    // Already in it. Not a restart: killing a live Claude to put it back where
+    // Already in it. Not a restart: killing a live agent to put it back where
     // it already was would throw away whatever it was in the middle of.
     if current.as_ref() == Some(&id) {
-        prepare_claude(daemon, &project, agents);
+        prepare_agent(daemon, &project, agent, agents);
         let session = daemon
             .sessions
-            .ensure(&project, SessionKind::Claude, 0, cwd, size, shell)?;
+            .ensure(&project, kind, 0, cwd, size, shell)?;
 
         let stream = daemon
             .workstreams
@@ -548,7 +561,7 @@ fn resume_workstream(
 
     let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, &project, &stream, start, agents);
-    into_claude(daemon, &project, stream, cwd, size, shell)
+    into_agent(daemon, &project, stream, cwd, size, shell)
 }
 
 fn request_id(line: &str) -> Option<u64> {
@@ -610,8 +623,8 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             shell,
             agents,
         } => {
-            if kind == SessionKind::Claude {
-                prepare_claude(daemon, &project, wanted(agents));
+            if let Some(agent) = kind.agent() {
+                prepare_agent(daemon, &project, agent, wanted(agents));
             }
             sessions
                 .ensure(&project, kind, slot, &cwd, (cols, rows), shell.as_ref())
@@ -644,8 +657,8 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             shell,
             agents,
         } => {
-            if kind == SessionKind::Claude {
-                prepare_claude(daemon, &project, wanted(agents));
+            if let Some(agent) = kind.agent() {
+                prepare_agent(daemon, &project, agent, wanted(agents));
             }
             sessions
                 .restart_for(&project, kind, slot, &cwd, (cols, rows), shell.as_ref())
@@ -764,16 +777,23 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             sessions: sessions.list(),
         }),
 
-        Request::Workstreams { project } => {
+        Request::Workstreams { project, agent } => {
             let book = daemon.workstreams.lock_or_recover();
             Ok(Reply::Workstreams {
-                workstreams: book.for_project(&project).into_iter().cloned().collect(),
-                current: book.current(&project).map(|stream| stream.id.clone()),
+                workstreams: book
+                    .for_project(&project, agent)
+                    .into_iter()
+                    .cloned()
+                    .collect(),
+                current: book
+                    .current(&project, agent)
+                    .map(|stream| stream.id.clone()),
             })
         }
 
         Request::StartWorkstream {
             project,
+            agent,
             name,
             cwd,
             cols,
@@ -781,11 +801,10 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             shell,
             agents,
         } => {
-            let stream = daemon.workstreams.lock_or_recover().start(
-                project.clone(),
-                name,
-                AgentKind::Claude,
-            );
+            let stream = daemon
+                .workstreams
+                .lock_or_recover()
+                .start(project.clone(), name, agent);
             daemon.persist_workstreams();
             set_launch(
                 daemon,
@@ -794,7 +813,7 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
                 ConversationStart::New,
                 wanted(agents),
             );
-            into_claude(daemon, &project, stream, &cwd, (cols, rows), shell.as_ref())
+            into_agent(daemon, &project, stream, &cwd, (cols, rows), shell.as_ref())
         }
 
         Request::ResumeWorkstream {
@@ -857,14 +876,7 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
                                 },
                                 wanted(agents),
                             );
-                            into_claude(
-                                daemon,
-                                &project,
-                                stream,
-                                &cwd,
-                                (cols, rows),
-                                shell.as_ref(),
-                            )
+                            into_agent(daemon, &project, stream, &cwd, (cols, rows), shell.as_ref())
                         }
                     }
                 }

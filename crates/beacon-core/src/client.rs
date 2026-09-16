@@ -7,6 +7,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::agent::AgentKind;
 use crate::domain::ProjectId;
 use crate::error::{CoreError, Result};
 use crate::protocol::{
@@ -262,17 +263,19 @@ impl DaemonClient {
         }
     }
 
-    /// A project's Claude conversations, most recently active first, and which
-    /// one it is in.
+    /// A project's conversations with one agent, most recently active first,
+    /// and which one it is in.
     pub fn workstreams(
         &self,
         project: &ProjectId,
+        agent: AgentKind,
     ) -> Result<(
         Vec<crate::workstreams::Workstream>,
         Option<crate::workstreams::WorkstreamId>,
     )> {
         match self.request(Request::Workstreams {
             project: project.clone(),
+            agent,
         })? {
             Reply::Workstreams {
                 workstreams,
@@ -282,10 +285,11 @@ impl DaemonClient {
         }
     }
 
-    /// Starts a new conversation and puts the project's Claude in it.
+    /// Starts a new conversation and puts the project's agent in it.
     pub fn start_workstream(
         &self,
         project: &ProjectId,
+        agent: AgentKind,
         name: Option<String>,
         cwd: &Path,
         size: (u16, u16),
@@ -293,6 +297,7 @@ impl DaemonClient {
     ) -> Result<(crate::workstreams::Workstream, SessionInfo)> {
         self.opened(Request::StartWorkstream {
             project: project.clone(),
+            agent,
             name,
             cwd: cwd.to_path_buf(),
             cols: size.0,

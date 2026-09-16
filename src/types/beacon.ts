@@ -313,9 +313,19 @@ export interface AgentActivity {
  * The id is the conversation's, chosen by Beacon and handed to Claude Code with
  * `--session-id`. Nothing here is read out of a transcript.
  */
+/** Which agent a conversation belongs to. */
+export type AgentKind = 'claude' | 'codex'
+
 export interface Workstream {
   id: string
   project: string
+  /**
+   * Which agent's conversation this is.
+   *
+   * Absent from a book written before Beacon ran more than one, where every
+   * conversation is Claude Code's.
+   */
+  agent?: AgentKind
   /**
    * What it was called, if it was called anything.
    *
@@ -336,6 +346,13 @@ export interface Workstream {
    * typed into leaves nothing to resume or fork.
    */
   resumable: boolean
+  /**
+   * The id the agent itself uses, when it is not the one Beacon chose.
+   *
+   * Codex names its own conversations and reports the name in a hook, so this
+   * is empty until its first turn has been taken.
+   */
+  agentSessionId?: string
   model?: string
   contextUsedPercentage?: number
 }

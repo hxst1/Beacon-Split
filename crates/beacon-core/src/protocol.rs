@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::agent::AgentKind;
 use crate::clips::{Clip, ClipKind};
 use crate::domain::{ClipId, ProjectId};
 use crate::session::{SessionId, SessionInfo, SessionKind};
@@ -357,7 +358,16 @@ pub enum Request {
     },
     /// A project's conversations, and which one it is in.
     #[serde(rename_all = "camelCase")]
-    Workstreams { project: ProjectId },
+    Workstreams {
+        project: ProjectId,
+        /// Which agent's conversations are being asked about.
+        ///
+        /// Defaulted rather than required, so a client that predates a second
+        /// agent still gets an answer — and gets Claude Code's, which is the
+        /// only kind it knew about.
+        #[serde(default)]
+        agent: AgentKind,
+    },
     /// Starts a new conversation and moves the project into it.
     ///
     /// Carries the same session arguments as `Ensure` because that is what it
@@ -366,6 +376,10 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     StartWorkstream {
         project: ProjectId,
+        /// Which agent the new conversation belongs to. Defaulted to Claude
+        /// Code for a client that predates the choice.
+        #[serde(default)]
+        agent: AgentKind,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         cwd: PathBuf,
@@ -695,9 +709,11 @@ mod tests {
             },
             Request::Workstreams {
                 project: ProjectId("pj_y".into()),
+                agent: AgentKind::Claude,
             },
             Request::StartWorkstream {
                 project: ProjectId("pj_y".into()),
+                agent: AgentKind::Codex,
                 name: Some("auth-refactor".into()),
                 cwd: cwd.clone(),
                 cols: 80,

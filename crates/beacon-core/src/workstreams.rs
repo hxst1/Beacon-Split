@@ -177,8 +177,46 @@ pub struct WorkstreamBook {
     ///
     /// Held here rather than worked out from the timestamps: "most recent" and
     /// "the one I am in" come apart the moment you look at an older one.
-    #[serde(default)]
-    pub current: BTreeMap<ProjectId, WorkstreamId>,
+    #[serde(default, deserialize_with = "read_current")]
+    pub current: BTreeMap<ProjectId, BTreeMap<AgentKind, WorkstreamId>>,
+}
+
+/// Reads the current-conversation map in either shape it has been written in.
+///
+/// It used to map a project straight to one conversation, because a project
+/// only ever had one agent. Now it maps a project to one conversation per
+/// agent, and a book written by an older Beacon still has to load: every
+/// conversation in it is a Claude Code one, so that is where a bare id goes.
+///
+/// Done here rather than as a second field and a migration pass because there
+/// is nothing to migrate — the old shape is simply a special case of the new
+/// one, and saying so in the reader means nothing downstream has to know that
+/// two shapes ever existed.
+fn read_current<'de, D>(
+    deserializer: D,
+) -> std::result::Result<BTreeMap<ProjectId, BTreeMap<AgentKind, WorkstreamId>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Entry {
+        /// What an older Beacon wrote: one conversation, and it is Claude's.
+        OneConversation(WorkstreamId),
+        ByAgent(BTreeMap<AgentKind, WorkstreamId>),
+    }
+
+    let read = BTreeMap::<ProjectId, Entry>::deserialize(deserializer)?;
+    Ok(read
+        .into_iter()
+        .map(|(project, entry)| {
+            let by_agent = match entry {
+                Entry::OneConversation(id) => BTreeMap::from([(AgentKind::Claude, id)]),
+                Entry::ByAgent(by_agent) => by_agent,
+            };
+            (project, by_agent)
+        })
+        .collect())
 }
 
 impl Default for WorkstreamBook {
@@ -194,11 +232,15 @@ impl Default for WorkstreamBook {
 impl WorkstreamBook {
     pub const SCHEMA_VERSION: u32 = 1;
 
-    /// A project's conversations, most recently active first.
-    pub fn for_project(&self, project: &ProjectId) -> Vec<&Workstream> {
+    /// A project's conversations with one agent, most recently active first.
+    ///
+    /// Filtered by agent, because they are not interchangeable: offering a
+    /// Codex conversation to Claude Code would be offering an id it has never
+    /// heard of.
+    pub fn for_project(&self, project: &ProjectId, agent: AgentKind) -> Vec<&Workstream> {
         self.workstreams
             .iter()
-            .filter(|stream| &stream.project == project)
+            .filter(|stream| &stream.project == project && stream.agent == agent)
             .collect()
     }
 
@@ -206,10 +248,29 @@ impl WorkstreamBook {
         self.workstreams.iter().find(|stream| &stream.id == id)
     }
 
-    /// The conversation a project is in, if it is in one.
-    pub fn current(&self, project: &ProjectId) -> Option<&Workstream> {
-        let id = self.current.get(project)?;
+    /// The conversation a project is in with one agent, if it is in one.
+    pub fn current(&self, project: &ProjectId, agent: AgentKind) -> Option<&Workstream> {
+        let id = self.current.get(project)?.get(&agent)?;
         self.get(id)
+    }
+
+    /// Every conversation a project is currently in, across its agents.
+    ///
+    /// What the cap has to protect: with two agents there is more than one
+    /// conversation somebody is sitting in, and dropping either would lose the
+    /// name of one they are looking at.
+    fn currently_in(&self, project: &ProjectId) -> Vec<WorkstreamId> {
+        self.current
+            .get(project)
+            .map(|by_agent| by_agent.values().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    fn move_into(&mut self, project: &ProjectId, agent: AgentKind, id: WorkstreamId) {
+        self.current
+            .entry(project.clone())
+            .or_default()
+            .insert(agent, id);
     }
 
     /// Starts a new conversation and moves the project into it.
@@ -221,7 +282,7 @@ impl WorkstreamBook {
     ) -> Workstream {
         let stream = Workstream::new(project.clone(), name, agent);
         self.insert(stream.clone());
-        self.current.insert(project.clone(), stream.id.clone());
+        self.move_into(&project, agent, stream.id.clone());
         self.enforce_cap(&project);
         stream
     }
@@ -242,10 +303,11 @@ impl WorkstreamBook {
         // A fork carries its parent's agent. There is no forking a Claude Code
         // conversation into Codex: what a fork is for is the history, and the
         // history is in the other program.
-        let mut stream = Workstream::new(project.clone(), name, parent.agent);
+        let agent = parent.agent;
+        let mut stream = Workstream::new(project.clone(), name, agent);
         stream.forked_from = Some(from.clone());
         self.insert(stream.clone());
-        self.current.insert(project.clone(), stream.id.clone());
+        self.move_into(project, agent, stream.id.clone());
         self.enforce_cap(project);
         Some(stream)
     }
@@ -257,7 +319,7 @@ impl WorkstreamBook {
             return None;
         }
 
-        self.current.insert(project.clone(), id.clone());
+        self.move_into(project, stream.agent, id.clone());
         self.touch(id);
         self.get(id).cloned()
     }
@@ -381,24 +443,27 @@ impl WorkstreamBook {
     /// of the conversation they are sitting in. It still costs a place, so the
     /// cap is a cap and not one more than a cap.
     fn enforce_cap(&mut self, project: &ProjectId) {
-        let current = self
-            .current
-            .get(project)
+        // Every conversation somebody is currently sitting in, which with two
+        // agents is more than one. Filtered to the rows that actually exist,
+        // so a stale pointer does not spend part of the budget.
+        let current: Vec<WorkstreamId> = self
+            .currently_in(project)
+            .into_iter()
             .filter(|id| {
                 self.workstreams
                     .iter()
-                    .any(|stream| &stream.project == project && &stream.id == *id)
+                    .any(|stream| &stream.project == project && &stream.id == id)
             })
-            .cloned();
+            .collect();
 
-        let budget = MAX_PER_PROJECT.saturating_sub(usize::from(current.is_some()));
+        let budget = MAX_PER_PROJECT.saturating_sub(current.len());
         let mut kept = 0usize;
 
         self.workstreams.retain(|stream| {
             if &stream.project != project {
                 return true;
             }
-            if current.as_ref() == Some(&stream.id) {
+            if current.contains(&stream.id) {
                 return true;
             }
             kept += 1;
@@ -475,6 +540,108 @@ mod tests {
             session_id: Some(session.into()),
             ..UsageReport::unknown(project())
         }
+    }
+
+    #[test]
+    fn a_book_that_maps_a_project_to_one_conversation_is_read_as_claudes() {
+        // The shape every Beacon before a second agent wrote, and the shape
+        // sitting in real users' files right now. Reading it wrong would not
+        // fail loudly — it would quietly forget which conversation each
+        // project was in, which is the work somebody had open.
+        let old = r#"{
+            "schemaVersion": 1,
+            "workstreams": [{
+                "id": "0c40d249-ee07-4eac-ab8c-608e71f2c9e1",
+                "project": "pj_x",
+                "createdAt": 1,
+                "lastActiveAt": 2,
+                "resumable": true
+            }],
+            "current": { "pj_x": "0c40d249-ee07-4eac-ab8c-608e71f2c9e1" }
+        }"#;
+
+        let book: WorkstreamBook = serde_json::from_str(old).unwrap();
+        let stream = book
+            .current(&project(), AgentKind::Claude)
+            .expect("the conversation the project was in");
+        assert_eq!(stream.id.as_str(), "0c40d249-ee07-4eac-ab8c-608e71f2c9e1");
+        // And it is nobody else's.
+        assert!(book.current(&project(), AgentKind::Codex).is_none());
+    }
+
+    #[test]
+    fn a_book_written_since_reads_one_conversation_per_agent() {
+        let both = r#"{
+            "schemaVersion": 1,
+            "workstreams": [
+                {"id":"aaa","project":"pj_x","createdAt":1,"lastActiveAt":2,"agent":"claude"},
+                {"id":"bbb","project":"pj_x","createdAt":1,"lastActiveAt":2,"agent":"codex"}
+            ],
+            "current": { "pj_x": { "claude": "aaa", "codex": "bbb" } }
+        }"#;
+
+        let book: WorkstreamBook = serde_json::from_str(both).unwrap();
+        assert_eq!(
+            book.current(&project(), AgentKind::Claude)
+                .unwrap()
+                .id
+                .as_str(),
+            "aaa"
+        );
+        assert_eq!(
+            book.current(&project(), AgentKind::Codex)
+                .unwrap()
+                .id
+                .as_str(),
+            "bbb"
+        );
+    }
+
+    #[test]
+    fn each_agent_keeps_its_own_place_in_the_same_project() {
+        let mut book = WorkstreamBook::default();
+        let claude = book.start(project(), None, AgentKind::Claude);
+        let codex = book.start(project(), None, AgentKind::Codex);
+
+        // Starting Codex's must not have moved Claude's.
+        assert_eq!(
+            book.current(&project(), AgentKind::Claude).unwrap().id,
+            claude.id
+        );
+        assert_eq!(
+            book.current(&project(), AgentKind::Codex).unwrap().id,
+            codex.id
+        );
+
+        // And each agent is offered only its own: a Codex id means nothing to
+        // Claude Code.
+        let listed = book.for_project(&project(), AgentKind::Claude);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, claude.id);
+    }
+
+    #[test]
+    fn the_cap_no_longer_evicts_the_other_agents_place() {
+        let mut book = WorkstreamBook::default();
+        let codex = book.start(project(), None, AgentKind::Codex).id;
+
+        // A long session with Claude, well past the cap. Each new conversation
+        // becomes Claude's current one, so the older Claude ones are supposed
+        // to be dropped — that is what the cap is for.
+        let mut last_claude = book.start(project(), None, AgentKind::Claude).id;
+        for _ in 0..MAX_PER_PROJECT * 2 {
+            last_claude = book.start(project(), None, AgentKind::Claude).id;
+        }
+
+        // What must not be dropped is the conversation the *other* agent is
+        // sitting in. The cap used to know about one current conversation per
+        // project, so Codex's was collateral damage of using Claude.
+        assert!(
+            book.get(&codex).is_some(),
+            "the conversation Codex is in was evicted by Claude's history"
+        );
+        assert!(book.get(&last_claude).is_some(), "and Claude's own place");
+        assert!(book.for_project(&project(), AgentKind::Claude).len() <= MAX_PER_PROJECT);
     }
 
     #[test]
@@ -561,7 +728,7 @@ mod tests {
 
         let book: WorkstreamBook = serde_json::from_str(old).unwrap();
         let stream = book
-            .current(&project())
+            .current(&project(), AgentKind::Claude)
             .expect("the project's conversation");
 
         assert_eq!(stream.agent, AgentKind::Claude);
@@ -588,9 +755,15 @@ mod tests {
         let mut book = WorkstreamBook::default();
         let started = book.start(project(), Some("auth-refactor".into()), AgentKind::Claude);
 
-        assert_eq!(book.current(&project()).unwrap().id, started.id);
         assert_eq!(
-            book.current(&project()).unwrap().name.as_deref(),
+            book.current(&project(), AgentKind::Claude).unwrap().id,
+            started.id
+        );
+        assert_eq!(
+            book.current(&project(), AgentKind::Claude)
+                .unwrap()
+                .name
+                .as_deref(),
             Some("auth-refactor")
         );
     }
@@ -628,7 +801,7 @@ mod tests {
             AgentKind::Claude,
         );
 
-        let listed = book.for_project(&project());
+        let listed = book.for_project(&project(), AgentKind::Claude);
         assert_eq!(listed.len(), 2);
         assert_eq!(listed[0].id, second.id);
         assert_eq!(listed[1].id, first.id);
@@ -641,7 +814,10 @@ mod tests {
         book.start(project(), Some("two".into()), AgentKind::Claude);
 
         book.touch(&first.id);
-        assert_eq!(book.for_project(&project())[0].id, first.id);
+        assert_eq!(
+            book.for_project(&project(), AgentKind::Claude)[0].id,
+            first.id
+        );
     }
 
     #[test]
@@ -653,7 +829,7 @@ mod tests {
         let other = ProjectId("pj_other".into());
 
         assert!(book.resume(&other, &mine.id).is_none());
-        assert!(book.current(&other).is_none());
+        assert!(book.current(&other, AgentKind::Claude).is_none());
         assert!(book.resume(&project(), &mine.id).is_some());
     }
 
@@ -667,7 +843,10 @@ mod tests {
 
         assert_eq!(forked.forked_from.as_ref(), Some(&parent.id));
         assert_ne!(forked.id, parent.id);
-        assert_eq!(book.current(&project()).unwrap().id, forked.id);
+        assert_eq!(
+            book.current(&project(), AgentKind::Claude).unwrap().id,
+            forked.id
+        );
     }
 
     #[test]
@@ -677,7 +856,7 @@ mod tests {
         let mut book = WorkstreamBook::default();
         let missing = WorkstreamId::generate();
         assert!(book.fork(&project(), &missing, None).is_none());
-        assert!(book.current(&project()).is_none());
+        assert!(book.current(&project(), AgentKind::Claude).is_none());
     }
 
     #[test]
@@ -740,7 +919,10 @@ mod tests {
         for n in 0..MAX_PER_PROJECT + 10 {
             book.start(project(), Some(format!("stream-{n}")), AgentKind::Claude);
         }
-        assert_eq!(book.for_project(&project()).len(), MAX_PER_PROJECT);
+        assert_eq!(
+            book.for_project(&project(), AgentKind::Claude).len(),
+            MAX_PER_PROJECT
+        );
     }
 
     #[test]
@@ -757,7 +939,10 @@ mod tests {
         }
 
         assert!(book.get(&oldest.id).is_some());
-        assert_eq!(book.current(&project()).unwrap().id, oldest.id);
+        assert_eq!(
+            book.current(&project(), AgentKind::Claude).unwrap().id,
+            oldest.id
+        );
     }
 
     #[test]
@@ -770,7 +955,7 @@ mod tests {
             book.start(project(), Some(format!("mine-{n}")), AgentKind::Claude);
         }
 
-        assert_eq!(book.for_project(&other).len(), 1);
+        assert_eq!(book.for_project(&other, AgentKind::Claude).len(), 1);
     }
 
     #[test]
@@ -785,7 +970,7 @@ mod tests {
         );
 
         assert_eq!(book.forget_project(&project()), 2);
-        assert!(book.current(&project()).is_none());
+        assert!(book.current(&project(), AgentKind::Claude).is_none());
         assert_eq!(book.workstreams.len(), 1);
     }
 
@@ -878,7 +1063,9 @@ mod tests {
 
         assert_eq!(back.workstreams.len(), 2);
         assert_eq!(
-            back.current(&project()).unwrap().forked_from,
+            back.current(&project(), AgentKind::Claude)
+                .unwrap()
+                .forked_from,
             Some(started.id)
         );
         // A conversation nobody named stays nameless across the round trip.

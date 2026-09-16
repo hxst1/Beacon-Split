@@ -1,3 +1,4 @@
+use beacon_core::agent::AgentKind;
 use beacon_core::domain::{ProjectId, WorkspaceId};
 use beacon_core::session::{SessionInfo, SessionPrefs};
 use beacon_core::workstreams::{Workstream, WorkstreamId};
@@ -22,12 +23,17 @@ pub struct OpenedWorkstream {
     session: SessionInfo,
 }
 
+/// An absent `agent` means Claude Code: that is what a window which has not
+/// been taught about a second agent is asking for.
 #[tauri::command]
 pub fn list_workstreams(
     state: State<'_, AppState>,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
 ) -> CommandResult<Workstreams> {
-    let (workstreams, current) = state.daemon()?.workstreams(&project_id)?;
+    let (workstreams, current) = state
+        .daemon()?
+        .workstreams(&project_id, agent.unwrap_or_default())?;
     Ok(Workstreams {
         workstreams,
         current,
@@ -63,6 +69,7 @@ pub fn start_workstream(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
     name: Option<String>,
     cols: u16,
     rows: u16,
@@ -70,6 +77,7 @@ pub fn start_workstream(
     let (cwd, prefs) = placement(&state, &workspace_id, &project_id)?;
     let (workstream, session) = state.daemon()?.start_workstream(
         &project_id,
+        agent.unwrap_or_default(),
         name,
         &cwd,
         (cols.max(2), rows.max(2)),
