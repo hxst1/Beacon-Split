@@ -4,7 +4,7 @@
 //! Beacon needs: both have to look in the same places, or a preflight check
 //! would pass while the thing it checked still failed to start.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -283,6 +283,31 @@ pub fn strip_terminal_identity(command: &mut std::process::Command) {
 /// for each one lives.
 pub(crate) use crate::session::STRIPPED_ENV;
 
+/// A `PATH` with a program's own directory in front.
+///
+/// An agent installed with npm is not a binary but a Node script —
+/// `#!/usr/bin/env node`, which spawns the real executable. Beacon finds it
+/// through the user's login shell, where `node` is on the `PATH`, and then runs
+/// it directly with its own: launched from the Dock that is the bare GUI
+/// `PATH`, with no version manager anywhere in it. The program is found and
+/// cannot run, which looks from the outside like it is not installed at all.
+///
+/// Its own directory is the fix and not a guess: npm puts the shim beside the
+/// `node` it needs, so a `PATH` that can reach the one can reach the other. It
+/// goes in front rather than behind so the interpreter that belongs to this
+/// installation is the one that answers.
+pub fn path_with_program_dir(program: &Path) -> Option<std::ffi::OsString> {
+    // A bare name has an empty parent rather than none, and an empty entry on
+    // `PATH` means the current working directory — which is a project the user
+    // did not ask to have searched for executables.
+    let dir = program.parent().filter(|dir| !dir.as_os_str().is_empty())?;
+    let current = std::env::var_os("PATH").unwrap_or_default();
+
+    let mut paths = vec![dir.to_path_buf()];
+    paths.extend(std::env::split_paths(&current).filter(|entry| entry != dir));
+    std::env::join_paths(paths).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,5 +436,34 @@ mod tests {
         let first = ProbeFile::new("claude").unwrap();
         let second = ProbeFile::new("claude").unwrap();
         assert_ne!(first.path, second.path);
+    }
+
+    #[test]
+    fn a_programs_own_directory_leads_the_path_it_runs_with() {
+        let path =
+            path_with_program_dir(Path::new("/opt/node/bin/codex")).expect("a joinable PATH");
+        let entries: Vec<_> = std::env::split_paths(&path).collect();
+
+        assert_eq!(
+            entries.first().map(|p| p.as_path()),
+            Some(Path::new("/opt/node/bin")),
+            "the interpreter beside the program has to be reachable first"
+        );
+        // Listed once, not twice, however the inherited PATH was arranged.
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|entry| entry.as_path() == Path::new("/opt/node/bin"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_bare_program_name_never_puts_the_working_directory_on_the_path() {
+        // `Path::new("codex").parent()` is an empty path, not nothing, and an
+        // empty entry on `PATH` means "look in the current directory" — which
+        // would be whichever project the session happens to be in.
+        assert!(path_with_program_dir(Path::new("codex")).is_none());
     }
 }

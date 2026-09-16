@@ -17,6 +17,7 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("palette.open", "mod+k"),
     ("quickOpen.open", "mod+p"),
     ("settings.open", "mod+,"),
+    ("panel.toggle.codex", "mod+shift+o"),
     ("panel.toggle.files", "mod+e"),
     ("panel.toggle.git", "mod+g"),
     ("panel.toggle.editor", "mod+o"),

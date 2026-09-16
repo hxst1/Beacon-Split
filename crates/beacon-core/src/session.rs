@@ -613,6 +613,15 @@ impl SessionManager {
                 let path = self.program_path(agent)?;
                 let mut command = CommandBuilder::new(&path);
 
+                // An agent installed with npm is a Node script that spawns the
+                // real executable, and it needs `node` on the `PATH`. Beacon
+                // found it through the login shell, which has one; launched
+                // from the Dock, Beacon's own `PATH` does not. Its own
+                // directory is where npm put both.
+                if let Some(path) = crate::tools::path_with_program_dir(&path) {
+                    command.env("PATH", path);
+                }
+
                 // Merged with whatever the user has configured, never replacing
                 // it: `--strict-mcp-config` would silently switch off every MCP
                 // server they set up themselves, which is not a trade Beacon

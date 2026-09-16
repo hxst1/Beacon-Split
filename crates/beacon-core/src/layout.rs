@@ -8,6 +8,7 @@ use crate::error::{CoreError, Result};
 #[serde(rename_all = "camelCase")]
 pub enum PanelId {
     Claude,
+    Codex,
     Editor,
     Files,
     Git,
@@ -15,8 +16,9 @@ pub enum PanelId {
 }
 
 impl PanelId {
-    pub const ALL: [PanelId; 5] = [
+    pub const ALL: [PanelId; 6] = [
         PanelId::Claude,
+        PanelId::Codex,
         PanelId::Editor,
         PanelId::Files,
         PanelId::Git,
@@ -24,7 +26,16 @@ impl PanelId {
     ];
 
     /// Panels that start out of the way rather than showing something empty.
-    pub const HIDDEN_BY_DEFAULT: [PanelId; 1] = [PanelId::Editor];
+    ///
+    /// Codex is here for a different reason than the editor: it is not empty,
+    /// it is a second agent, and most people want one. It has a place in every
+    /// preset so that asking for it puts it somewhere considered rather than
+    /// somewhere plausible — but until it is asked for, a layout looks exactly
+    /// as it did before Beacon could run two.
+    pub const HIDDEN_BY_DEFAULT: [PanelId; 2] = [PanelId::Codex, PanelId::Editor];
+
+    /// The agent panels, which are the ones a layout must have at least one of.
+    pub const AGENTS: [PanelId; 2] = [PanelId::Claude, PanelId::Codex];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,8 +106,10 @@ impl LayoutNode {
         if seen.len() != panels.len() {
             return Err(CoreError::invalid("a layout cannot place a panel twice"));
         }
-        if !panels.contains(&PanelId::Claude) {
-            return Err(CoreError::invalid("a layout must place the Claude panel"));
+        // At least one agent, rather than Claude specifically: somebody who
+        // only uses Codex has a perfectly good layout without Claude in it.
+        if !panels.iter().any(|panel| PanelId::AGENTS.contains(panel)) {
+            return Err(CoreError::invalid("a layout must place an agent panel"));
         }
         Ok(())
     }
@@ -202,16 +215,21 @@ impl LayoutPreset {
                 LayoutNode::panel(Git),
             )
         };
-        // The editor sits beside Claude, and starts hidden, so a preset looks
-        // exactly the same until a file is actually opened.
-        let main = || {
+        // The two agents share their side of the window, evenly, because
+        // neither is the lesser. Codex starts hidden, and hiding collapses the
+        // split it is in, so this reads exactly as a lone Claude until somebody
+        // asks for the second.
+        let agents = || {
             LayoutNode::split(
                 Row,
-                0.58,
+                0.5,
                 LayoutNode::panel(Claude),
-                LayoutNode::panel(Editor),
+                LayoutNode::panel(Codex),
             )
         };
+        // The editor sits beside the agents, and starts hidden too, so a preset
+        // looks exactly the same until a file is actually opened.
+        let main = || LayoutNode::split(Row, 0.58, agents(), LayoutNode::panel(Editor));
 
         Some(match self {
             Self::ClaudeLeft => LayoutNode::split(

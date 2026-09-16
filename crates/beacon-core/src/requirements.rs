@@ -50,7 +50,7 @@ impl Requirement {
 /// a check that looks somewhere else could pass while the thing it checked
 /// still failed to start, which is worse than not checking.
 pub fn check() -> Vec<Requirement> {
-    vec![check_claude(), check_git()]
+    vec![check_claude(), check_codex(), check_git()]
 }
 
 /// Whether anything Beacon considers essential is missing.
@@ -93,6 +93,43 @@ fn check_claude() -> Requirement {
     }
 }
 
+/// Codex is recommended, not required.
+///
+/// The difference matters: without Claude Code, Beacon's central feature does
+/// not work, and it says so in a way that blocks. Codex is a second agent
+/// somebody may never want, so not having it costs one panel and must not
+/// present itself as something wrong with the installation.
+fn check_codex() -> Requirement {
+    let path = resolve_program("codex");
+    Requirement {
+        id: "codex",
+        name: "Codex",
+        importance: Importance::Recommended,
+        version: path
+            .as_deref()
+            .and_then(|path| version_of(path, "--version")),
+        path: path.map(|path| path.to_string_lossy().into_owned()),
+        what_breaks: "Beacon can run Codex beside Claude Code, in its own \
+                      conversation. Without it, the Codex panel has nothing to \
+                      run — everything else works.",
+        install: vec![
+            InstallOption {
+                label: "npm",
+                command: "npm install -g @openai/codex",
+            },
+            InstallOption {
+                label: "Homebrew",
+                command: "brew install --cask codex",
+            },
+        ],
+        note: Some(
+            "Codex needs a ChatGPT plan or an API key. After installing, run \
+             `codex` once in a terminal to sign in — Beacon does not handle \
+             signing in, it runs the CLI you already use.",
+        ),
+    }
+}
+
 fn check_git() -> Requirement {
     let path = resolve_program("git");
     Requirement {
@@ -131,6 +168,13 @@ fn version_of(path: &std::path::Path, flag: &str) -> Option<String> {
     let mut command = std::process::Command::new(path);
     command.arg(flag);
     strip_terminal_identity(&mut command);
+    // An npm-installed agent is a Node script and needs its interpreter, which
+    // lives beside it. Without this the program is found and then refuses to
+    // say its version, which reads as a broken install rather than a missing
+    // `node`.
+    if let Some(path) = crate::tools::path_with_program_dir(path) {
+        command.env("PATH", path);
+    }
 
     let output = command.output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
