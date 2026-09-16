@@ -12,6 +12,7 @@ pub mod claude;
 pub mod claude_hooks;
 pub mod client;
 pub mod clips;
+pub mod codex;
 pub mod detect;
 pub mod domain;
 pub mod dotenv;
