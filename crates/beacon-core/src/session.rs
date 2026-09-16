@@ -7,6 +7,7 @@ use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system}
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::agent::AgentKind;
 use crate::domain::ProjectId;
 use crate::error::{CoreError, Result};
 use crate::scrollback::{DEFAULT_CAPACITY, Scrollback};
@@ -68,20 +69,26 @@ pub struct SessionPrefs {
     pub agents: bool,
 }
 
-/// How a Claude session should be started.
+/// How an agent session should be started.
 ///
-/// Beacon chooses the conversation's id rather than discovering it, so this is
-/// settled before the process exists and nothing ever has to read a transcript
-/// to find out what it is talking to.
+/// Held in the process and never written down: it is what the next spawn of a
+/// project's agent should do, which is a fact about now.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClaudeLaunch {
-    /// The conversation, as a UUID — the form `--session-id` accepts.
+pub struct AgentLaunch {
+    pub agent: AgentKind,
+    /// Beacon's id for the conversation, as a UUID.
+    ///
+    /// Passed to an agent that accepts one. Codex does not, so for Codex this
+    /// is Beacon's own handle on the conversation and never reaches the command
+    /// line — the id Codex knows it by arrives in
+    /// [`ConversationStart::Resume`], because that is the only place it is
+    /// needed and the only place it is known.
     pub session_id: String,
     /// What to call it, when it has been called something.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    pub start: ClaudeStart,
+    pub start: ConversationStart,
     /// Whether Beacon's own subagents and routing policy are offered.
     ///
     /// Sent by the client rather than read by the daemon, like the shell and
@@ -93,34 +100,56 @@ pub struct ClaudeLaunch {
 
 /// Whether the conversation being started already exists.
 ///
-/// The distinction is not cosmetic: `--session-id` on a conversation that has
-/// already been used is refused — *"Session ID … is already in use"* — so a
-/// Claude that crashed and is being brought back has to be resumed, not
-/// started. Getting this wrong would turn every restart into an error message
-/// where the session used to be.
+/// The distinction is not cosmetic. `--session-id` on a conversation that has
+/// already been used is refused — *"Session ID … is already in use"* — and
+/// `--resume` on one that has never been spoken in answers *"No conversation
+/// found with session ID"*. Getting this wrong turns a restart into an error
+/// message where the session used to be, in one direction or the other.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
-pub enum ClaudeStart {
+pub enum ConversationStart {
     /// A conversation that does not exist yet.
     New,
-    /// One that does: every start after the first, including after a crash.
-    Resume,
-    /// A new conversation carrying another's history.
+    /// One that does, carrying the id *the agent* knows it by.
+    ///
+    /// The id travels with the variant rather than being taken from
+    /// [`AgentLaunch::session_id`] because the two are not always the same
+    /// number: Codex names its own conversations, so resuming one means using
+    /// the name it reported and not the one Beacon chose.
+    #[serde(rename_all = "camelCase")]
+    Resume { id: String },
+    /// A new conversation carrying another's history, named as its agent knows
+    /// the other.
     #[serde(rename_all = "camelCase")]
     Fork { from: String },
 }
 
-impl ClaudeLaunch {
-    /// The arguments Claude Code is started with.
+impl AgentLaunch {
+    /// The arguments the agent is started with.
     ///
+    /// Both programs, because the words differ more than the ideas do: Claude
+    /// Code takes flags for all three cases, while Codex resumes and forks
+    /// through subcommands and has no way to be told an id or a name at all.
+    ///
+    /// Subcommands come first for Codex, and anything global has to precede
+    /// them — driving the real CLI answers `unexpected argument` to a global
+    /// flag written after `exec`, and there is no reason to think `resume` is
+    /// more forgiving.
+    pub fn args(&self) -> Vec<String> {
+        match self.agent {
+            AgentKind::Claude => self.claude_args(),
+            AgentKind::Codex => self.codex_args(),
+        }
+    }
+
     /// The name is passed on all three paths, which was checked against the
     /// real CLI rather than assumed: Beacon's name for a conversation and the
     /// one Claude Code shows in its own prompt box should not drift apart.
-    pub fn args(&self) -> Vec<String> {
+    fn claude_args(&self) -> Vec<String> {
         let mut args = match &self.start {
-            ClaudeStart::New => vec!["--session-id".into(), self.session_id.clone()],
-            ClaudeStart::Resume => vec!["--resume".into(), self.session_id.clone()],
-            ClaudeStart::Fork { from } => vec![
+            ConversationStart::New => vec!["--session-id".into(), self.session_id.clone()],
+            ConversationStart::Resume { id } => vec!["--resume".into(), id.clone()],
+            ConversationStart::Fork { from } => vec![
                 "--resume".into(),
                 from.clone(),
                 "--fork-session".into(),
@@ -134,6 +163,21 @@ impl ClaudeLaunch {
             args.push(name.clone());
         }
         args
+    }
+
+    /// Nothing at all for a new conversation: Codex is told neither what to
+    /// call it nor what id to give it, and says both afterwards.
+    ///
+    /// The name is deliberately not passed anywhere. Codex has no `--name`,
+    /// and resuming by a name it was given interactively is reported broken in
+    /// versions people are running — so Beacon keeps its own name and uses the
+    /// id for everything that has to be right.
+    fn codex_args(&self) -> Vec<String> {
+        match &self.start {
+            ConversationStart::New => Vec::new(),
+            ConversationStart::Resume { id } => vec!["resume".into(), id.clone()],
+            ConversationStart::Fork { from } => vec!["fork".into(), from.clone()],
+        }
     }
 }
 
@@ -358,7 +402,7 @@ pub struct SessionManager {
     /// also means a session that exits and is brought back by `ensure` comes
     /// back into the conversation it was in, rather than starting a new one
     /// because the caller happened not to say.
-    claude_launch: Mutex<HashMap<ProjectId, ClaudeLaunch>>,
+    agent_launch: Mutex<HashMap<ProjectId, AgentLaunch>>,
 }
 
 impl SessionManager {
@@ -370,7 +414,7 @@ impl SessionManager {
             claude_path: OnceLock::new(),
             hook_socket: Mutex::new(None),
             mcp_config: Mutex::new(None),
-            claude_launch: Mutex::new(HashMap::new()),
+            agent_launch: Mutex::new(HashMap::new()),
         }
     }
 
@@ -380,16 +424,16 @@ impl SessionManager {
     /// exists. The manager does not know and must not guess: spawning a process
     /// is not the same as a conversation being written, and a session that was
     /// opened and never typed into leaves nothing to resume.
-    pub fn set_claude_launch(&self, project: ProjectId, launch: ClaudeLaunch) {
-        self.claude_launch.lock_or_recover().insert(project, launch);
+    pub fn set_agent_launch(&self, project: ProjectId, launch: AgentLaunch) {
+        self.agent_launch.lock_or_recover().insert(project, launch);
     }
 
-    pub fn claude_launch(&self, project: &ProjectId) -> Option<ClaudeLaunch> {
-        self.claude_launch.lock_or_recover().get(project).cloned()
+    pub fn agent_launch(&self, project: &ProjectId) -> Option<AgentLaunch> {
+        self.agent_launch.lock_or_recover().get(project).cloned()
     }
 
-    pub fn forget_claude_launch(&self, project: &ProjectId) {
-        self.claude_launch.lock_or_recover().remove(project);
+    pub fn forget_agent_launch(&self, project: &ProjectId) {
+        self.agent_launch.lock_or_recover().remove(project);
     }
 
     /// Tells the manager where Claude Code's hooks should report.
@@ -468,7 +512,7 @@ impl SessionManager {
         project: &ProjectId,
         kind: SessionKind,
         shell: Option<&ShellSpec>,
-        launch: Option<&ClaudeLaunch>,
+        launch: Option<&AgentLaunch>,
     ) -> Result<CommandBuilder> {
         match kind {
             SessionKind::Shell => {
@@ -604,7 +648,7 @@ impl SessionManager {
             .map_err(|err| CoreError::session("could not open a pty", err))?;
 
         let launch = (kind == SessionKind::Claude)
-            .then(|| self.claude_launch(&project))
+            .then(|| self.agent_launch(&project))
             .flatten();
         let mut command = self.command_for(&project, kind, shell, launch.as_ref())?;
         command.cwd(cwd);
@@ -887,8 +931,9 @@ mod tests {
     const ID: &str = "b57bf9d0-8020-4275-a060-a521d289beae";
     const PARENT: &str = "e4e2464c-b66a-46ca-b65b-2af448574bb5";
 
-    fn launch(start: ClaudeStart, name: Option<&str>) -> ClaudeLaunch {
-        ClaudeLaunch {
+    fn launch(start: ConversationStart, name: Option<&str>) -> AgentLaunch {
+        AgentLaunch {
+            agent: AgentKind::Claude,
             session_id: ID.into(),
             name: name.map(str::to_string),
             start,
@@ -899,7 +944,7 @@ mod tests {
     #[test]
     fn a_new_conversation_is_started_on_an_id_beacon_chose() {
         assert_eq!(
-            launch(ClaudeStart::New, Some("auth-refactor")).args(),
+            launch(ConversationStart::New, Some("auth-refactor")).args(),
             ["--session-id", ID, "--name", "auth-refactor"]
         );
     }
@@ -910,7 +955,11 @@ mod tests {
         // is the difference between a restart that works and an error message
         // where the session used to be.
         assert_eq!(
-            launch(ClaudeStart::Resume, Some("auth-refactor")).args(),
+            launch(
+                ConversationStart::Resume { id: ID.into() },
+                Some("auth-refactor")
+            )
+            .args(),
             ["--resume", ID, "--name", "auth-refactor"]
         );
     }
@@ -919,7 +968,7 @@ mod tests {
     fn a_fork_carries_the_parent_and_lands_on_an_id_beacon_chose() {
         assert_eq!(
             launch(
-                ClaudeStart::Fork {
+                ConversationStart::Fork {
                     from: PARENT.into()
                 },
                 Some("dashboard-experiment")
@@ -939,22 +988,28 @@ mod tests {
 
     #[test]
     fn a_conversation_nobody_named_is_not_given_a_name() {
-        assert_eq!(launch(ClaudeStart::New, None).args(), ["--session-id", ID]);
-        assert_eq!(launch(ClaudeStart::Resume, None).args(), ["--resume", ID]);
+        assert_eq!(
+            launch(ConversationStart::New, None).args(),
+            ["--session-id", ID]
+        );
+        assert_eq!(
+            launch(ConversationStart::Resume { id: ID.into() }, None).args(),
+            ["--resume", ID]
+        );
     }
 
     #[test]
     fn a_launch_survives_a_round_trip_across_the_socket() {
         for start in [
-            ClaudeStart::New,
-            ClaudeStart::Resume,
-            ClaudeStart::Fork {
+            ConversationStart::New,
+            ConversationStart::Resume { id: ID.into() },
+            ConversationStart::Fork {
                 from: PARENT.into(),
             },
         ] {
             let original = launch(start, Some("payments-bug"));
             let line = serde_json::to_string(&original).unwrap();
-            let back: ClaudeLaunch = serde_json::from_str(&line).unwrap();
+            let back: AgentLaunch = serde_json::from_str(&line).unwrap();
             assert_eq!(back, original);
         }
     }
@@ -1082,15 +1137,18 @@ mod tests {
 
         let manager = SessionManager::new(Arc::new(Silent));
         let project = ProjectId("pj_x".into());
-        assert!(manager.claude_launch(&project).is_none());
+        assert!(manager.agent_launch(&project).is_none());
 
-        manager.set_claude_launch(project.clone(), launch(ClaudeStart::New, Some("auth")));
+        manager.set_agent_launch(
+            project.clone(),
+            launch(ConversationStart::New, Some("auth")),
+        );
         assert_eq!(
-            manager.claude_launch(&project).unwrap().start,
-            ClaudeStart::New
+            manager.agent_launch(&project).unwrap().start,
+            ConversationStart::New
         );
 
-        manager.forget_claude_launch(&project);
-        assert!(manager.claude_launch(&project).is_none());
+        manager.forget_agent_launch(&project);
+        assert!(manager.agent_launch(&project).is_none());
     }
 }

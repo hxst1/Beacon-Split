@@ -12,7 +12,7 @@ use beacon_core::protocol::{
     ClaudeActivity, Envelope, Event, Greeting, Outcome, PROTOCOL_VERSION, Reply, Request, Response,
 };
 use beacon_core::session::{
-    ClaudeLaunch, ClaudeStart, SessionEvents, SessionId, SessionKind, SessionManager,
+    AgentLaunch, ConversationStart, SessionEvents, SessionId, SessionKind, SessionManager,
 };
 use beacon_core::settings::ShellSpec;
 use beacon_core::workstreams::{Workstream, WorkstreamBook, WorkstreamId, WorkstreamStore};
@@ -375,7 +375,7 @@ fn prepare_claude(daemon: &Daemon, project: &ProjectId, agents: bool) {
         return;
     };
 
-    let start = start_for(&stream);
+    let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, project, &stream, start, agents);
 }
 
@@ -403,15 +403,45 @@ fn prepare_claude(daemon: &Daemon, project: &ProjectId, agents: bool) {
 ///
 /// Taking no launch is the guard: there is nothing here that a stale one could
 /// mislead.
-fn start_for(stream: &Workstream) -> ClaudeStart {
+///
+/// The ids it puts in the answer are the agent's, not Beacon's. They are the
+/// same number for Claude Code, whose ids Beacon chooses; for Codex they are
+/// whatever it reported, and until it has reported there is nothing to resume
+/// by, however certain the book is that something was said.
+fn start_for(book: &WorkstreamBook, stream: &Workstream) -> ConversationStart {
     if stream.resumable {
-        ClaudeStart::Resume
-    } else if let Some(from) = &stream.forked_from {
-        ClaudeStart::Fork {
-            from: from.to_string(),
-        }
-    } else {
-        ClaudeStart::New
+        return match stream.resume_id() {
+            Some(id) => ConversationStart::Resume { id: id.to_string() },
+            // Said in, but never identified. Starting fresh is the only honest
+            // answer: resuming needs a name to resume by.
+            None => ConversationStart::New,
+        };
+    }
+
+    // A fork nobody has typed into yet is still a fork: starting it again has
+    // to carry the history it was forked from, not replace it with an empty
+    // conversation of the same id.
+    match fork_from(book, stream) {
+        Some(from) => ConversationStart::Fork { from },
+        None => ConversationStart::New,
+    }
+}
+
+/// The parent of a fork, named as the parent's own agent knows it.
+fn fork_from(book: &WorkstreamBook, stream: &Workstream) -> Option<String> {
+    let from = stream.forked_from.as_ref()?;
+
+    match book.get(from) {
+        Some(parent) => parent.resume_id().map(str::to_string),
+        // The row is gone — the per-project cap drops the least recently used,
+        // and a parent can be dropped while the conversation it names is alive
+        // in the agent. Whether that is recoverable depends on who chose the
+        // id: Beacon's own is the row's name and survives losing the row, while
+        // an id Codex reported existed nowhere else.
+        None => match stream.agent {
+            AgentKind::Claude => Some(from.to_string()),
+            AgentKind::Codex => None,
+        },
     }
 }
 
@@ -424,12 +454,13 @@ fn set_launch(
     daemon: &Daemon,
     project: &ProjectId,
     stream: &Workstream,
-    start: ClaudeStart,
+    start: ConversationStart,
     agents: bool,
 ) {
-    daemon.sessions.set_claude_launch(
+    daemon.sessions.set_agent_launch(
         project.clone(),
-        ClaudeLaunch {
+        AgentLaunch {
+            agent: stream.agent,
             session_id: stream.id.to_string(),
             name: stream.name.clone(),
             start,
@@ -515,7 +546,7 @@ fn resume_workstream(
         .ok_or_else(|| CoreError::invalid("that conversation is not one of this project's"))?;
     daemon.persist_workstreams();
 
-    let start = start_for(&stream);
+    let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, &project, &stream, start, agents);
     into_claude(daemon, &project, stream, cwd, size, shell)
 }
@@ -756,7 +787,13 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
                 AgentKind::Claude,
             );
             daemon.persist_workstreams();
-            set_launch(daemon, &project, &stream, ClaudeStart::New, wanted(agents));
+            set_launch(
+                daemon,
+                &project,
+                &stream,
+                ConversationStart::New,
+                wanted(agents),
+            );
             into_claude(daemon, &project, stream, &cwd, (cols, rows), shell.as_ref())
         }
 
@@ -815,7 +852,7 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
                                 daemon,
                                 &project,
                                 &stream,
-                                ClaudeStart::Fork {
+                                ConversationStart::Fork {
                                     from: from.to_string(),
                                 },
                                 wanted(agents),
@@ -846,13 +883,13 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
 
             // The manager holds the name it would pass to `--name`, so it has
             // to hear about this too or the next start would carry the old one.
-            if let Some(launch) = daemon.sessions.claude_launch(&project)
+            if let Some(launch) = daemon.sessions.agent_launch(&project)
                 && launch.session_id == id.as_str()
                 && let Some(stream) = daemon.workstreams.lock_or_recover().get(&id)
             {
-                daemon.sessions.set_claude_launch(
+                daemon.sessions.set_agent_launch(
                     project.clone(),
-                    ClaudeLaunch {
+                    AgentLaunch {
                         name: stream.name.clone(),
                         ..launch
                     },
@@ -892,21 +929,18 @@ impl<T> LockOrRecover<T> for Mutex<T> {
 mod tests {
     use super::*;
 
-    const ID: &str = "0c40d249-ee07-4eac-ab8c-608e71f2c9e1";
     const PARENT: &str = "cafb8c86-53eb-49c4-a8b8-609e5cbc0f49";
+    const REPORTED: &str = "01a0a9d6-e991-70f0-8c36-aa613bd90216";
 
-    fn workstream(resumable: bool) -> Workstream {
+    /// A book holding one conversation, handed back with it.
+    fn book_with(agent: AgentKind, resumable: bool) -> (WorkstreamBook, Workstream) {
         let mut book = WorkstreamBook::default();
-        let mut stream = book.start(ProjectId("pj_x".into()), None, AgentKind::Claude);
-        stream.id = WorkstreamId(ID.into());
-        stream.resumable = resumable;
-        stream
-    }
-
-    fn fork(resumable: bool) -> Workstream {
-        let mut stream = workstream(resumable);
-        stream.forked_from = Some(WorkstreamId(PARENT.into()));
-        stream
+        let stream = book.start(ProjectId("pj_x".into()), None, agent);
+        if resumable {
+            book.mark_resumable(&stream.id);
+        }
+        let stream = book.get(&stream.id).cloned().expect("just started");
+        (book, stream)
     }
 
     #[test]
@@ -915,28 +949,141 @@ mod tests {
         // conversation, so the launch said `Resume` — but nothing was typed,
         // Claude Code wrote nothing, and pressing Resume answered "No
         // conversation found with session ID".
-        assert_eq!(start_for(&workstream(false)), ClaudeStart::New);
+        let (book, stream) = book_with(AgentKind::Claude, false);
+        assert_eq!(start_for(&book, &stream), ConversationStart::New);
     }
 
     #[test]
-    fn a_conversation_that_exists_is_resumed() {
-        assert_eq!(start_for(&workstream(true)), ClaudeStart::Resume);
+    fn a_claude_conversation_that_exists_is_resumed_by_beacons_own_id() {
+        let (book, stream) = book_with(AgentKind::Claude, true);
+        assert_eq!(
+            start_for(&book, &stream),
+            ConversationStart::Resume {
+                id: stream.id.to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_codex_conversation_is_resumed_by_the_id_codex_reported() {
+        let (mut book, stream) = book_with(AgentKind::Codex, true);
+
+        // Something has been said in it, but Codex has not said what it calls
+        // it. There is nothing to resume by, so it has to start fresh rather
+        // than be resumed by a number Codex would not recognise.
+        assert_eq!(start_for(&book, &stream), ConversationStart::New);
+
+        book.learn_session_id(&stream.id, REPORTED);
+        let stream = book.get(&stream.id).cloned().unwrap();
+        assert_eq!(
+            start_for(&book, &stream),
+            ConversationStart::Resume {
+                id: REPORTED.into()
+            }
+        );
     }
 
     #[test]
     fn a_fork_nobody_has_spoken_in_is_forked_again_rather_than_emptied() {
         // Starting it as new would keep the id and lose the history it was
         // forked from, which is the whole reason it exists.
+        let mut book = WorkstreamBook::default();
+        let project = ProjectId("pj_x".into());
+        let parent = book.start(project.clone(), None, AgentKind::Claude);
+        book.mark_resumable(&parent.id);
+        let forked = book.fork(&project, &parent.id, None).unwrap();
+
         assert_eq!(
-            start_for(&fork(false)),
-            ClaudeStart::Fork {
+            start_for(&book, &forked),
+            ConversationStart::Fork {
+                from: parent.id.to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_codex_fork_names_its_parent_as_codex_knows_it() {
+        let mut book = WorkstreamBook::default();
+        let project = ProjectId("pj_x".into());
+        let parent = book.start(project.clone(), None, AgentKind::Codex);
+        book.mark_resumable(&parent.id);
+        book.learn_session_id(&parent.id, REPORTED);
+
+        let forked = book.fork(&project, &parent.id, None).unwrap();
+
+        assert_eq!(
+            start_for(&book, &forked),
+            ConversationStart::Fork {
+                from: REPORTED.into()
+            },
+            "forking Beacon's id would name a conversation Codex never had"
+        );
+    }
+
+    #[test]
+    fn a_fork_whose_parent_has_no_reported_id_starts_fresh_instead() {
+        let mut book = WorkstreamBook::default();
+        let project = ProjectId("pj_x".into());
+        let parent = book.start(project.clone(), None, AgentKind::Codex);
+        let forked = book.fork(&project, &parent.id, None).unwrap();
+
+        assert_eq!(start_for(&book, &forked), ConversationStart::New);
+    }
+
+    #[test]
+    fn a_claude_fork_survives_losing_its_parents_row() {
+        // The per-project cap drops the least recently used, and it can drop a
+        // parent while the conversation it names is still alive in the agent.
+        // Beacon chose that id, so the row is only where it was written down.
+        let mut book = WorkstreamBook::default();
+        let project = ProjectId("pj_x".into());
+        let mut orphan = book.start(project.clone(), None, AgentKind::Claude);
+        orphan.forked_from = Some(WorkstreamId(PARENT.into()));
+
+        assert_eq!(
+            start_for(&book, &orphan),
+            ConversationStart::Fork {
                 from: PARENT.into()
             }
         );
     }
 
     #[test]
-    fn a_fork_that_has_been_spoken_in_is_resumed_rather_than_forked_twice() {
-        assert_eq!(start_for(&fork(true)), ClaudeStart::Resume);
+    fn the_arguments_each_agent_is_started_with() {
+        let claude = AgentLaunch {
+            agent: AgentKind::Claude,
+            session_id: PARENT.into(),
+            name: Some("payments-bug".into()),
+            start: ConversationStart::New,
+            agents: true,
+        };
+        assert_eq!(
+            claude.args(),
+            ["--session-id", PARENT, "--name", "payments-bug"]
+        );
+
+        // Codex is told nothing: not the id, not the name. It reports both.
+        let codex = AgentLaunch {
+            agent: AgentKind::Codex,
+            name: Some("payments-bug".into()),
+            ..claude.clone()
+        };
+        assert!(codex.args().is_empty());
+
+        let resumed = AgentLaunch {
+            start: ConversationStart::Resume {
+                id: REPORTED.into(),
+            },
+            ..codex.clone()
+        };
+        assert_eq!(resumed.args(), ["resume", REPORTED]);
+
+        let forked = AgentLaunch {
+            start: ConversationStart::Fork {
+                from: REPORTED.into(),
+            },
+            ..codex
+        };
+        assert_eq!(forked.args(), ["fork", REPORTED]);
     }
 }
