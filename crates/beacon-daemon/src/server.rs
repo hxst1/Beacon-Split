@@ -883,9 +883,13 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
 
             // The manager holds the name it would pass to `--name`, so it has
             // to hear about this too or the next start would carry the old one.
-            if let Some(launch) = daemon.sessions.agent_launch(&project)
+            // Which launch that is depends on the conversation's agent, so the
+            // row is read first — and copied out, rather than held while the
+            // manager's own lock is taken.
+            let renamed = daemon.workstreams.lock_or_recover().get(&id).cloned();
+            if let Some(stream) = renamed
+                && let Some(launch) = daemon.sessions.agent_launch(&project, stream.agent)
                 && launch.session_id == id.as_str()
-                && let Some(stream) = daemon.workstreams.lock_or_recover().get(&id)
             {
                 daemon.sessions.set_agent_launch(
                     project.clone(),

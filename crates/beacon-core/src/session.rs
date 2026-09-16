@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
@@ -43,13 +43,33 @@ impl std::fmt::Display for SessionId {
 pub enum SessionKind {
     Shell,
     Claude,
+    Codex,
 }
 
 impl SessionKind {
+    /// Which agent this kind runs, or `None` for a plain shell.
+    ///
+    /// One variant per agent rather than one carrying an [`AgentKind`], which
+    /// would have read better here and cost more everywhere else: the kind is
+    /// part of the key a project's sessions are filed under and part of the
+    /// wire, and `"claude"` is already both. A variant added beside it changes
+    /// nothing that already works.
+    ///
+    /// The upside falls out of that key: two agents in one project are two
+    /// kinds, so they no more collide than a shell and a Claude do today.
+    pub fn agent(self) -> Option<AgentKind> {
+        match self {
+            SessionKind::Shell => None,
+            SessionKind::Claude => Some(AgentKind::Claude),
+            SessionKind::Codex => Some(AgentKind::Codex),
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Shell => "shell",
             Self::Claude => "claude",
+            Self::Codex => "codex",
         }
     }
 }
@@ -385,7 +405,14 @@ pub struct SessionManager {
     /// that is briefly busy — right after an upgrade, say. Remembering that
     /// miss would leave a daemon that outlives the window telling every
     /// session for the rest of the day that Claude Code is not installed.
-    claude_path: OnceLock<PathBuf>,
+    /// Where each agent's program was found, once it has been.
+    ///
+    /// Successes only. A miss is never remembered: where an agent lives comes
+    /// from the login shell, which can fail to answer on a machine that is
+    /// briefly busy, and the daemon outlives the window — so one missed answer
+    /// used to mean every session for the rest of the day was told the program
+    /// was not installed.
+    program_paths: Mutex<HashMap<AgentKind, PathBuf>>,
     /// The socket a Claude session's hooks should report to.
     ///
     /// Only the daemon knows this, and only Claude sessions are told: a shell
@@ -402,7 +429,9 @@ pub struct SessionManager {
     /// also means a session that exits and is brought back by `ensure` comes
     /// back into the conversation it was in, rather than starting a new one
     /// because the caller happened not to say.
-    agent_launch: Mutex<HashMap<ProjectId, AgentLaunch>>,
+    /// Keyed by the agent as well as the project, so a project running both
+    /// does not have one launch standing in for the other.
+    agent_launch: Mutex<HashMap<(ProjectId, AgentKind), AgentLaunch>>,
 }
 
 impl SessionManager {
@@ -411,7 +440,7 @@ impl SessionManager {
             events,
             sessions: Mutex::new(HashMap::new()),
             by_project: Mutex::new(HashMap::new()),
-            claude_path: OnceLock::new(),
+            program_paths: Mutex::new(HashMap::new()),
             hook_socket: Mutex::new(None),
             mcp_config: Mutex::new(None),
             agent_launch: Mutex::new(HashMap::new()),
@@ -424,16 +453,25 @@ impl SessionManager {
     /// exists. The manager does not know and must not guess: spawning a process
     /// is not the same as a conversation being written, and a session that was
     /// opened and never typed into leaves nothing to resume.
+    /// The agent is taken from the launch itself rather than passed beside it:
+    /// two arguments that have to agree are two chances to disagree.
     pub fn set_agent_launch(&self, project: ProjectId, launch: AgentLaunch) {
-        self.agent_launch.lock_or_recover().insert(project, launch);
+        self.agent_launch
+            .lock_or_recover()
+            .insert((project, launch.agent), launch);
     }
 
-    pub fn agent_launch(&self, project: &ProjectId) -> Option<AgentLaunch> {
-        self.agent_launch.lock_or_recover().get(project).cloned()
+    pub fn agent_launch(&self, project: &ProjectId, agent: AgentKind) -> Option<AgentLaunch> {
+        self.agent_launch
+            .lock_or_recover()
+            .get(&(project.clone(), agent))
+            .cloned()
     }
 
-    pub fn forget_agent_launch(&self, project: &ProjectId) {
-        self.agent_launch.lock_or_recover().remove(project);
+    pub fn forget_agent_launch(&self, project: &ProjectId, agent: AgentKind) {
+        self.agent_launch
+            .lock_or_recover()
+            .remove(&(project.clone(), agent));
     }
 
     /// Tells the manager where Claude Code's hooks should report.
@@ -455,6 +493,26 @@ impl SessionManager {
 
         *self.hook_socket.lock_or_recover() = Some(socket);
         *self.mcp_config.lock_or_recover() = config;
+    }
+
+    /// Where an agent's program lives, asked once per agent and kept.
+    fn program_path(&self, agent: AgentKind) -> Result<PathBuf> {
+        if let Some(path) = self.program_paths.lock_or_recover().get(&agent) {
+            return Ok(path.clone());
+        }
+
+        let found = resolve_program(agent.program()).ok_or_else(|| {
+            CoreError::invalid(format!(
+                "could not find the {} command. Install {}, or make sure it is on the PATH your \
+                 login shell sets.",
+                agent.program(),
+                agent.label(),
+            ))
+        })?;
+        self.program_paths
+            .lock_or_recover()
+            .insert(agent, found.clone());
+        Ok(found)
     }
 
     /// The MCP configuration to hand this session, written again if it is gone.
@@ -537,39 +595,33 @@ impl SessionManager {
                 let _ = &mut command;
                 Ok(command)
             }
-            SessionKind::Claude => {
-                let path = match self.claude_path.get() {
-                    Some(path) => path.clone(),
-                    None => {
-                        let found = resolve_program("claude").ok_or_else(|| {
-                            CoreError::invalid(
-                                "could not find the claude command. Install Claude Code, or make \
-                                 sure it is on the PATH your login shell sets.",
-                            )
-                        })?;
-                        let _ = self.claude_path.set(found.clone());
-                        found
-                    }
-                };
+            SessionKind::Claude | SessionKind::Codex => {
+                let agent = kind.agent().expect("a shell is handled above");
+                let path = self.program_path(agent)?;
                 let mut command = CommandBuilder::new(&path);
 
                 // Merged with whatever the user has configured, never replacing
                 // it: `--strict-mcp-config` would silently switch off every MCP
                 // server they set up themselves, which is not a trade Beacon
                 // gets to make on their behalf for a drawer.
-                if let Some(config) = self.mcp_config(project) {
+                //
+                // Claude Code only. Codex has no per-invocation flag for this
+                // at all — its servers come from a config file — so the drawer
+                // reaches it another way or not at all.
+                if agent == AgentKind::Claude
+                    && let Some(config) = self.mcp_config(project)
+                {
                     // `--mcp-config` takes a *list*, so the separated form
                     // swallows whatever argument comes after it. Nothing does
                     // today; writing it joined means nothing ever can.
                     command.arg(format!("--mcp-config={}", config.display()));
                 }
 
-                // Started in a named conversation, when this build of Claude
-                // Code has the flags for it. Without them the session starts
-                // exactly as it did before workstreams existed — which is the
-                // whole point of asking rather than assuming.
-                if let Some(launch) = launch.filter(|_| crate::claude::capabilities().workstreams())
-                {
+                // Started in a named conversation, when the installed agent has
+                // what that needs. Without it the session starts exactly as it
+                // did before workstreams existed — which is the whole point of
+                // asking rather than assuming.
+                if let Some(launch) = launch.filter(|_| agent.workstreams()) {
                     for arg in launch.args() {
                         command.arg(arg);
                     }
@@ -579,7 +631,11 @@ impl SessionManager {
                 // is written into the user's repository and a Claude they start
                 // themselves is untouched. The routing policy travels with them
                 // because on its own it would name agents that do not exist.
-                if launch.is_some_and(|launch| launch.agents)
+                //
+                // Claude Code only, and not for want of trying elsewhere: these
+                // are defined in the shape `--agents` takes.
+                if agent == AgentKind::Claude
+                    && launch.is_some_and(|launch| launch.agents)
                     && crate::claude::capabilities().session_agents
                 {
                     command.arg("--agents");
@@ -647,9 +703,9 @@ impl SessionManager {
             })
             .map_err(|err| CoreError::session("could not open a pty", err))?;
 
-        let launch = (kind == SessionKind::Claude)
-            .then(|| self.agent_launch(&project))
-            .flatten();
+        let launch = kind
+            .agent()
+            .and_then(|agent| self.agent_launch(&project, agent));
         let mut command = self.command_for(&project, kind, shell, launch.as_ref())?;
         command.cwd(cwd);
         prepare_environment(&mut command);
@@ -1137,18 +1193,28 @@ mod tests {
 
         let manager = SessionManager::new(Arc::new(Silent));
         let project = ProjectId("pj_x".into());
-        assert!(manager.agent_launch(&project).is_none());
+        assert!(manager.agent_launch(&project, AgentKind::Claude).is_none());
 
         manager.set_agent_launch(
             project.clone(),
             launch(ConversationStart::New, Some("auth")),
         );
         assert_eq!(
-            manager.agent_launch(&project).unwrap().start,
+            manager
+                .agent_launch(&project, AgentKind::Claude)
+                .unwrap()
+                .start,
             ConversationStart::New
         );
 
-        manager.forget_agent_launch(&project);
-        assert!(manager.agent_launch(&project).is_none());
+        // Filed under the agent as well as the project: the other agent's
+        // launch is a different thing and must not be found here.
+        assert!(
+            manager.agent_launch(&project, AgentKind::Codex).is_none(),
+            "a Claude launch is not Codex's"
+        );
+
+        manager.forget_agent_launch(&project, AgentKind::Claude);
+        assert!(manager.agent_launch(&project, AgentKind::Claude).is_none());
     }
 }

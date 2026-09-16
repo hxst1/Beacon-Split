@@ -108,7 +108,7 @@ export type HostPlatform = 'macos' | 'linux' | 'windows' | string
 // ---- sessions ---------------------------------------------------------------
 
 /** What runs inside a session. Both are real processes in a PTY. */
-export type SessionKind = 'shell' | 'claude'
+export type SessionKind = 'shell' | 'claude' | 'codex'
 
 export interface SessionInfo {
   id: string

@@ -50,7 +50,7 @@ use crate::workstreams::{Workstream, WorkstreamId};
 /// running daemon and the sessions it holds. Paid once, knowingly: an older
 /// daemon would reject every one of them, leaving a window that can list
 /// conversations it cannot open.
-pub const PROTOCOL_VERSION: u32 = 6;
+pub const PROTOCOL_VERSION: u32 = 7;
 
 /// Newline-delimited JSON, one message per line.
 ///
