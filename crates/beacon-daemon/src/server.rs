@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use beacon_core::agent::AgentKind;
 use beacon_core::clips::{Clip, ClipBook, ClipStore, now_seconds};
 use beacon_core::domain::ProjectId;
 use beacon_core::error::{CoreError, Result};
@@ -352,7 +353,11 @@ fn prepare_claude(daemon: &Daemon, project: &ProjectId, agents: bool) {
         match book.current(project) {
             Some(_) => false,
             None => {
-                book.start(project.clone(), None);
+                // Claude, explicitly: this is the path that gives a project a
+                // conversation when it has none, and it is reached from the
+                // Claude panel. The request below will say which agent once
+                // there is a second panel to ask from.
+                book.start(project.clone(), None, AgentKind::Claude);
                 true
             }
         }
@@ -745,10 +750,11 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             shell,
             agents,
         } => {
-            let stream = daemon
-                .workstreams
-                .lock_or_recover()
-                .start(project.clone(), name);
+            let stream = daemon.workstreams.lock_or_recover().start(
+                project.clone(),
+                name,
+                AgentKind::Claude,
+            );
             daemon.persist_workstreams();
             set_launch(daemon, &project, &stream, ClaudeStart::New, wanted(agents));
             into_claude(daemon, &project, stream, &cwd, (cols, rows), shell.as_ref())
@@ -891,7 +897,7 @@ mod tests {
 
     fn workstream(resumable: bool) -> Workstream {
         let mut book = WorkstreamBook::default();
-        let mut stream = book.start(ProjectId("pj_x".into()), None);
+        let mut stream = book.start(ProjectId("pj_x".into()), None, AgentKind::Claude);
         stream.id = WorkstreamId(ID.into());
         stream.resumable = resumable;
         stream
