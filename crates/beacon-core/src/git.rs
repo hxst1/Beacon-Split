@@ -293,6 +293,99 @@ fn run_reporting(root: &Path, args: &[&str], silence_means: &str) -> Result<Stri
 }
 
 /// The repository's current state: branch, tracking position, and what changed.
+/// One checkout of a repository: the main one, or a worktree beside it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Worktree {
+    pub path: PathBuf,
+    /// The branch it has checked out, or nothing when its HEAD is detached.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
+/// Every checkout git knows about, the main one first.
+pub fn worktrees(root: &Path) -> Result<Vec<Worktree>> {
+    Ok(parse_worktrees(&run(
+        root,
+        &["worktree", "list", "--porcelain"],
+    )?))
+}
+
+/// Reads what `git worktree list --porcelain` prints.
+///
+/// Records separated by a blank line, one field per line. Parsed rather than
+/// read from the plain listing because that one aligns columns and quotes
+/// nothing, so a path with a space in it cannot be recovered from it.
+pub fn parse_worktrees(raw: &str) -> Vec<Worktree> {
+    let mut found = Vec::new();
+    let mut path: Option<PathBuf> = None;
+    let mut branch: Option<String> = None;
+
+    let mut finish = |path: &mut Option<PathBuf>, branch: &mut Option<String>| {
+        if let Some(path) = path.take() {
+            found.push(Worktree {
+                path,
+                branch: branch.take(),
+            });
+        }
+    };
+
+    for line in raw.lines() {
+        match line.split_once(' ') {
+            Some(("worktree", value)) => {
+                finish(&mut path, &mut branch);
+                path = Some(PathBuf::from(value));
+            }
+            // `refs/heads/main` is the branch, said the long way.
+            Some(("branch", value)) => {
+                branch = Some(value.trim_start_matches("refs/heads/").to_string());
+            }
+            _ => {}
+        }
+    }
+    finish(&mut path, &mut branch);
+    found
+}
+
+/// Adds a worktree at `path`, on `branch`.
+///
+/// The branch is created from the current HEAD when it does not exist and
+/// checked out when it does, because both happen: the first time an agent is
+/// given a worktree, and every time after that.
+pub fn add_worktree(root: &Path, path: &Path, branch: &str) -> Result<()> {
+    let at = path.to_string_lossy();
+    let exists = branch_exists(root, branch)?;
+
+    let args: Vec<&str> = if exists {
+        vec!["worktree", "add", &at, branch]
+    } else {
+        vec!["worktree", "add", "-b", branch, &at]
+    };
+    run_within(root, &args, SLOW_TIMEOUT).map(|_| ())
+}
+
+/// Removes a worktree, and the administrative record of it.
+///
+/// `--force` because the question being answered is "stop using this
+/// directory", and refusing over an uncommitted change would leave Beacon
+/// holding a worktree it has no way to let go of. The caller is expected to
+/// have asked.
+pub fn remove_worktree(root: &Path, path: &Path) -> Result<()> {
+    run_within(
+        root,
+        &["worktree", "remove", "--force", &path.to_string_lossy()],
+        SLOW_TIMEOUT,
+    )
+    .map(|_| ())
+}
+
+fn branch_exists(root: &Path, branch: &str) -> Result<bool> {
+    let reference = format!("refs/heads/{branch}");
+    let mut command = git_command(root, &["show-ref", "--verify", "--quiet", &reference]);
+    let output = execute(&mut command, "show-ref", LOCAL_TIMEOUT)?;
+    Ok(output.status.success())
+}
+
 pub fn status(root: &Path) -> Result<GitStatus> {
     let raw = run(
         root,
@@ -600,6 +693,55 @@ pub fn push(root: &Path) -> Result<String> {
 /// a conflict would leave the repository somewhere the user did not ask to be.
 pub fn pull(root: &Path) -> Result<String> {
     run_reporting(root, &["pull", "--ff-only"], "Pulled.")
+}
+
+#[cfg(test)]
+mod worktree_tests {
+    use super::*;
+
+    #[test]
+    fn a_worktree_listing_is_read_record_by_record() {
+        // What `git worktree list --porcelain` prints, including a detached
+        // one, which has no branch line at all.
+        let raw = "\
+worktree /Users/eya/projects/beacon-split
+HEAD 4b3d653fbb1f0f0f0f0f0f0f0f0f0f0f0f0f0f0f
+branch refs/heads/main
+
+worktree /Users/eya/Library/Application Support/beacon-split/worktrees/pj_x/codex
+HEAD 4b3d653fbb1f0f0f0f0f0f0f0f0f0f0f0f0f0f0f
+branch refs/heads/beacon/codex
+
+worktree /tmp/detached
+HEAD 0000000000000000000000000000000000000000
+detached
+";
+        let found = parse_worktrees(raw);
+
+        assert_eq!(found.len(), 3);
+        assert_eq!(found[0].branch.as_deref(), Some("main"));
+        assert_eq!(
+            found[1].branch.as_deref(),
+            Some("beacon/codex"),
+            "the branch is reported as a full ref and shown as a branch"
+        );
+        assert_eq!(found[2].branch, None, "a detached head has no branch");
+
+        // The path with a space in it is why this is parsed from the porcelain
+        // form: the plain listing aligns columns and quotes nothing.
+        assert_eq!(
+            found[1].path,
+            PathBuf::from(
+                "/Users/eya/Library/Application Support/beacon-split/worktrees/pj_x/codex"
+            )
+        );
+    }
+
+    #[test]
+    fn an_empty_listing_is_no_worktrees_rather_than_one_empty_one() {
+        assert!(parse_worktrees("").is_empty());
+        assert!(parse_worktrees("\n\n").is_empty());
+    }
 }
 
 #[cfg(test)]

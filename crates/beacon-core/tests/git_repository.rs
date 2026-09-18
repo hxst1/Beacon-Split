@@ -160,3 +160,55 @@ fn a_path_outside_the_repository_is_refused() {
     assert!(git::stage(dir.path(), "../outside.txt").is_err());
     assert!(git::diff(dir.path(), "/etc/passwd", false, false).is_err());
 }
+
+/// Two agents cannot overwrite each other's edits if they are not in the same
+/// directory, which is what a worktree is for.
+#[test]
+fn a_worktree_is_its_own_checkout_of_the_same_repository() {
+    let main = repository();
+    std::fs::write(main.path().join("shared.txt"), "from the main checkout").unwrap();
+    git_raw(main.path(), &["add", "-A"]);
+    git_raw(main.path(), &["commit", "-m", "first"]);
+
+    // Somewhere outside the repository, so nothing Beacon makes is ever
+    // scanned, committed, or mistaken for the user's own work.
+    let elsewhere = tempfile::tempdir().unwrap();
+    let at = elsewhere.path().join("codex");
+
+    git::add_worktree(main.path(), &at, "beacon/codex").expect("should add a worktree");
+
+    assert!(at.join("shared.txt").is_file(), "it has the same history");
+    assert!(
+        git::is_repository(&at),
+        "and is a repository in its own right"
+    );
+
+    // Each checkout sees only its own working tree.
+    std::fs::write(at.join("only-here.txt"), "written by the other agent").unwrap();
+    let theirs = git::status(&at).unwrap();
+    let ours = git::status(main.path()).unwrap();
+
+    assert!(theirs.entries.iter().any(|f| f.path == "only-here.txt"));
+    assert!(
+        !ours.entries.iter().any(|f| f.path == "only-here.txt"),
+        "the main checkout is untouched by what the other agent writes"
+    );
+
+    // Git knows about both, and says which branch each is on.
+    let listed = git::worktrees(main.path()).unwrap();
+    assert_eq!(listed.len(), 2);
+    assert!(
+        listed
+            .iter()
+            .any(|w| w.branch.as_deref() == Some("beacon/codex")),
+        "listed: {listed:?}"
+    );
+
+    // Adding it again, as a restart would, reuses the branch rather than
+    // failing on one that already exists.
+    git::remove_worktree(main.path(), &at).expect("should remove it");
+    git::add_worktree(main.path(), &at, "beacon/codex").expect("should take the branch back");
+
+    git::remove_worktree(main.path(), &at).unwrap();
+    assert_eq!(git::worktrees(main.path()).unwrap().len(), 1);
+}
