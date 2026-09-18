@@ -290,6 +290,38 @@ export interface Integration {
   statusLineCommand: string
 }
 
+/** Whether Beacon's Codex plugin is generated, and still names this build. */
+export type PluginStatus = 'installed' | 'stale' | 'notInstalled'
+
+export interface CodexIntegration {
+  plugin: PluginStatus
+  /** Where Beacon writes the marketplace it offers Codex. */
+  marketplace: string
+  capabilities: CodexCapabilities
+}
+
+/**
+ * What the installed Codex can do.
+ *
+ * Read from the program itself — `codex --help` and `codex features list` —
+ * rather than from a table of versions.
+ */
+export interface CodexCapabilities {
+  version?: string
+  /** Absent from every Codex so far, and why Beacon must be told a session's id. */
+  assignedSessionId: boolean
+  namedSessions: boolean
+  resume: boolean
+  fork: boolean
+  workingDir: boolean
+  sandbox: boolean
+  inlineTui: boolean
+  configOverride: boolean
+  /** Everything Beacon shows about a live Codex session hangs off this. */
+  hooks: boolean
+  worktree: boolean
+}
+
 /**
  * A subagent starting or finishing inside a Claude session.
  *

@@ -1,6 +1,8 @@
 use beacon_core::claude::{self, Capabilities};
 use beacon_core::claude_hooks::{self, HookStatus};
 use beacon_core::client::daemon_binary_path;
+use beacon_core::codex;
+use beacon_core::codex_plugin::{self, PluginStatus};
 use beacon_core::requirements::{self, Requirement};
 
 use crate::error::CommandResult;
@@ -113,6 +115,64 @@ pub fn remove_claude_hooks() -> CommandResult<HookStatus> {
 #[tauri::command]
 pub fn claude_hook_command() -> String {
     hook_command()
+}
+
+/// Everything the Codex section needs to describe itself.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexIntegration {
+    plugin: PluginStatus,
+    /// Where Beacon writes the marketplace, shown so the user can see what is
+    /// being added to their Codex before agreeing to it.
+    marketplace: String,
+    /// What the installed Codex can do, or nothing if there is no Codex.
+    capabilities: codex::Capabilities,
+}
+
+fn codex_integration_now() -> CommandResult<CodexIntegration> {
+    Ok(CodexIntegration {
+        plugin: codex_plugin::status(&daemon_binary_path())?,
+        marketplace: codex_plugin::marketplace_dir()
+            .to_string_lossy()
+            .into_owned(),
+        capabilities: codex::capabilities().clone(),
+    })
+}
+
+#[tauri::command]
+pub fn codex_integration() -> CommandResult<CodexIntegration> {
+    codex_integration_now()
+}
+
+/// Generates Beacon's Codex marketplace and asks Codex to install the plugin
+/// in it.
+///
+/// Explicitly, never on startup, for the same reason the Claude hooks are: this
+/// writes into another application's configuration, and doing that unasked is
+/// not Beacon's to decide.
+///
+/// It does not — and cannot — trust the hooks. Codex keeps a hash of every hook
+/// it has been shown and runs none it has not, because a hook is arbitrary
+/// code. The last step is the user's, in Codex's own `/hooks`.
+#[tauri::command]
+pub fn install_codex_plugin() -> CommandResult<CodexIntegration> {
+    codex_plugin::install(&daemon_binary_path())?;
+    tracing::info!("installed Beacon's plugin into Codex");
+    codex_integration_now()
+}
+
+#[tauri::command]
+pub fn remove_codex_plugin() -> CommandResult<CodexIntegration> {
+    codex_plugin::uninstall()?;
+    tracing::info!("removed Beacon's plugin from Codex");
+    codex_integration_now()
+}
+
+/// What the installed Codex can do. Read the same way Claude Code's is: by
+/// asking the program, not a table of versions.
+#[tauri::command]
+pub fn codex_capabilities() -> codex::Capabilities {
+    codex::capabilities().clone()
 }
 
 /// What the installed Claude Code can do, so a feature built on a flag it does

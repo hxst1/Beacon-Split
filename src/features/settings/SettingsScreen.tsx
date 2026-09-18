@@ -13,6 +13,7 @@ import { useWorkstreamsSupported } from '@/features/workstreams/capabilities'
 import type {
   Appearance,
   Integration,
+  CodexIntegration,
   Theme,
   LayoutNode,
   LayoutPreset,
@@ -31,6 +32,7 @@ type SectionId =
   | 'keyboard'
   | 'terminal'
   | 'claude'
+  | 'codex'
   | 'about'
 
 const SECTIONS: Array<{ id: SectionId; label: string }> = [
@@ -42,6 +44,7 @@ const SECTIONS: Array<{ id: SectionId; label: string }> = [
   { id: 'keyboard', label: 'Keyboard' },
   { id: 'terminal', label: 'Terminal' },
   { id: 'claude', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
   { id: 'about', label: 'About' },
 ]
 
@@ -109,6 +112,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }): React.Reac
           {section === 'keyboard' ? <KeyboardSection /> : null}
           {section === 'terminal' ? <TerminalSection /> : null}
           {section === 'claude' ? <ClaudeSection /> : null}
+          {section === 'codex' ? <CodexSection /> : null}
           {section === 'about' ? <AboutSection /> : null}
         </div>
       </div>
@@ -729,6 +733,130 @@ function TerminalSection(): React.ReactElement {
         </div>
 
         <SystemPermission />
+      </section>
+    </>
+  )
+}
+
+/**
+ * The Codex integration.
+ *
+ * A different shape from Claude Code's, because Codex is put together
+ * differently: it loads hooks from plugins and plugins from marketplaces, so
+ * Beacon generates one of each and asks Codex to install it.
+ *
+ * The part that cannot be automated is given its own paragraph rather than a
+ * footnote. Codex keeps a hash of every hook it has been shown and runs none it
+ * has not, so until somebody trusts Beacon's in Codex itself, installing has
+ * achieved nothing visible — and a user who is not told that would reasonably
+ * conclude the feature is broken.
+ */
+function CodexSection(): React.ReactElement {
+  const [integration, setIntegration] = useState<CodexIntegration | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [working, setWorking] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ipc
+      .codexIntegration()
+      .then((found) => {
+        if (!cancelled) setIntegration(found)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(errorMessage(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const act = (run: () => Promise<CodexIntegration>): void => {
+    setWorking(true)
+    setError(null)
+    run()
+      .then(setIntegration)
+      .catch((err: unknown) => setError(errorMessage(err)))
+      .finally(() => setWorking(false))
+  }
+
+  const plugin = integration?.plugin ?? null
+  const label =
+    plugin === 'installed'
+      ? 'Installed'
+      : plugin === 'stale'
+        ? 'Installed, but out of date: another copy of Beacon, or an older set of events'
+        : 'Not installed'
+  // No version means no Codex. Everything here would fail, so it says why
+  // instead of offering a button that cannot work.
+  const missing = integration !== null && integration.capabilities.version === undefined
+
+  return (
+    <>
+      <section className={styles['section']}>
+        <h2 className={styles['sectionTitle']}>What Codex is doing</h2>
+        <p className={styles['sectionNote']}>
+          The same thing the Claude Code hooks do, for the other agent: a tab that can say whether
+          Codex is working, has finished, or has stopped and is waiting for an answer.
+        </p>
+
+        {missing ? (
+          <p className={styles['sectionNote']}>
+            Codex is not installed on this machine. Requirements has the commands for it; a Codex
+            panel works as a plain terminal until then.
+          </p>
+        ) : (
+          <>
+            <p className={styles['sectionNote']}>
+              Codex takes hooks from plugins rather than from a settings file, so Beacon writes a
+              small marketplace of its own and asks Codex to install one plugin from it. Nothing
+              else in your Codex configuration is touched, and the hook does nothing outside
+              Beacon — a Codex you start yourself has no socket to report to and exits
+              immediately.
+            </p>
+
+            <div className={styles['command']}>{integration?.marketplace ?? '…'}</div>
+
+            <div className={styles['buttons']}>
+              <span className={styles['state']}>
+                <span className={styles['stateDot']} data-state={plugin ?? 'notInstalled'} />
+                {plugin === null ? 'Checking…' : label}
+              </span>
+              <span style={{ flex: 1 }} />
+
+              {plugin === 'installed' ? (
+                <button
+                  type="button"
+                  className={styles['resetAll']}
+                  style={{ marginTop: 0 }}
+                  disabled={working}
+                  onClick={() => act(() => ipc.removeCodexPlugin())}
+                >
+                  Remove
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles['primary']}
+                  disabled={working}
+                  onClick={() => act(() => ipc.installCodexPlugin())}
+                >
+                  {working ? 'Installing…' : plugin === 'stale' ? 'Update' : 'Install'}
+                </button>
+              )}
+            </div>
+
+            {plugin === 'installed' ? (
+              <p className={styles['sectionNote']}>
+                One step left, and it is not Beacon's to take. Codex will not run a hook it has
+                not been shown, so open Codex and run <code>/hooks</code> once to trust Beacon's.
+                Until you do, a Codex panel runs perfectly well and simply reports nothing.
+              </p>
+            ) : null}
+          </>
+        )}
+
+        {error ? <p className={styles['conflict']}>{error}</p> : null}
       </section>
     </>
   )

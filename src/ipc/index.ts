@@ -19,6 +19,7 @@ import type {
   Requirement,
   Integration,
   ClaudeCapabilities,
+  CodexIntegration,
   Workstreams,
   OpenedWorkstream,
   UsageReport,
@@ -183,6 +184,10 @@ export const ipc = {
   // ---- Claude Code integration ----
 
   claudeHookStatus: () => invoke<HookStatus>('claude_hook_status'),
+  /** Whether Beacon's Codex plugin is there, and what the installed Codex can do. */
+  codexIntegration: () => invoke<CodexIntegration>('codex_integration'),
+  installCodexPlugin: () => invoke<CodexIntegration>('install_codex_plugin'),
+  removeCodexPlugin: () => invoke<CodexIntegration>('remove_codex_plugin'),
 
   claudeIntegration: () => invoke<Integration>('claude_integration'),
 
