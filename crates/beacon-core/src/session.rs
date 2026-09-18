@@ -732,14 +732,21 @@ impl SessionManager {
         command.cwd(cwd);
         prepare_environment(&mut command);
 
-        // A Claude session is told how to reach us, so its hooks can say what
+        // An agent session is told how to reach us, so its hooks can say what
         // it is doing. Without these the hook is inert, which is what makes it
-        // safe to register once and forget about.
-        if kind == SessionKind::Claude
+        // safe to register once and forget about: a session somebody started
+        // in their own terminal has none of this and reports nothing.
+        //
+        // Which agent is named too, and it matters more than it looks. A
+        // project can be running both, and one of them reports a conversation
+        // id Beacon did not choose — so without this the daemon would have a
+        // number and no idea whose it was.
+        if let Some(agent) = kind.agent()
             && let Some(socket) = self.hook_socket.lock_or_recover().as_ref()
         {
             command.env("BEACON_SOCKET", socket);
             command.env("BEACON_PROJECT", project.as_str());
+            command.env("BEACON_AGENT", agent.as_str());
         }
 
         let child = pair

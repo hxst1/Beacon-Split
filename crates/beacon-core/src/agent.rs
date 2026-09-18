@@ -45,6 +45,20 @@ impl AgentKind {
         }
     }
 
+    /// How it is spelled in an environment variable or on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AgentKind::Claude => "claude",
+            AgentKind::Codex => "codex",
+        }
+    }
+
+    /// Read back from that spelling. Anything unrecognised is nothing, so a
+    /// hook from a future agent is ignored rather than filed as Claude's.
+    pub fn parse(text: &str) -> Option<Self> {
+        AgentKind::ALL.into_iter().find(|a| a.as_str() == text)
+    }
+
     /// What to call it where a person will read it.
     ///
     /// Their own names for themselves, not Beacon's: somebody who installed

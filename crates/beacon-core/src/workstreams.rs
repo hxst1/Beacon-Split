@@ -164,6 +164,18 @@ fn clean_name(name: Option<String>) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
+/// Which conversation a report came from, and whether the report is what
+/// connected it.
+///
+/// `learned` exists so the caller knows whether the book is worth writing.
+/// Every report from an identified Codex session would otherwise look like a
+/// change, and the book would reach the disk hundreds of times a turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attribution {
+    pub id: WorkstreamId,
+    pub learned: bool,
+}
+
 /// Every project's conversations, and which one it is in.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -363,6 +375,63 @@ impl WorkstreamBook {
         }
         stream.agent_session_id = Some(reported.to_string());
         true
+    }
+
+    /// Which conversation a report belongs to, learning its id if that is what
+    /// the report just told us.
+    ///
+    /// Two agents, two ways of being recognised. Claude Code's conversations
+    /// wear the id Beacon gave them, so a report names its own row and is
+    /// matched on it — which is what stops a Claude somebody started in their
+    /// own terminal from being written onto whichever conversation happens to
+    /// be current. Codex names its own, so the first report from one is the
+    /// only chance to connect the two, and the conversation Beacon has open
+    /// with Codex in that project is the one it must belong to.
+    ///
+    /// Later reports from the same Codex session match on the learned id, so
+    /// the window where "current" is trusted is exactly one report long.
+    pub fn attribute(
+        &mut self,
+        project: &ProjectId,
+        agent: AgentKind,
+        session: &str,
+    ) -> Option<Attribution> {
+        // Already connected, either way round.
+        if let Some(stream) = self
+            .workstreams
+            .iter()
+            .find(|s| s.agent == agent && s.agent_session_id.as_deref() == Some(session))
+        {
+            return Some(Attribution {
+                id: stream.id.clone(),
+                learned: false,
+            });
+        }
+
+        // Matched on the agent rather than on what the installed program can
+        // do, deliberately. Asking the program means running it, and the book
+        // is data: a lookup that quietly spawns a process is one that behaves
+        // differently on a machine where the agent is not installed. The same
+        // reasoning as [`Workstream::resume_id`], and the same one place to
+        // change if Codex ever takes an assigned id.
+        if agent == AgentKind::Claude {
+            let id = WorkstreamId(session.to_string());
+            return self.get(&id).map(|stream| Attribution {
+                id: stream.id.clone(),
+                learned: false,
+            });
+        }
+
+        // An agent that named itself, reporting for the first time. Only a
+        // conversation that has not been identified yet can take this: one
+        // that has belongs to a session that is still running somewhere.
+        let current = self.current(project, agent)?;
+        if current.agent_session_id.is_some() {
+            return None;
+        }
+        let id = current.id.clone();
+        let learned = self.learn_session_id(&id, session);
+        Some(Attribution { id, learned })
     }
 
     pub fn rename(&mut self, id: &WorkstreamId, name: Option<String>) -> bool {
@@ -642,6 +711,100 @@ mod tests {
         );
         assert!(book.get(&last_claude).is_some(), "and Claude's own place");
         assert!(book.for_project(&project(), AgentKind::Claude).len() <= MAX_PER_PROJECT);
+    }
+
+    #[test]
+    fn a_codex_conversation_is_connected_by_its_first_report() {
+        let mut book = WorkstreamBook::default();
+        let stream = book.start(project(), None, AgentKind::Codex);
+
+        // Beacon has a conversation and no id for it. The first report is the
+        // only thing that ever says what Codex calls it.
+        let found = book
+            .attribute(&project(), AgentKind::Codex, "01a0-thread")
+            .expect("the conversation Beacon has open with Codex");
+        assert_eq!(found.id, stream.id);
+        assert!(found.learned, "this report is what connected the two");
+
+        // And from here on it is matched on the id, not on being current.
+        let again = book
+            .attribute(&project(), AgentKind::Codex, "01a0-thread")
+            .unwrap();
+        assert_eq!(again.id, stream.id);
+        assert!(!again.learned, "nothing new, so nothing to write down");
+    }
+
+    #[test]
+    fn a_second_codex_session_cannot_steal_an_identified_conversation() {
+        // The window in which "whichever is current" is trusted has to be
+        // exactly one report long. A Codex reporting a different id after that
+        // belongs to something else, and writing it here would point Beacon's
+        // conversation at a session it does not own.
+        let mut book = WorkstreamBook::default();
+        let stream = book.start(project(), None, AgentKind::Codex);
+        book.attribute(&project(), AgentKind::Codex, "the-real-one");
+
+        assert_eq!(
+            book.attribute(&project(), AgentKind::Codex, "a-stranger"),
+            None
+        );
+        assert_eq!(
+            book.get(&stream.id).unwrap().resume_id(),
+            Some("the-real-one"),
+            "the identified conversation kept its own id"
+        );
+    }
+
+    #[test]
+    fn a_report_for_a_conversation_this_project_does_not_have_is_ignored() {
+        let mut book = WorkstreamBook::default();
+        book.start(project(), None, AgentKind::Codex);
+
+        // Another project's Codex, reporting through the same daemon.
+        assert_eq!(
+            book.attribute(
+                &ProjectId("pj_elsewhere".into()),
+                AgentKind::Codex,
+                "01a0-thread"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_claude_report_is_matched_on_the_id_it_already_wears() {
+        let mut book = WorkstreamBook::default();
+        let stream = book.start(project(), None, AgentKind::Claude);
+
+        let found = book
+            .attribute(&project(), AgentKind::Claude, stream.id.as_str())
+            .expect("its own row");
+        assert_eq!(found.id, stream.id);
+        assert!(
+            !found.learned,
+            "Beacon chose this id; there is nothing to learn"
+        );
+
+        // A Claude somebody started themselves names a conversation Beacon
+        // does not have, and must not be written onto whichever one is current.
+        assert_eq!(
+            book.attribute(&project(), AgentKind::Claude, "somebody-elses"),
+            None
+        );
+    }
+
+    #[test]
+    fn one_agents_report_never_lands_on_the_others_conversation() {
+        let mut book = WorkstreamBook::default();
+        let claude = book.start(project(), None, AgentKind::Claude);
+        let codex = book.start(project(), None, AgentKind::Codex);
+
+        let found = book
+            .attribute(&project(), AgentKind::Codex, "01a0-thread")
+            .unwrap();
+        assert_eq!(found.id, codex.id);
+        assert_ne!(found.id, claude.id);
+        assert_eq!(book.get(&claude.id).unwrap().agent_session_id, None);
     }
 
     #[test]

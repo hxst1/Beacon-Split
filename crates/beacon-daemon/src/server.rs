@@ -670,21 +670,33 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
 
         Request::Report {
             project,
+            agent,
             activity,
             detail,
             session,
         } => {
-            // Anything but `idle` can only have happened inside a turn, and a
-            // turn is what makes a conversation exist. `idle` is the session
-            // merely opening, which writes nothing.
-            if let Some(session) = session
-                && activity != ClaudeActivity::Idle
-                && daemon
-                    .workstreams
-                    .lock_or_recover()
-                    .mark_resumable(&WorkstreamId(session))
-            {
-                daemon.persist_workstreams();
+            // Two things can be learned from one report, and they are not the
+            // same thing. Which conversation it came from is worth knowing at
+            // any activity — for an agent that names its own conversations,
+            // the first report is the only chance to connect the name it chose
+            // to the one Beacon is holding. That a conversation *exists* is
+            // narrower: only something inside a turn proves it, and `idle` is
+            // the session merely opening, which writes nothing.
+            if let Some(session) = session {
+                let mut book = daemon.workstreams.lock_or_recover();
+                let mut changed = false;
+
+                if let Some(found) = book.attribute(&project, agent, &session) {
+                    changed = found.learned;
+                    if activity != ClaudeActivity::Idle {
+                        changed |= book.mark_resumable(&found.id);
+                    }
+                }
+
+                drop(book);
+                if changed {
+                    daemon.persist_workstreams();
+                }
             }
 
             // Straight through to every window. The daemon does not keep this:

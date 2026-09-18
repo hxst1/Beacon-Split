@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
+use beacon_core::agent::AgentKind;
 use beacon_core::domain::ProjectId;
 use beacon_core::protocol::{ClaudeActivity, Envelope, Request};
 
@@ -20,6 +21,13 @@ pub fn run() -> ! {
 fn report() -> Option<()> {
     let socket = std::env::var("BEACON_SOCKET").ok()?;
     let project = std::env::var("BEACON_PROJECT").ok()?;
+    // Absent means the hook was registered before Beacon ran more than one
+    // agent, and that one was Claude Code. An agent Beacon does not know is
+    // nothing rather than Claude's, so a future one cannot be filed wrongly.
+    let agent = match std::env::var("BEACON_AGENT") {
+        Ok(name) => AgentKind::parse(&name)?,
+        Err(_) => AgentKind::Claude,
+    };
 
     let mut payload = String::new();
     std::io::stdin().read_to_string(&mut payload).ok()?;
@@ -40,6 +48,7 @@ fn report() -> Option<()> {
         &socket,
         Request::Report {
             project: ProjectId(project),
+            agent,
             activity,
             detail,
             session,
@@ -120,7 +129,9 @@ pub fn interpret(event: &serde_json::Value) -> Option<(ClaudeActivity, Option<St
         "PermissionRequest" | "Notification" | "Elicitation" => (ClaudeActivity::Waiting, tool),
         "PreToolUse" => (ClaudeActivity::Working, tool),
         "UserPromptSubmit" => (ClaudeActivity::Working, None),
-        "Stop" | "StopFailure" => (ClaudeActivity::Done, None),
+        // `Interrupt` is Codex's: a turn that was cut short. It stopped either
+        // way, which is what a tab has to stop saying.
+        "Stop" | "StopFailure" | "Interrupt" => (ClaudeActivity::Done, None),
         // Fires on startup, on resume, and after a clear or a compact. Its job
         // is to take back whatever the tab was still claiming: a session
         // resumed after a permission prompt was left asking for an answer it no

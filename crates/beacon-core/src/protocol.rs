@@ -281,6 +281,14 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     Report {
         project: ProjectId,
+        /// Which agent is reporting.
+        ///
+        /// Defaulted to Claude Code, which is what a hook installed before
+        /// Beacon ran a second agent is. It decides whose conversation the
+        /// `session` below belongs to — and for an agent that names its own,
+        /// that is the only way to know.
+        #[serde(default)]
+        agent: AgentKind,
         activity: ClaudeActivity,
         /// What it is doing, when there is something worth naming — the tool it
         /// just started, for instance.
@@ -689,6 +697,7 @@ mod tests {
             Request::Shutdown {},
             Request::Report {
                 project: ProjectId("pj_y".into()),
+                agent: AgentKind::Codex,
                 activity: ClaudeActivity::Waiting,
                 detail: Some("Bash".into()),
                 session: Some("cafb8c86-53eb-49c4-a8b8-609e5cbc0f49".into()),
