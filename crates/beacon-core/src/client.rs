@@ -630,8 +630,27 @@ fn spawn_daemon(binary: &Path, socket: &Path) -> Result<()> {
     command
         .arg(directory)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::null());
+
+    // Its stderr goes to a file beside the socket rather than to nowhere.
+    //
+    // A daemon that will not start says why — `path must be shorter than
+    // SUN_LEN`, `another daemon is already listening` — and that sentence used
+    // to be thrown away, leaving the window with "the session daemon did not
+    // start listening" in every panel and nothing to act on.
+    //
+    // Truncated on each start, so it holds one run and cannot grow without
+    // bound. Safe to write because the daemon already never logs a payload:
+    // what it carries is whatever is on the user's screen.
+    match std::fs::File::create(log_path(directory)) {
+        Ok(file) => {
+            command.stderr(file);
+        }
+        // Not being able to log is not a reason not to start.
+        Err(_) => {
+            command.stderr(Stdio::null());
+        }
+    }
 
     // A new session, so it survives the window closing and does not receive the
     // signals sent to Beacon's process group.
@@ -669,9 +688,42 @@ fn wait_for_daemon(socket: &Path) -> Result<UnixStream> {
         }
         std::thread::sleep(Duration::from_millis(40));
     }
-    Err(CoreError::invalid(
-        "the session daemon did not start listening",
-    ))
+
+    // Whatever the daemon managed to say on its way out. It is the difference
+    // between a message somebody can act on and one that only says the thing
+    // they can already see.
+    let said = socket.parent().and_then(complaint);
+    Err(CoreError::invalid(match said {
+        Some(said) => format!("the session daemon did not start listening: {said}"),
+        None => "the session daemon did not start listening".to_string(),
+    }))
+}
+
+/// Where a daemon started here writes what it could not do.
+fn log_path(directory: &Path) -> PathBuf {
+    directory.join("daemon.log")
+}
+
+/// The last thing the daemon complained about, if it complained.
+///
+/// The last line rather than the file: earlier lines are a daemon that started
+/// fine and then said ordinary things, and the question being answered is why
+/// this one did not. Trimmed of the timestamp and level tracing puts in front,
+/// because neither helps and both crowd out the sentence.
+fn complaint(directory: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(log_path(directory)).ok()?;
+    let line = text.lines().rev().find(|line| !line.trim().is_empty())?;
+
+    // `2026-09-17T10:00:10.481625Z ERROR could not listen error=…`
+    let said = line
+        .split_once(" ERROR ")
+        .map(|(_, rest)| rest)
+        .unwrap_or(line)
+        .trim();
+
+    // Kept short: this goes in a panel, not in a log viewer.
+    let said: String = said.chars().take(200).collect();
+    (!said.is_empty()).then_some(said)
 }
 
 /// Where the daemon binary sits relative to the running executable.

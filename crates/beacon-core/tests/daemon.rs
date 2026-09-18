@@ -122,6 +122,41 @@ fn daemon_binary() -> PathBuf {
     dir.join("beacon-daemon")
 }
 
+/// The message a window shows when the daemon will not start has to name the
+/// reason, not repeat the symptom.
+///
+/// Reproduced with a socket path over the length a Unix socket allows — the
+/// real failure, and one that produced "the session daemon did not start
+/// listening" in every panel while the daemon had said something far more
+/// useful on its way out.
+#[test]
+fn a_daemon_that_will_not_start_says_why() {
+    let dir = tempfile::tempdir().unwrap();
+    // Unix socket paths stop at about 104 bytes; this is comfortably past it.
+    let long = dir.path().join("x".repeat(120));
+    std::fs::create_dir_all(&long).unwrap();
+
+    let recorder = Arc::new(Recorder::default());
+    // `DaemonClient` is not `Debug`, so the error is taken out by hand rather
+    // than with `expect_err`.
+    let said = match DaemonClient::connect_at(
+        &daemon_binary(),
+        &private_socket(&long),
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    ) {
+        Ok(_) => panic!("a socket path that long cannot be bound"),
+        Err(err) => err.to_string(),
+    };
+    assert!(
+        said.contains("did not start listening"),
+        "still says what happened: {said}"
+    );
+    assert!(
+        said.contains("SUN_LEN") || said.contains("could not listen"),
+        "and now says why, which is the whole point: {said}"
+    );
+}
+
 #[test]
 fn a_session_outlives_the_client_that_started_it() {
     let binary = daemon_binary();

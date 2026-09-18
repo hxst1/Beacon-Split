@@ -101,5 +101,15 @@ fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
+        // Stderr, which is where diagnostics belong and what the rest of this
+        // file already says happens. The default is stdout, and that mattered
+        // twice: the modes that speak a protocol on stdout would have had it
+        // corrupted by a stray log line, and a daemon that cannot start had
+        // nowhere to say why that anyone was listening to.
+        .with_writer(std::io::stderr)
+        // Colour only when somebody is watching. Started by Beacon, stderr is a
+        // file, and escape codes there turn the one sentence worth reading into
+        // something a panel would show with the escapes in it.
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
         .init();
 }
