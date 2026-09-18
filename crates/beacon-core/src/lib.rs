@@ -14,6 +14,7 @@ pub mod claude_hooks;
 pub mod client;
 pub mod clips;
 pub mod codex;
+pub mod codex_plugin;
 pub mod detect;
 pub mod domain;
 pub mod dotenv;
