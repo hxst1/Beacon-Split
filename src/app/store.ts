@@ -86,6 +86,8 @@ interface BeaconState {
   selectWorkspace: (id: string) => Promise<void>
   addProject: (path: string) => Promise<void>
   renameProject: (projectId: string, name: string) => Promise<void>
+  /** Whether this project's agents each work in a git worktree of their own. */
+  setAgentWorktrees: (projectId: string, separate: boolean) => Promise<void>
   removeProject: (projectId: string) => Promise<void>
   /** Stops the project's processes without removing the project. */
   stopProject: (projectId: string) => Promise<void>
@@ -218,6 +220,12 @@ export const useBeacon = create<BeaconState>((set, get) => {
       const workspaceId = requireWorkspace()
       if (!workspaceId) return
       await run(() => ipc.renameProject(workspaceId, projectId, name))
+    },
+
+    setAgentWorktrees: async (projectId, separate) => {
+      const workspaceId = requireWorkspace()
+      if (!workspaceId) return
+      await run(() => ipc.setAgentWorktrees(workspaceId, projectId, separate))
     },
 
     removeProject: async (projectId) => {

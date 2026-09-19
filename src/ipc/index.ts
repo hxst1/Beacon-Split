@@ -80,6 +80,8 @@ export const ipc = {
   addProject: (workspaceId: string, path: string) =>
     invoke<Snapshot>('add_project', { workspaceId, path }),
 
+  setAgentWorktrees: (workspaceId: string, projectId: string, separate: boolean) =>
+    invoke<Snapshot>('set_agent_worktrees', { workspaceId, projectId, separate }),
   renameProject: (workspaceId: string, projectId: string, name: string) =>
     invoke<Snapshot>('rename_project', { workspaceId, projectId, name }),
 

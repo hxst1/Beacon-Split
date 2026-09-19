@@ -57,6 +57,7 @@ pub fn run() {
             commands::toggle_panel,
             commands::add_project,
             commands::rename_project,
+            commands::set_agent_worktrees,
             commands::remove_project,
             commands::move_project,
             commands::reorder_project,

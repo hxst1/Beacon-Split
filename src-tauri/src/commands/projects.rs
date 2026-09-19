@@ -22,6 +22,18 @@ pub fn add_project(
 }
 
 #[tauri::command]
+pub fn set_agent_worktrees(
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    project_id: ProjectId,
+    separate: bool,
+) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_agent_worktrees(&workspace_id, &project_id, separate)?;
+    Ok(beacon.snapshot())
+}
+
+#[tauri::command]
 pub fn rename_project(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,

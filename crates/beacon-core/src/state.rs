@@ -24,6 +24,8 @@ pub struct ProjectView {
     pub absolute_path: String,
     pub display_path: String,
     pub kinds: Vec<ProjectKind>,
+    /// Whether each agent works in a checkout of its own.
+    pub agent_worktrees: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -220,6 +222,7 @@ impl Beacon {
                     absolute_path: p.path.resolve(home).to_string_lossy().into_owned(),
                     display_path: p.path.display(home),
                     kinds: p.kinds.clone(),
+                    agent_worktrees: p.agent_worktrees,
                 })
                 .collect(),
         }
@@ -383,6 +386,26 @@ impl Beacon {
         workspace.projects.push(project);
         self.save_workspaces()?;
         Ok(id)
+    }
+
+    /// Whether this project's agents each get a git worktree of their own.
+    ///
+    /// Turning it off leaves the checkouts where they are rather than deleting
+    /// them: they may hold work nobody has merged, and throwing that away to
+    /// honour a switch would be the worst possible reading of it. They are
+    /// removed with the project, or by hand.
+    pub fn set_agent_worktrees(
+        &mut self,
+        workspace_id: &WorkspaceId,
+        project_id: &ProjectId,
+        separate: bool,
+    ) -> Result<()> {
+        let project = self
+            .workspace_mut(workspace_id)?
+            .project_mut(project_id)
+            .ok_or_else(|| CoreError::ProjectNotFound(project_id.to_string()))?;
+        project.agent_worktrees = separate;
+        self.save_workspaces()
     }
 
     pub fn rename_project(

@@ -23,6 +23,7 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
   const workspaces = useBeacon(selectWorkspaces)
   const activeWorkspace = useBeacon(selectActiveWorkspace)
   const renameProject = useBeacon((s) => s.renameProject)
+  const setAgentWorktrees = useBeacon((s) => s.setAgentWorktrees)
   const removeProject = useBeacon((s) => s.removeProject)
   const moveProject = useBeacon((s) => s.moveProject)
   const revealProject = useBeacon((s) => s.revealProject)
@@ -51,6 +52,22 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
       <MenuHeading>{project.displayPath}</MenuHeading>
 
       <MenuItem label="Rename…" onSelect={() => setRenaming(true)} />
+      <MenuItem
+        label={
+          project.agentWorktrees
+            ? 'Agents share this checkout'
+            : 'Give each agent its own checkout'
+        }
+        hint={
+          project.agentWorktrees
+            ? 'Agents work in git worktrees of their own. Turning this off leaves those checkouts where they are — they may hold work nobody has merged.'
+            : 'Two agents editing the same files means the second one to save wins. Each gets a git worktree instead, and this directory stays yours.'
+        }
+        onSelect={() => {
+          void setAgentWorktrees(project.id, !project.agentWorktrees)
+          onDone()
+        }}
+      />
       <MenuItem
         label={isMac() ? 'Reveal in Finder' : 'Open in file manager'}
         onSelect={() => {

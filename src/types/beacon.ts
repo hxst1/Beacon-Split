@@ -27,6 +27,13 @@ export interface Project {
   /** Short, human-facing form, e.g. `Personal/beacon-split`. */
   displayPath: string
   kinds: ProjectKind[]
+  /**
+   * Whether each agent works in a git worktree of its own.
+   *
+   * Off unless asked for. When on it applies to every agent including the only
+   * one: agents work in their own checkouts, and this one stays yours.
+   */
+  agentWorktrees: boolean
 }
 
 export interface Workspace {
