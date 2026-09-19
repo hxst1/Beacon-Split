@@ -50,6 +50,14 @@ pub struct Project {
     pub path: ProjectPath,
     #[serde(default)]
     pub kinds: Vec<ProjectKind>,
+    /// Whether each agent works in a git worktree of its own.
+    ///
+    /// Off unless asked for, and when asked for it applies to every agent
+    /// including the only one: agents work in their own checkouts, and yours
+    /// stays yours. Defaulted, so a workspaces file written before this reads
+    /// as the behaviour it already had.
+    #[serde(default)]
+    pub agent_worktrees: bool,
 }
 
 impl Project {
@@ -59,6 +67,7 @@ impl Project {
             name: name.into(),
             path,
             kinds,
+            agent_worktrees: false,
         }
     }
 }

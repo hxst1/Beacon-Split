@@ -212,3 +212,58 @@ fn a_worktree_is_its_own_checkout_of_the_same_repository() {
     git::remove_worktree(main.path(), &at).unwrap();
     assert_eq!(git::worktrees(main.path()).unwrap().len(), 1);
 }
+
+/// The placement an agent session actually gets, made and then reused.
+#[test]
+fn an_agent_gets_the_same_worktree_back_on_every_restart() {
+    use beacon_core::agent::AgentKind;
+    use beacon_core::domain::ProjectId;
+
+    let main = repository();
+    std::fs::write(main.path().join("a.txt"), "one").unwrap();
+    git_raw(main.path(), &["add", "-A"]);
+    git_raw(main.path(), &["commit", "-m", "first"]);
+
+    // Beacon's own directory, moved out of the way so the test cannot write
+    // into the one somebody is using.
+    let config = tempfile::tempdir().unwrap();
+    // SAFETY: this test is the only thing reading it, and it is put back below.
+    unsafe { std::env::set_var("BEACON_CONFIG_DIR", config.path()) };
+
+    let project = ProjectId("pj_worktree_test".into());
+    let first =
+        beacon_core::worktrees::root_for(main.path(), &project, AgentKind::Codex, true).unwrap();
+
+    assert_ne!(first, main.path(), "it is not the project's own directory");
+    assert!(first.join("a.txt").is_file(), "and carries the history");
+
+    // What a restart does: asked again, it hands back the same checkout rather
+    // than failing on one that already exists.
+    let again =
+        beacon_core::worktrees::root_for(main.path(), &project, AgentKind::Codex, true).unwrap();
+    assert_eq!(first, again);
+
+    // A directory git has forgotten is cleared rather than added on top of,
+    // which git refuses to do in a way nobody could read.
+    git_raw(
+        main.path(),
+        &["worktree", "remove", "--force", &first.to_string_lossy()],
+    );
+    assert!(!first.exists());
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::write(first.join("left-behind.txt"), "orphan").unwrap();
+
+    let recovered =
+        beacon_core::worktrees::root_for(main.path(), &project, AgentKind::Codex, true).unwrap();
+    assert_eq!(recovered, first);
+    assert!(!first.join("left-behind.txt").exists());
+    assert!(first.join("a.txt").is_file());
+
+    beacon_core::worktrees::forget_project(main.path(), &project);
+    assert!(
+        !first.exists(),
+        "a removed project takes its checkouts with it"
+    );
+
+    unsafe { std::env::remove_var("BEACON_CONFIG_DIR") };
+}

@@ -23,7 +23,7 @@ pub fn open_session(
     let (cwd, prefs) = {
         let beacon = state.beacon();
         (
-            beacon.resolve_project_path(&workspace_id, &project_id)?,
+            beacon.session_root(&workspace_id, &project_id, kind)?,
             SessionPrefs {
                 shell: beacon.shell(),
                 agents: beacon.claude_agents(),
@@ -93,7 +93,7 @@ pub fn restart_session(
     let (cwd, prefs) = {
         let beacon = state.beacon();
         (
-            beacon.resolve_project_path(&workspace_id, &project_id)?,
+            beacon.session_root(&workspace_id, &project_id, kind)?,
             SessionPrefs {
                 shell: beacon.shell(),
                 agents: beacon.claude_agents(),

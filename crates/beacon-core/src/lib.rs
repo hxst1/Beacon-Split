@@ -35,6 +35,7 @@ pub mod store;
 pub mod tools;
 pub mod ui_state;
 pub mod workstreams;
+pub mod worktrees;
 
 pub use error::{CoreError, Result};
 pub use layout::{LayoutNode, LayoutPreset, PanelId, SplitDirection};

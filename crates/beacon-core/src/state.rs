@@ -9,6 +9,7 @@ use crate::error::{CoreError, Result};
 use crate::keymap::{self, ActionBinding};
 use crate::layout::{LayoutNode, LayoutPreset, PanelId};
 use crate::paths::{ProjectPath, default_config_dir};
+use crate::session::SessionKind;
 use crate::settings::Settings;
 use crate::store::{JsonStore, ensure_schema};
 use crate::ui_state::UiState;
@@ -236,6 +237,35 @@ impl Beacon {
             .ok_or_else(|| CoreError::ProjectNotFound(project.to_string()))?
             .path
             .resolve(&home))
+    }
+
+    /// Where a session for this kind should start.
+    ///
+    /// The project's own directory for a shell, and for an agent when the
+    /// project has not asked for separate worktrees. When it has, each agent
+    /// gets a checkout of its own and the project's directory stays the user's
+    /// — see [`crate::worktrees`].
+    ///
+    /// Resolved here rather than at each call site because it is the same
+    /// question every one of them is asking, and answering it differently in
+    /// one of them is how a session ends up somewhere nobody expected.
+    pub fn session_root(
+        &self,
+        workspace: &WorkspaceId,
+        project: &ProjectId,
+        kind: SessionKind,
+    ) -> Result<PathBuf> {
+        let root = self.resolve_project_path(workspace, project)?;
+        let Some(agent) = kind.agent() else {
+            return Ok(root);
+        };
+
+        let separate = self
+            .workspace(workspace)?
+            .project(project)
+            .is_some_and(|project| project.agent_worktrees);
+
+        crate::worktrees::root_for(&root, project, agent, separate)
     }
 
     /// The projects a workspace holds, for callers that need to act on all of

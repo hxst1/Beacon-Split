@@ -379,6 +379,17 @@ pub fn remove_worktree(root: &Path, path: &Path) -> Result<()> {
     .map(|_| ())
 }
 
+/// Drops git's record of worktrees whose directories have gone.
+///
+/// The record and the disk can disagree in either direction — a directory
+/// deleted from under git, a record left by something that removed one badly —
+/// and git refuses to add over the leftovers with *"missing but already
+/// registered"*, which is accurate and useless to anyone who did not put it
+/// there.
+pub fn prune_worktrees(root: &Path) -> Result<()> {
+    run_within(root, &["worktree", "prune"], SLOW_TIMEOUT).map(|_| ())
+}
+
 fn branch_exists(root: &Path, branch: &str) -> Result<bool> {
     let reference = format!("refs/heads/{branch}");
     let mut command = git_command(root, &["show-ref", "--verify", "--quiet", &reference]);

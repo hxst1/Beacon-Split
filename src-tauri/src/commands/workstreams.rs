@@ -1,5 +1,6 @@
 use beacon_core::agent::AgentKind;
 use beacon_core::domain::{ProjectId, WorkspaceId};
+use beacon_core::session::SessionKind;
 use beacon_core::session::{SessionInfo, SessionPrefs};
 use beacon_core::workstreams::{Workstream, WorkstreamId};
 use tauri::State;
@@ -49,10 +50,11 @@ fn placement(
     state: &State<'_, AppState>,
     workspace_id: &WorkspaceId,
     project_id: &ProjectId,
+    agent: AgentKind,
 ) -> CommandResult<(std::path::PathBuf, SessionPrefs)> {
     let beacon = state.beacon();
     Ok((
-        beacon.resolve_project_path(workspace_id, project_id)?,
+        beacon.session_root(workspace_id, project_id, SessionKind::for_agent(agent))?,
         SessionPrefs {
             shell: beacon.shell(),
             agents: beacon.claude_agents(),
@@ -74,10 +76,11 @@ pub fn start_workstream(
     cols: u16,
     rows: u16,
 ) -> CommandResult<OpenedWorkstream> {
-    let (cwd, prefs) = placement(&state, &workspace_id, &project_id)?;
+    let agent = agent.unwrap_or_default();
+    let (cwd, prefs) = placement(&state, &workspace_id, &project_id, agent)?;
     let (workstream, session) = state.daemon()?.start_workstream(
         &project_id,
-        agent.unwrap_or_default(),
+        agent,
         name,
         &cwd,
         (cols.max(2), rows.max(2)),
@@ -99,10 +102,16 @@ pub fn resume_workstream(
     workspace_id: WorkspaceId,
     project_id: ProjectId,
     id: WorkstreamId,
+    agent: Option<AgentKind>,
     cols: u16,
     rows: u16,
 ) -> CommandResult<OpenedWorkstream> {
-    let (cwd, prefs) = placement(&state, &workspace_id, &project_id)?;
+    let (cwd, prefs) = placement(
+        &state,
+        &workspace_id,
+        &project_id,
+        agent.unwrap_or_default(),
+    )?;
     let (workstream, session) = state.daemon()?.resume_workstream(
         &project_id,
         &id,
@@ -121,16 +130,27 @@ pub fn resume_workstream(
 /// What to do instead of resuming one that is already open, and how to try
 /// something without spending the conversation you would want back.
 #[tauri::command]
+// Eight, and they are named by the caller rather than positional: this is an
+// IPC boundary, and the window passes `{ workspaceId, projectId, from, agent,
+// … }`. Bundling them would only move the same names one level down and make
+// the frontend build an object to be unbuilt here.
+#[allow(clippy::too_many_arguments)]
 pub fn fork_workstream(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
     from: WorkstreamId,
+    agent: Option<AgentKind>,
     name: Option<String>,
     cols: u16,
     rows: u16,
 ) -> CommandResult<OpenedWorkstream> {
-    let (cwd, prefs) = placement(&state, &workspace_id, &project_id)?;
+    let (cwd, prefs) = placement(
+        &state,
+        &workspace_id,
+        &project_id,
+        agent.unwrap_or_default(),
+    )?;
     let (workstream, session) = state.daemon()?.fork_workstream(
         &project_id,
         &from,
