@@ -1459,3 +1459,101 @@ nothing at all.
 **Consequence.** Beacon cannot use the parts of the hook contract that need
 stdout — injecting context, denying a tool. It has never wanted to: it observes
 sessions, it does not steer them.
+
+## ADR-072: A second agent is a second kind, not an agent inside the kind
+
+**Context.** Beacon ran one agent, and `SessionKind` was `Shell` or `Claude`.
+Running Codex beside it needed the kind to say which agent it was. The tidier
+model is one variant carrying an agent — `Agent(AgentKind)` — and it reads
+better in the place it is declared.
+
+**Decision.** One variant per agent: `Shell`, `Claude`, `Codex`. `SessionKind`
+converts to and from `AgentKind` where the two meet.
+
+**Why.** The kind is half of the key a project's sessions are filed under, and
+it is already on the wire as `"claude"`. A variant added beside that changes
+nothing that already works, while reshaping it would have changed the stored
+shape and every comparison at once. The coexistence the whole feature is for
+then falls out for free: two agents are two kinds, and collide no more than a
+shell and a Claude do.
+
+**Consequence.** A third agent is a variant here and a row in the panel's table,
+rather than one place. The conversion exists so the daemon can cross between
+"conversations by agent" and "sessions by kind" without writing the match out
+each time.
+
+## ADR-073: A conversation's id may belong to the agent rather than to Beacon
+
+**Context.** Beacon names a conversation before it exists: it generates a UUID
+and hands it to Claude Code with `--session-id`, which is what makes a
+workstream something it can address, resume and fork without reading a
+transcript. Codex refuses to be told. It generates its own id and reports it
+afterwards, and asking for the flag is an open request upstream.
+
+**Decision.** A conversation records two ids: Beacon's own, always known, and
+the agent's, learned when the agent says it. They are the same number for
+Claude Code by construction. `resume_id` is the single place that knows which
+to use, and it answers nothing during the window where a Codex conversation
+exists for Beacon and has not yet been identified.
+
+**Why.** The alternative is making Beacon's id optional, which spreads the
+absence through naming, listing, forking and the UI — for a window that is one
+report long and in which there is nothing to resume anyway.
+
+**Consequence.** The first report from a Codex session is load-bearing: it is
+the only chance to connect the two ids, so the conversation Beacon has open
+with that agent in that project is the one it must belong to. Every later
+report matches on the learned id, and a second session reporting a different id
+afterwards is refused rather than allowed to point Beacon's conversation at
+something it does not own. Without hooks there is no id at all, which is why
+Codex's capability check asks for hooks and resume together.
+
+## ADR-074: Beacon installs itself into Codex as a plugin, and cannot trust it
+
+**Context.** Claude Code takes hooks as entries in a settings file, which Beacon
+writes and removes. Codex takes hooks from plugins, and plugins from
+marketplaces. It also keeps a hash of every hook it has been shown and runs
+none it has not.
+
+**Decision.** Beacon generates a marketplace with one plugin in it, into its own
+configuration directory, and registers it with `codex plugin`. Trusting the
+hooks is left to the user, once, in Codex's own `/hooks`. Whether it worked is
+answered by whether a report ever arrives, not by reading Codex's configuration.
+
+**Why.** The hash is a safeguard against arbitrary code, and forging it would be
+defeating it on the user's behalf. There is a flag that bypasses trust for one
+run; it also prints warnings into the session, so it is not a quiet workaround
+either. Reading the trust record instead of watching for reports would be a
+second source of truth about the same question, and the stale one.
+
+**Consequence.** Installing achieves nothing visible until somebody trusts it,
+so Settings says so at the point it becomes true rather than as a footnote. The
+plugin is generated rather than shipped because the hook names the daemon on
+this machine, which moves when the application does — a moved daemon reads as
+stale and reinstalling is the fix.
+
+## ADR-075: Separate checkouts are all of an agent's or none of them
+
+**Context.** Two agents in one project write to the same files and the second
+one to save wins. Git worktrees are the existing answer, but who gets moved
+needs deciding: the obvious arrangement is one agent keeping the project's own
+directory and the rest being placed elsewhere.
+
+**Decision.** A per-project switch, off by default. When it is on, every agent
+works in a worktree of its own — including the only one — and the project's
+directory belongs to the user. They live under Beacon's configuration directory,
+on branches named `beacon/<agent>`.
+
+**Why.** "One keeps the real directory" needs an answer to which one, and every
+answer is arbitrary or depends on the order somebody opened panels in. All or
+none is a rule that fits in a sentence, and the sentence is the feature: agents
+work in their own checkouts, yours stays yours. Under Beacon's directory rather
+than beside the project, so nothing Beacon makes is scanned by a build,
+committed by accident, or mistaken for something the user left there.
+
+**Consequence.** Turning it on changes where an agent's work lands, so the
+panel's header names the branch: a mode nobody can see is a mode that bites.
+Turning it off leaves the checkouts where they are, because they may hold work
+nobody has merged. A project that is not a git repository has no worktrees and
+keeps working. The file, git and editor panels still show the user's checkout;
+following the focused agent instead is a later decision and not this one.
