@@ -172,9 +172,7 @@ fn version_of(path: &std::path::Path, flag: &str) -> Option<String> {
     // lives beside it. Without this the program is found and then refuses to
     // say its version, which reads as a broken install rather than a missing
     // `node`.
-    if let Some(path) = crate::tools::path_with_program_dir(path) {
-        command.env("PATH", path);
-    }
+    command.env("PATH", crate::tools::session_path(path));
 
     let output = command.output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);

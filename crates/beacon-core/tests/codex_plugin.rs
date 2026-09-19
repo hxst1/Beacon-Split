@@ -13,7 +13,7 @@
 use std::path::Path;
 
 use beacon_core::codex_plugin::{self, PluginStatus};
-use beacon_core::tools::{path_with_program_dir, resolve_program};
+use beacon_core::tools::{resolve_program, session_path};
 
 /// Runs a Codex command against a home of its own.
 ///
@@ -24,9 +24,7 @@ fn codex(home: &Path, args: &[&str]) -> std::process::Output {
     let program = resolve_program("codex").expect("checked by the caller");
     let mut command = std::process::Command::new(&program);
     command.args(args).env("CODEX_HOME", home);
-    if let Some(path) = path_with_program_dir(&program) {
-        command.env("PATH", path);
-    }
+    command.env("PATH", session_path(&program));
     command.output().expect("codex should run")
 }
 

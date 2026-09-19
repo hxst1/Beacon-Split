@@ -177,11 +177,9 @@ fn run(codex: &Path, args: &[&str]) -> Result<()> {
     let mut command = std::process::Command::new(codex);
     command.args(args);
     crate::tools::strip_terminal_identity(&mut command);
-    // An npm-installed Codex is a Node script and needs its interpreter, which
-    // lives beside it.
-    if let Some(path) = crate::tools::path_with_program_dir(codex) {
-        command.env("PATH", path);
-    }
+    // The same PATH a session gets: the login shell's, with Codex's own
+    // directory in front for the interpreter npm put beside it.
+    command.env("PATH", crate::tools::session_path(codex));
 
     let output = command
         .output()

@@ -283,6 +283,94 @@ pub fn strip_terminal_identity(command: &mut std::process::Command) {
 /// for each one lives.
 pub(crate) use crate::session::STRIPPED_ENV;
 
+/// The `PATH` the user's login shell sets, asked once and kept.
+///
+/// Beacon runs an agent directly from its resolved path rather than through a
+/// login shell, so that nothing the user's startup files print lands in the
+/// panel above it. That is still right, and it has a cost nobody had counted:
+/// the environment. Launched from the Dock, Beacon's own `PATH` is the bare
+/// `/usr/bin:/bin:/usr/sbin:/sbin`, and an agent that inherits it cannot run
+/// `node`, `cargo`, `pnpm` or anything else installed by a version manager or
+/// Homebrew — nor can the hooks that agent starts, which is how this was
+/// found: a hook failing with `node: command not found` in every session.
+///
+/// A shell session needs none of this. It *is* a login shell and works its own
+/// `PATH` out, which is why the two behaved differently for so long.
+///
+/// Only a successful answer is remembered, for the reason 0.5.1 learned about
+/// resolving programs: the shell can fail to answer on a machine that is
+/// briefly busy, and the daemon outlives the window, so one missed answer must
+/// not cripple every session for the rest of the day.
+pub fn login_path() -> Option<std::ffi::OsString> {
+    static CACHED: std::sync::Mutex<Option<std::ffi::OsString>> = std::sync::Mutex::new(None);
+
+    if let Some(path) = CACHED.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        return Some(path);
+    }
+
+    let asked = ask_shell_path()?;
+    *CACHED.lock().unwrap_or_else(|e| e.into_inner()) = Some(asked.clone());
+    Some(asked)
+}
+
+/// Asks the login shell what its `PATH` is.
+///
+/// Through a file with a marker rather than by reading stdout, like the program
+/// probe beside it: an interactive shell prints a prompt, a title escape and
+/// whatever else somebody's setup does, and none of that is the answer.
+fn ask_shell_path() -> Option<std::ffi::OsString> {
+    for args in [&["-l", "-i", "-c"][..], &["-l", "-c"][..]] {
+        let answer = ProbeFile::new("path")?;
+        let script = format!(
+            "printf '{PROBE_MARKER}%s\n' \"$PATH\" > '{}' 2>/dev/null",
+            answer.path.display()
+        );
+
+        let mut probe = std::process::Command::new(user_shell());
+        probe
+            .args(args)
+            .arg(&script)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        strip_terminal_identity(&mut probe);
+
+        let Ok(mut child) = probe.spawn() else {
+            continue;
+        };
+        wait_briefly(&mut child, PROBE_TIMEOUT);
+
+        if let Some(found) = std::fs::read_to_string(&answer.path)
+            .ok()
+            .and_then(|written| extract_marked(&written))
+        {
+            tracing::debug!(path = %found, "read the login shell's PATH");
+            return Some(found.into());
+        }
+    }
+    None
+}
+
+/// The value a probe wrote after the marker, whatever it is.
+///
+/// The program probe's own reader insists the answer is a file that exists; a
+/// `PATH` is neither, so the check has to be about the shape of the answer
+/// rather than about what it names.
+fn extract_marked(written: &str) -> Option<String> {
+    let answer = written
+        .rmatch_indices(PROBE_MARKER)
+        .map(|(index, _)| &written[index + PROBE_MARKER.len()..])
+        .next()?;
+
+    let value = answer
+        .lines()
+        .next()?
+        .trim_matches(|c: char| c.is_whitespace() || c.is_control())
+        .to_string();
+
+    (!value.is_empty()).then_some(value)
+}
+
 /// A `PATH` with a program's own directory in front.
 ///
 /// An agent installed with npm is not a binary but a Node script —
@@ -296,16 +384,25 @@ pub(crate) use crate::session::STRIPPED_ENV;
 /// `node` it needs, so a `PATH` that can reach the one can reach the other. It
 /// goes in front rather than behind so the interpreter that belongs to this
 /// installation is the one that answers.
-pub fn path_with_program_dir(program: &Path) -> Option<std::ffi::OsString> {
+pub fn path_with_program_dir(program: &Path, base: &std::ffi::OsStr) -> Option<std::ffi::OsString> {
     // A bare name has an empty parent rather than none, and an empty entry on
     // `PATH` means the current working directory — which is a project the user
     // did not ask to have searched for executables.
     let dir = program.parent().filter(|dir| !dir.as_os_str().is_empty())?;
-    let current = std::env::var_os("PATH").unwrap_or_default();
 
     let mut paths = vec![dir.to_path_buf()];
-    paths.extend(std::env::split_paths(&current).filter(|entry| entry != dir));
+    paths.extend(std::env::split_paths(base).filter(|entry| entry != dir));
     std::env::join_paths(paths).ok()
+}
+
+/// The `PATH` a session started for `program` should run with.
+///
+/// The login shell's, because Beacon's own is whatever the Dock gave it, with
+/// the program's own directory in front, because an npm-installed agent is a
+/// script that needs the interpreter npm put beside it.
+pub fn session_path(program: &Path) -> std::ffi::OsString {
+    let base = login_path().unwrap_or_else(|| std::env::var_os("PATH").unwrap_or_default());
+    path_with_program_dir(program, &base).unwrap_or(base)
 }
 
 #[cfg(test)]
@@ -440,8 +537,9 @@ mod tests {
 
     #[test]
     fn a_programs_own_directory_leads_the_path_it_runs_with() {
-        let path =
-            path_with_program_dir(Path::new("/opt/node/bin/codex")).expect("a joinable PATH");
+        let inherited = std::env::var_os("PATH").unwrap_or_default();
+        let path = path_with_program_dir(Path::new("/opt/node/bin/codex"), &inherited)
+            .expect("a joinable PATH");
         let entries: Vec<_> = std::env::split_paths(&path).collect();
 
         assert_eq!(
@@ -460,10 +558,21 @@ mod tests {
     }
 
     #[test]
+    fn a_session_runs_with_its_programs_directory_in_front() {
+        // The whole point of `session_path`: whatever the login shell says,
+        // the interpreter sitting beside the program is reachable first.
+        let path = session_path(Path::new("/opt/node/bin/codex"));
+        let first = std::env::split_paths(&path).next();
+
+        assert_eq!(first.as_deref(), Some(Path::new("/opt/node/bin")));
+    }
+
+    #[test]
     fn a_bare_program_name_never_puts_the_working_directory_on_the_path() {
         // `Path::new("codex").parent()` is an empty path, not nothing, and an
         // empty entry on `PATH` means "look in the current directory" — which
         // would be whichever project the session happens to be in.
-        assert!(path_with_program_dir(Path::new("codex")).is_none());
+        let inherited = std::env::var_os("PATH").unwrap_or_default();
+        assert!(path_with_program_dir(Path::new("codex"), &inherited).is_none());
     }
 }

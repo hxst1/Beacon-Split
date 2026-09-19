@@ -613,14 +613,24 @@ impl SessionManager {
                 let path = self.program_path(agent)?;
                 let mut command = CommandBuilder::new(&path);
 
-                // An agent installed with npm is a Node script that spawns the
-                // real executable, and it needs `node` on the `PATH`. Beacon
-                // found it through the login shell, which has one; launched
-                // from the Dock, Beacon's own `PATH` does not. Its own
-                // directory is where npm put both.
-                if let Some(path) = crate::tools::path_with_program_dir(&path) {
-                    command.env("PATH", path);
-                }
+                // The `PATH` the user's login shell sets, rather than the one
+                // Beacon inherited.
+                //
+                // A shell session works its own out, because it is a login
+                // shell. An agent is run directly — so that nothing anyone's
+                // startup files print lands in the panel — and inherits
+                // Beacon's, which launched from the Dock is the bare
+                // `/usr/bin:/bin:/usr/sbin:/sbin`. Everything the user
+                // installed is missing from it: `node`, `cargo`, whatever a
+                // version manager put on theirs. The agent cannot run those,
+                // and neither can the hooks it starts, which is how this was
+                // found — a hook failing with `node: command not found` in
+                // every session.
+                //
+                // The program's own directory goes in front of it, because an
+                // agent installed with npm is a script that needs the
+                // interpreter npm put beside it.
+                command.env("PATH", crate::tools::session_path(&path));
 
                 // Merged with whatever the user has configured, never replacing
                 // it: `--strict-mcp-config` would silently switch off every MCP
