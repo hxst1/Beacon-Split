@@ -43,6 +43,13 @@ export function AgentPanel({
   autoFocus: boolean
 }): React.ReactElement {
   const spec = AGENTS[agent]
+  // A mode nobody can see is a mode that bites. With separate checkouts on,
+  // this agent's work does not land in the directory the subtitle names — it
+  // lands on a branch of its own — and the header is the only place somebody
+  // would look before wondering where their changes went.
+  const subtitle = project.agentWorktrees
+    ? `${project.displayPath} · beacon/${agent}`
+    : project.displayPath
   const restartSession = useBeacon((s) => s.restartSession)
   const missing = useBeacon((s) => s.missing.find((entry) => entry.id === spec.requirement))
   // On a Claude Code with the flags for it, restarting continues the
@@ -62,7 +69,7 @@ export function AgentPanel({
     <Panel
       id={spec.panel}
       title={spec.title}
-      subtitle={project.displayPath}
+      subtitle={subtitle}
       actions={
         <>
           {/* Both of these read what Claude Code's hooks and status line
