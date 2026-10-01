@@ -41,9 +41,9 @@ mod loopback {
     use std::io::{self, ErrorKind, Read, Write};
     use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::atomic::AtomicBool;
-    use std::sync::{mpsc, Arc, Mutex, OnceLock, PoisonError};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex, OnceLock, PoisonError, mpsc};
     use std::time::Duration;
 
     /// What a client says first, before the token.

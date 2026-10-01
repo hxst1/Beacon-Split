@@ -1512,8 +1512,15 @@ mod tests {
             recorded.extend_from_slice(&watch.filter(&opening[split..]));
             recorded.extend_from_slice(&watch.filter(b"PS C:\\> "));
 
-            assert_eq!(input.lock().unwrap().as_slice(), b"\x1b[1;1R", "split at {split}");
-            assert_eq!(recorded, b"\x1b[?9001h\x1b[?25lPS C:\\> ", "split at {split}");
+            assert_eq!(
+                input.lock().unwrap().as_slice(),
+                b"\x1b[1;1R",
+                "split at {split}"
+            );
+            assert_eq!(
+                recorded, b"\x1b[?9001h\x1b[?25lPS C:\\> ",
+                "split at {split}"
+            );
         }
     }
 

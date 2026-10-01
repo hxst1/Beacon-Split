@@ -885,7 +885,10 @@ mod tests {
 
         let deadline = Instant::now() + Duration::from_secs(5);
         while shared.reconnecting.load(Ordering::SeqCst) {
-            assert!(Instant::now() < deadline, "the reconnect loop never stopped");
+            assert!(
+                Instant::now() < deadline,
+                "the reconnect loop never stopped"
+            );
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(!tried_to_start_a_daemon(dir.path()));
