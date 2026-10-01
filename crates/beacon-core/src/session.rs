@@ -996,7 +996,7 @@ impl SessionManager {
                             Ok(0) => break,
                             Ok(n) => {
                                 #[cfg(windows)]
-                                let bytes = cursor_query.filter(&chunk[..n]);
+                                let bytes: &[u8] = &cursor_query.filter(&chunk[..n]);
                                 #[cfg(not(windows))]
                                 let bytes = &chunk[..n];
                                 if bytes.is_empty() {
@@ -1004,8 +1004,8 @@ impl SessionManager {
                                 }
                                 // Recording and numbering happen under one lock
                                 // so a snapshot can never interleave with this.
-                                let offset = scrollback.lock_or_recover().push(&bytes);
-                                events.output(&id, &owner, offset, &bytes);
+                                let offset = scrollback.lock_or_recover().push(bytes);
+                                events.output(&id, &owner, offset, bytes);
                             }
                             Err(err) => {
                                 tracing::debug!(session = %id, error = %err, "pty read ended");
