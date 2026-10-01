@@ -131,3 +131,20 @@
   outline: none;
   user-select: text;
 }
+
+/* The kind of thing a row is.
+   
+   Dimmer than the name it sits beside: the name is what somebody is reading,
+   and the icon is there to be recognised without being looked at. It brightens
+   with the row so that the selected one reads as a whole. */
+.icon {
+  flex: none;
+  margin-right: 6px;
+  color: var(--fg-4);
+  transition: color var(--dur-1) var(--ease);
+}
+
+.row:hover .icon,
+.row[data-selected='true'] .icon {
+  color: var(--fg-3);
+}
