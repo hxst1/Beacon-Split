@@ -13,6 +13,9 @@ import styles from './StatusBar.module.css'
 export function StatusBar(): React.ReactElement {
   const project = useBeacon(selectActiveProject)
   const notice = useBeacon((s) => s.notice)
+  // Installed, as the requirements check found it. Recommended rather than
+  // required, so its absence is normal and says nothing here.
+  const hasCodex = useBeacon((s) => !s.missing.some((entry) => entry.id === 'codex'))
   const dismissNotice = useBeacon((s) => s.dismissNotice)
   const bindings = useBeacon(selectBindings)
   const detached = useBeacon((s) => s.detached)
@@ -98,6 +101,10 @@ export function StatusBar(): React.ReactElement {
       <span className={styles['hint']}>
         {hint('palette.open')} commands · {hint('quickOpen.open')} files ·{' '}
         {hint('panel.toggle.terminal')} terminal
+        {/* Only where there is a Codex to open. A second agent is the one
+            panel somebody has no reason to guess at, and a shortcut nobody is
+            told about is a feature nobody has. */}
+        {hasCodex ? <> · {hint('panel.toggle.codex')} codex</> : null}
       </span>
       {notes.showing ? (
         <ReleaseNotes releases={notes.showing} onClose={notes.close} />

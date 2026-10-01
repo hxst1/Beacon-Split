@@ -56,7 +56,14 @@ const PRESET_LABELS: Record<LayoutPreset, string> = {
   custom: 'Custom',
 }
 
-const TOGGLEABLE: PanelId[] = ['editor', 'files', 'git', 'terminal']
+/**
+ * Every panel that can be put away, derived rather than listed.
+ *
+ * It used to be written out by hand, and adding the Codex panel did not update
+ * it — so the one panel nobody knew about was also the one Settings did not
+ * offer. A list that has to be remembered is a list that will be forgotten.
+ */
+const TOGGLEABLE: PanelId[] = (Object.keys(PANEL_LABELS) as PanelId[]).sort()
 
 
 /**

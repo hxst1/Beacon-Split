@@ -36,12 +36,27 @@ impl UiState {
         self.hidden.contains(&panel)
     }
 
+    /// Shows a hidden panel, or hides a shown one.
+    ///
+    /// Refuses to hide the last agent panel, and says so by doing nothing. A
+    /// window with no agent in it is not an arrangement anybody wants — it is
+    /// what is left when somebody hides the one they were using to get to the
+    /// other, which is a thing the keyboard makes easy to do by accident.
     pub fn toggle(&mut self, panel: PanelId) {
         if let Some(index) = self.hidden.iter().position(|p| *p == panel) {
             self.hidden.remove(index);
-        } else {
-            self.hidden.push(panel);
+            return;
         }
+
+        if PanelId::AGENTS.contains(&panel)
+            && PanelId::AGENTS
+                .iter()
+                .all(|agent| *agent == panel || self.hidden.contains(agent))
+        {
+            return;
+        }
+
+        self.hidden.push(panel);
     }
 
     /// Reads a stored document, upgrading it if it predates the current schema.
@@ -189,6 +204,33 @@ fn migrate_v1(value: serde_json::Value, path: &std::path::Path) -> Result<UiStat
 
     tracing::info!("migrated ui-state.json from schema 1 to 2");
     Ok(state.normalized())
+}
+
+#[cfg(test)]
+mod last_agent_tests {
+    use super::*;
+
+    #[test]
+    fn the_last_agent_panel_cannot_be_hidden() {
+        let mut ui = UiState::default();
+        assert!(
+            ui.hidden.contains(&PanelId::Codex),
+            "Codex starts away, which is where everybody begins"
+        );
+
+        // Hiding Claude from here would leave nothing to work in.
+        ui.toggle(PanelId::Claude);
+        assert!(
+            !ui.hidden.contains(&PanelId::Claude),
+            "hiding the only agent left is refused"
+        );
+
+        // With the other one back, it is an ordinary choice again — somebody
+        // who only uses Codex should be able to put Claude away.
+        ui.toggle(PanelId::Codex);
+        ui.toggle(PanelId::Claude);
+        assert!(ui.hidden.contains(&PanelId::Claude));
+    }
 }
 
 #[cfg(test)]
