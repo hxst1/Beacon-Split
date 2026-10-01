@@ -14,7 +14,7 @@ import {
 import { errorMessage, ipc } from '@/ipc'
 import { applyAccent } from '@/lib/accent'
 import { applyAppearance, watchSystemTheme } from '@/lib/appearance'
-import { setPlatform } from '@/lib/platform'
+import { isWindows, setPlatform, setWindowsBuild } from '@/lib/platform'
 import type {
   ActionBinding,
   Appearance,
@@ -186,6 +186,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     load: async () => {
       try {
         setPlatform(await ipc.hostPlatform())
+        if (isWindows()) setWindowsBuild(await ipc.windowsBuild())
         accept(await ipc.getSnapshot())
         // Whatever sessions were already running have already reported.
         loadUsage()
