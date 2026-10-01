@@ -171,6 +171,14 @@ fn daemon_binary() -> PathBuf {
 /// real failure, and one that produced "the session daemon did not start
 /// listening" in every panel while the daemon had said something far more
 /// useful on its way out.
+///
+/// Unix only, because the way of making the daemon fail is: `SUN_LEN` is a
+/// limit on a Unix socket's path, and Windows reaches the daemon over loopback
+/// TCP, where a long directory name is simply a long directory name. What is
+/// being tested — that the daemon's own words reach the window — is not
+/// platform-specific, but nothing here makes it fail there, and a test that
+/// asserts a failure which does not happen tests nothing.
+#[cfg(unix)]
 #[test]
 fn a_daemon_that_will_not_start_says_why() {
     let dir = tempfile::tempdir().unwrap();
