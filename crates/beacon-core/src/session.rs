@@ -394,6 +394,53 @@ fn answer_cursor_query(bytes: &[u8], writer: &SharedWriter) -> Option<Vec<u8>> {
     Some(rest)
 }
 
+/// Watches a session's output for the pseudo-console's opening question
+/// across reads, until it has been answered once.
+///
+/// A read can end anywhere, including partway through the question — and a
+/// question split in two would match in neither half, leaving the session
+/// silent, waiting for an answer that never comes. So whatever a read ends
+/// with that could be the start of the question is held back and put in front
+/// of the next. Nothing visible is held: the console shows nothing until it is
+/// answered.
+#[cfg(windows)]
+struct CursorQueryWatch {
+    /// Who to answer through; gone once the question has been answered.
+    writer: Option<SharedWriter>,
+    /// The end of the last read, when it could be the start of the question.
+    held: Vec<u8>,
+}
+
+#[cfg(windows)]
+impl CursorQueryWatch {
+    fn new(writer: SharedWriter) -> Self {
+        CursorQueryWatch {
+            writer: Some(writer),
+            held: Vec::new(),
+        }
+    }
+
+    /// What of this read to record.
+    fn filter<'a>(&mut self, bytes: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
+        let Some(writer) = &self.writer else {
+            return std::borrow::Cow::Borrowed(bytes);
+        };
+        let mut joined = std::mem::take(&mut self.held);
+        joined.extend_from_slice(bytes);
+
+        if let Some(rest) = answer_cursor_query(&joined, writer) {
+            self.writer = None;
+            return std::borrow::Cow::Owned(rest);
+        }
+        let partial = (1..CURSOR_QUERY.len())
+            .rev()
+            .find(|&len| joined.ends_with(&CURSOR_QUERY[..len]))
+            .unwrap_or(0);
+        self.held = joined.split_off(joined.len() - partial);
+        std::borrow::Cow::Owned(joined)
+    }
+}
+
 /// Reports a session's process ending, on Windows, when it ends.
 ///
 /// Everywhere else the reader learns it for free: the process exits, the pty
@@ -939,7 +986,7 @@ impl SessionManager {
             let scrollback = Arc::clone(&scrollback);
             let exit_reported = Arc::clone(&exit_reported);
             #[cfg(windows)]
-            let mut unanswered = Some(Arc::clone(&writer));
+            let mut cursor_query = CursorQueryWatch::new(Arc::clone(&writer));
             std::thread::Builder::new()
                 .name(format!("pty-{id}"))
                 .spawn(move || {
@@ -948,15 +995,10 @@ impl SessionManager {
                         match reader.read(&mut chunk) {
                             Ok(0) => break,
                             Ok(n) => {
-                                #[allow(unused_mut)]
-                                let mut bytes = std::borrow::Cow::Borrowed(&chunk[..n]);
                                 #[cfg(windows)]
-                                if let Some(writer) = &unanswered
-                                    && let Some(rest) = answer_cursor_query(&bytes, writer)
-                                {
-                                    bytes = std::borrow::Cow::Owned(rest);
-                                    unanswered = None;
-                                }
+                                let bytes = cursor_query.filter(&chunk[..n]);
+                                #[cfg(not(windows))]
+                                let bytes = &chunk[..n];
                                 if bytes.is_empty() {
                                     continue;
                                 }
@@ -1453,6 +1495,37 @@ mod tests {
 
         assert_eq!(input.lock().unwrap().as_slice(), b"\x1b[1;1R");
         assert_eq!(rest, b"\x1b[?9001h\x1b[?1004h\x1b[?25l");
+    }
+
+    /// ConPTY decides where a read ends, and nothing stops it ending inside
+    /// the question. Every split point must still get exactly one answer and
+    /// record exactly what the console printed around it.
+    #[cfg(windows)]
+    #[test]
+    fn the_opening_question_is_answered_wherever_a_read_splits_it() {
+        let opening: &[u8] = b"\x1b[?9001h\x1b[6n\x1b[?25l";
+        for split in 1..opening.len() {
+            let (writer, input) = captured();
+            let mut watch = CursorQueryWatch::new(writer);
+
+            let mut recorded = watch.filter(&opening[..split]).into_owned();
+            recorded.extend_from_slice(&watch.filter(&opening[split..]));
+            recorded.extend_from_slice(&watch.filter(b"PS C:\\> "));
+
+            assert_eq!(input.lock().unwrap().as_slice(), b"\x1b[1;1R", "split at {split}");
+            assert_eq!(recorded, b"\x1b[?9001h\x1b[?25lPS C:\\> ", "split at {split}");
+        }
+    }
+
+    /// Once answered, a later question is the shell's business, not ours.
+    #[cfg(windows)]
+    #[test]
+    fn only_the_first_question_is_answered() {
+        let (writer, input) = captured();
+        let mut watch = CursorQueryWatch::new(writer);
+        let _ = watch.filter(b"\x1b[6n");
+        assert_eq!(&*watch.filter(b"\x1b[6n"), b"\x1b[6n");
+        assert_eq!(input.lock().unwrap().as_slice(), b"\x1b[1;1R");
     }
 
     #[cfg(windows)]
