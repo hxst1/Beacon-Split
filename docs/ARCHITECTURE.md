@@ -103,6 +103,19 @@ in every turn.
 
 The tool only writes. See ADR-053 to ADR-056.
 
+## Where the platforms differ
+
+Kept to a few places, so the rest of the code reads the same everywhere:
+
+| | macOS / Linux | Windows |
+| --- | --- | --- |
+| `transport.rs` — reaching the daemon | A unix socket file | Loopback TCP; the file holds the port and a token (ADR-072) |
+| `client.rs` — detaching the daemon | `setsid` | No console, own process group, out of the job if allowed |
+| `tools.rs` — finding programs | Ask the login shell | The PATH, with `PATHEXT`; npm shims looked through |
+| `session.rs` — sessions | A pty | A pseudo-console: its cursor query answered, its exit watched (ADR-074) |
+| `claude_hooks.rs` — hooks | A quoted command line | Exec form, `args: ["hook"]` (ADR-073) |
+| `tauri.windows.conf.json`, `WindowControls` | Overlay title bar | Undecorated, own caption buttons, Mica (ADR-075) |
+
 ## Portable project paths
 
 A project path is stored as one of two things:
