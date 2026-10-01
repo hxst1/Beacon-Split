@@ -15,6 +15,17 @@ tracing = { workspace = true }
 portable-pty = "0.9"
 tempfile = "3"
 trash = "5"
+# `canonicalize` on Windows answers in the `\\?\C:\…` form, which cmd, git and
+# a stored project path all handle badly; this gives the ordinary spelling back
+# whenever it means the same file. The standard library's, unchanged, elsewhere.
+dunce = "1"
+
+[target.'cfg(windows)'.dependencies]
+# Waiting on a session's process, which a Windows pseudo-console does not
+# report by closing; the short paths a status line command needs; and keeping
+# the window's own stdout from being inherited by the daemon. Already in the
+# tree through Tauri.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }
 
 [dev-dependencies]
 base64 = "0.22"

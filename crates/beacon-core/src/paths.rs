@@ -20,6 +20,14 @@ pub fn default_config_dir() -> PathBuf {
     let home = home_dir();
     if cfg!(target_os = "macos") {
         home.join("Library/Application Support/beacon-split")
+    } else if cfg!(windows) {
+        // Roaming rather than Local: these are preferences and a project list,
+        // which is what Roaming is for. Runtime state — the socket — lives in
+        // the temporary directory instead, as it does everywhere.
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join("AppData").join("Roaming"))
+            .join("beacon-split")
     } else {
         std::env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
@@ -28,8 +36,24 @@ pub fn default_config_dir() -> PathBuf {
     }
 }
 
+/// The user's home directory.
+///
+/// On Windows that is `USERPROFILE`. `HOME` is usually absent there — Git Bash
+/// sets one for its own children, an application started from the Start menu
+/// has none — and falling back to `/` would put the configuration, and Claude
+/// Code's settings file, at the root of whichever drive Beacon started on.
+/// `USERPROFILE` is also what Claude Code itself takes as home, so
+/// `~/.claude/settings.json` names the same file for both.
 pub fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
+    let variables: &[&str] = if cfg!(windows) {
+        &["USERPROFILE", "HOME"]
+    } else {
+        &["HOME"]
+    };
+
+    variables
+        .iter()
+        .find_map(|key| std::env::var_os(key).filter(|value| !value.is_empty()))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
 }
@@ -160,5 +184,33 @@ mod tests {
         let home = Path::new("/Users/eya/projects");
         let stored = ProjectPath::from_absolute("/Users/eya/projects", home);
         assert!(matches!(stored, ProjectPath::Absolute { .. }));
+    }
+
+    /// A Windows path is stored with `/` like any other, so the same
+    /// `workspaces.json` reads on a Mac, and comes back as the Windows path.
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_project_is_stored_portably_and_resolves_back() {
+        let home = Path::new(r"D:\jllinares\projects");
+        let stored = ProjectPath::from_absolute(r"D:\jllinares\projects\Personal\beacon", home);
+        assert_eq!(
+            stored,
+            ProjectPath::ProjectsHome {
+                relative: "Personal/beacon".into()
+            }
+        );
+        assert_eq!(
+            stored.resolve(home),
+            PathBuf::from(r"D:\jllinares\projects\Personal\beacon")
+        );
+    }
+
+    /// Windows has no `HOME` of its own; falling back to `/` would put the
+    /// configuration at the root of a drive.
+    #[cfg(windows)]
+    #[test]
+    fn home_on_windows_is_the_user_profile() {
+        let profile = std::env::var_os("USERPROFILE").expect("Windows always sets USERPROFILE");
+        assert_eq!(home_dir(), PathBuf::from(profile));
     }
 }

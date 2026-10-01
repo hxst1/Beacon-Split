@@ -22,12 +22,12 @@
 //! binary that has to stay small enough to ship inside an app bundle.
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 use beacon_core::clips::ClipKind;
 use beacon_core::domain::ProjectId;
 use beacon_core::protocol::{Envelope, Message, Outcome, Request};
+use beacon_core::transport::LocalStream;
 use serde_json::{Value, json};
 
 /// The MCP revisions this server knows how to be.
@@ -247,7 +247,7 @@ fn send(socket: &str, request: Request) -> Result<(), String> {
     let line = serde_json::to_string(&Envelope { id: 1, request })
         .map_err(|err| format!("could not encode the clip: {err}"))?;
 
-    let mut stream = UnixStream::connect(socket)
+    let mut stream = LocalStream::connect(socket)
         .map_err(|_| "Beacon is not listening; it may have been closed.".to_string())?;
     stream
         .set_read_timeout(Some(REPLY_TIMEOUT))

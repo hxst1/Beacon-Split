@@ -40,6 +40,29 @@ fn workspaces_and_projects_survive_a_reload() {
     );
 }
 
+/// On Windows the canonical spelling of a path is `\\?\D:\…`, which cmd will
+/// not start in and a terminal title shows as noise. A project is stored, and
+/// handed to everything that runs in it, in the spelling people use.
+#[cfg(windows)]
+#[test]
+fn a_project_path_is_kept_in_its_ordinary_windows_spelling() {
+    let (guard, config) = scratch();
+    let project_dir = guard.path().join("app");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let mut beacon = Beacon::load(&config).unwrap();
+    let ws = beacon.create_workspace("Work", "#4f8df7").unwrap();
+    beacon.add_project(&ws, &project_dir).unwrap();
+
+    let project = &beacon.snapshot().workspaces[0].projects[0];
+    assert!(
+        !project.absolute_path.starts_with(r"\\?\"),
+        "stored as {}",
+        project.absolute_path
+    );
+    assert!(std::path::Path::new(&project.absolute_path).is_dir());
+}
+
 #[test]
 fn adding_the_same_folder_twice_does_not_duplicate_it() {
     let (guard, config) = scratch();

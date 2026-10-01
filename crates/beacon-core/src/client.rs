@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -13,6 +12,7 @@ use crate::protocol::{
     Envelope, Event, Message, Outcome, PROTOCOL_VERSION, Reply, Request, Response, socket_path,
 };
 use crate::session::{SessionInfo, SessionKind, SessionPrefs};
+use crate::transport::LocalStream;
 
 /// How long a request waits before giving up.
 ///
@@ -48,7 +48,7 @@ const RECONNECT_BACKOFF: &[Duration] = &[
 /// State shared between the client and the threads that read for it.
 struct Shared {
     /// `None` between losing a connection and getting another.
-    stream: Mutex<Option<UnixStream>>,
+    stream: Mutex<Option<LocalStream>>,
     pending: Mutex<HashMap<u64, Sender<Outcome>>>,
     next_id: AtomicU64,
     binary: PathBuf,
@@ -455,7 +455,7 @@ impl Shared {
     }
 
     /// Takes over a connection and starts reading from it.
-    fn adopt(self: &Arc<Self>, stream: UnixStream) -> Result<()> {
+    fn adopt(self: &Arc<Self>, stream: LocalStream) -> Result<()> {
         let reader_half = stream
             .try_clone()
             .map_err(|err| CoreError::session("could not use the daemon socket", err))?;
@@ -601,13 +601,12 @@ fn unexpected() -> CoreError {
     CoreError::invalid("the session daemon answered with something unexpected")
 }
 
-fn connect_once(socket: &Path) -> Option<UnixStream> {
-    UnixStream::connect(socket).ok()
+fn connect_once(socket: &Path) -> Option<LocalStream> {
+    LocalStream::connect(socket).ok()
 }
 
 /// Starts the daemon detached, so it is not a child that dies with us.
 fn spawn_daemon(binary: &Path, socket: &Path) -> Result<()> {
-    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
 
     if !binary.exists() {
@@ -628,8 +627,15 @@ fn spawn_daemon(binary: &Path, socket: &Path) -> Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
-    // A new session, so it survives the window closing and does not receive the
-    // signals sent to Beacon's process group.
+    detach(command).map_err(|err| CoreError::session("could not start the session daemon", err))
+}
+
+/// Starts the daemon in a new session, so it survives the window closing and
+/// does not receive the signals sent to Beacon's process group.
+#[cfg(unix)]
+fn detach(mut command: std::process::Command) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
+
     unsafe {
         command.pre_exec(|| {
             // Detaches from the controlling terminal and the process group.
@@ -639,24 +645,85 @@ fn spawn_daemon(binary: &Path, socket: &Path) -> Result<()> {
             Ok(())
         });
     }
+    command.spawn().map(|_| ())
+}
 
-    command
-        .spawn()
-        .map(|_| ())
-        .map_err(|err| CoreError::session("could not start the session daemon", err))
+/// Starts the daemon with no console and in a process group of its own.
+///
+/// The Windows equivalent of a new session. Without a console it cannot be
+/// handed a Ctrl+C meant for whatever terminal launched Beacon, and it never
+/// flashes a window of its own. It is also asked to leave any job object the
+/// window belongs to: a launcher that kills its job when it exits would
+/// otherwise take every running session with it. Not every job allows that,
+/// and one that does not refuses the whole spawn, so the second attempt stays
+/// in the job rather than not starting at all.
+#[cfg(windows)]
+fn detach(mut command: std::process::Command) -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+    const ERROR_ACCESS_DENIED: i32 = 5;
+
+    keep_standard_handles_to_ourselves();
+
+    let flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
+    command.creation_flags(flags | CREATE_BREAKAWAY_FROM_JOB);
+    match command.spawn() {
+        Ok(_) => Ok(()),
+        Err(err) if err.raw_os_error() == Some(ERROR_ACCESS_DENIED) => {
+            tracing::info!("this job does not allow breaking away; starting the daemon inside it");
+            command.creation_flags(flags);
+            command.spawn().map(|_| ())
+        }
+        Err(err) => Err(err),
+    }
+}
+
+/// Stops this process's own stdin, stdout and stderr being inherited.
+///
+/// Windows hands a child every handle its parent marked inheritable, whatever
+/// the child's own stdio was set to — and the standard handles a process is
+/// started with are marked that way. A daemon that outlives the window would
+/// then hold the window's stdout open for as long as it runs, and whoever is
+/// reading the other end — `tauri dev`, a test runner, a pipe in a shell —
+/// would wait for an end of output that never comes.
+///
+/// Process-wide, and harmless for later children: Rust duplicates a handle it
+/// is asked to pass on rather than relying on this flag.
+#[cfg(windows)]
+fn keep_standard_handles_to_ourselves() {
+    use windows_sys::Win32::Foundation::{
+        HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation,
+    };
+    use windows_sys::Win32::System::Console::{
+        GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
+
+    for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+        unsafe {
+            let handle = GetStdHandle(which);
+            if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+                SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
+            }
+        }
+    }
 }
 
 // `setsid` without pulling in a libc dependency for one call.
+#[cfg(unix)]
 unsafe extern "C" {
     #[link_name = "setsid"]
     fn setsid_raw() -> i32;
 }
 
+#[cfg(unix)]
 fn libc_setsid() -> i32 {
     unsafe { setsid_raw() }
 }
 
-fn wait_for_daemon(socket: &Path) -> Result<UnixStream> {
+fn wait_for_daemon(socket: &Path) -> Result<LocalStream> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     while Instant::now() < deadline {
         if let Some(stream) = connect_once(socket) {
@@ -673,11 +740,14 @@ fn wait_for_daemon(socket: &Path) -> Result<UnixStream> {
 ///
 /// Beside it in a development build, and inside the bundle in a packaged one —
 /// both of which are "next to the executable" on the platforms Beacon targets.
+/// On Windows it is `beacon-daemon.exe`, and a path without the suffix names a
+/// file that does not exist.
 pub fn daemon_binary_path() -> PathBuf {
+    let name = format!("beacon-daemon{}", std::env::consts::EXE_SUFFIX);
     std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("beacon-daemon")))
-        .unwrap_or_else(|| PathBuf::from("beacon-daemon"))
+        .and_then(|exe| exe.parent().map(|dir| dir.join(&name)))
+        .unwrap_or_else(|| PathBuf::from(name))
 }
 
 trait LockOrRecover<T> {

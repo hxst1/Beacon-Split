@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::error::{CoreError, Result};
 use crate::files::resolve_within;
-use crate::tools::resolve_program;
+use crate::tools::{hide_console_window, resolve_program};
 
 /// How a path stands in the index or the working tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -182,6 +182,7 @@ fn git_command(root: &Path, args: &[&str]) -> Command {
         // A pager would never exit.
         .env("GIT_PAGER", "cat")
         .env("PAGER", "cat");
+    hide_console_window(&mut command);
     command
 }
 
@@ -450,9 +451,15 @@ pub fn diff(root: &Path, path: &str, staged: bool, untracked: bool) -> Result<St
         // `--no-index` exits 1 when the files differ, which is the normal case
         // here, so its status alone cannot say whether this worked. A file it
         // could not read is also an exit of 1 — with a reason on stderr, which
-        // is silent on success.
-        let complaint = output.stderr.trim();
-        if !complaint.is_empty() || !matches!(output.status.code(), Some(0 | 1)) {
+        // is otherwise silent on success. Otherwise, because a repository with
+        // `core.autocrlf` set — the Git for Windows default — warns on every
+        // new file that its line endings will change, and a warning is not a
+        // failure to read it.
+        let complaint = output
+            .stderr
+            .lines()
+            .any(|line| !line.trim().is_empty() && !line.starts_with("warning:"));
+        if complaint || !matches!(output.status.code(), Some(0 | 1)) {
             return Err(failure(&output, &args));
         }
         return Ok(output.stdout);

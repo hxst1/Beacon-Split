@@ -4,11 +4,26 @@
 //! Beacon needs: both have to look in the same places, or a preflight check
 //! would pass while the thing it checked still failed to start.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
+/// The shell a terminal runs when the user has not chosen one.
+///
+/// On unix, the account's shell. Windows has no such setting — `SHELL`, when
+/// it is set at all, is something Git Bash or MSYS left behind and names a
+/// path only they understand — so it is PowerShell: version 7 when it has been
+/// installed, because nobody installs it to keep using the old one, and
+/// Windows PowerShell otherwise, which every Windows has.
 pub fn user_shell() -> String {
+    if cfg!(windows) {
+        let on_path = std::env::var_os("PATH")
+            .and_then(|paths| find_in(std::env::split_paths(&paths), "pwsh"));
+        return on_path
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_else(windows_powershell);
+    }
+
     std::env::var("SHELL").unwrap_or_else(|_| {
         if cfg!(target_os = "macos") {
             "/bin/zsh".to_string()
@@ -16,6 +31,26 @@ pub fn user_shell() -> String {
             "/bin/bash".to_string()
         }
     })
+}
+
+/// How [`user_shell`] is started so it is the shell any other terminal gives.
+///
+/// A login shell on unix, which is what reads the profile that sets the PATH.
+/// PowerShell reads its profile anyway; `-NoLogo` only drops the banner, which
+/// every new tab would otherwise open with.
+pub fn user_shell_args() -> &'static [&'static str] {
+    if cfg!(windows) { &["-NoLogo"] } else { &["-l"] }
+}
+
+/// Windows PowerShell, by full path, so a PATH that has lost System32 does not
+/// leave a terminal with nothing to run.
+fn windows_powershell() -> String {
+    std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .map(|root| root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe"))
+        .filter(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "powershell.exe".to_string())
 }
 
 /// Marks the answer inside whatever else a shell writes on the way.
@@ -41,9 +76,24 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 /// write to last, so a broken shell setup does not turn an installed program
 /// into a missing one.
 ///
+/// Windows has no login shell to ask, and does not need one: an application
+/// started from the Start menu inherits the PATH the user set, which is the one
+/// every terminal there reads too. So it starts at our own PATH. What it finds
+/// may be npm's `.cmd` shim rather than a program, and [`launchable`] looks
+/// through that.
+///
 /// Runs once per program and is cached; it costs one short subprocess.
 pub fn resolve_program(name: &str) -> Option<PathBuf> {
-    for args in [&["-l", "-i", "-c"][..], &["-l", "-c"][..]] {
+    resolve_anywhere(name).map(launchable)
+}
+
+fn resolve_anywhere(name: &str) -> Option<PathBuf> {
+    let shell_answers: &[&[&str]] = if cfg!(unix) {
+        &[&["-l", "-i", "-c"], &["-l", "-c"]]
+    } else {
+        &[]
+    };
+    for args in shell_answers {
         if let Some(path) = ask_shell(name, args) {
             tracing::debug!(program = name, path = %path.display(), "resolved via login shell");
             return Some(path);
@@ -69,6 +119,96 @@ pub fn resolve_program(name: &str) -> Option<PathBuf> {
         tracing::debug!(program = name, "not found anywhere Beacon looks");
     }
     known
+}
+
+/// The program behind what was found, when what was found is npm's shim.
+///
+/// A package installed with `npm install -g` is reached on Windows through a
+/// `.cmd` file that runs the real thing. Only cmd.exe can run one, and it
+/// re-reads every argument by its own rules — quotes, `^`, `%`, and no
+/// newlines at all — which is exactly what a session's `--agents` JSON and its
+/// multi-line `--append-system-prompt` are made of. So the shim is read rather
+/// than run: the line that starts the program names it relative to the shim,
+/// and when that is an executable, the executable is what Beacon runs. Claude
+/// Code's npm package ships one, so for it the shim costs nothing.
+///
+/// Anything else is returned as it was found: a shim that runs a script still
+/// starts, through cmd.exe, and only arguments cmd mangles suffer.
+pub fn launchable(path: PathBuf) -> PathBuf {
+    let is_batch = path.extension().is_some_and(|extension| {
+        extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
+    });
+    if !cfg!(windows) || !is_batch {
+        return path;
+    }
+
+    match npm_shim_target(&path) {
+        Some(target) => {
+            tracing::debug!(shim = %path.display(), program = %target.display(), "looked through an npm shim");
+            target
+        }
+        None => path,
+    }
+}
+
+/// The executable an npm `.cmd` shim starts, if that is what it starts.
+///
+/// cmd-shim writes the target as `"%dp0%\…"`, and older npm as `"%~dp0\…"`;
+/// both mean "the shim's own directory".
+fn npm_shim_target(shim: &Path) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(shim).ok()?;
+    let directory = shim.parent()?;
+
+    text.lines().rev().find_map(|line| {
+        let start = ["\"%dp0%\\", "\"%~dp0\\"]
+            .iter()
+            .find_map(|prefix| line.find(prefix).map(|at| at + prefix.len()))?;
+        let rest = &line[start..];
+        let target = directory.join(&rest[..rest.find('"')?]);
+
+        let executable = target
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"));
+        (executable && target.is_file()).then_some(target)
+    })
+}
+
+/// Git for Windows' bash, which Claude Code runs its commands through there.
+///
+/// Found the way Claude Code finds it: the path it is told in
+/// `CLAUDE_CODE_GIT_BASH_PATH`, or the `bin\bash.exe` of the Git that is on the
+/// PATH — `git.exe` itself sits in `cmd\` or `mingw64\bin\` beside it.
+pub fn git_bash() -> Option<PathBuf> {
+    let told = std::env::var_os("CLAUDE_CODE_GIT_BASH_PATH")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file());
+    if told.is_some() {
+        return told;
+    }
+
+    let git = resolve_program("git")?;
+    git.ancestors()
+        .skip(1)
+        .take(3)
+        .map(|dir| dir.join("bin").join("bash.exe"))
+        .find(|path| path.is_file())
+}
+
+/// Keeps a background subprocess from opening a console window.
+///
+/// Beacon's window and its daemon have no console. On Windows a console
+/// program started from either gets one of its own — a window that flashes up
+/// for every git status and every version check — unless asked not to. Not
+/// for sessions: those get the pseudo-console their PTY provides.
+pub fn hide_console_window(command: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
 }
 
 /// Asks one shell where a program lives, and gives up if it will not say.
@@ -112,6 +252,7 @@ fn ask_shell(name: &str, args: &[&str]) -> Option<PathBuf> {
 /// that waits for exit while the pipe is full waits forever on a child that is
 /// waiting to be read.
 pub fn capture_briefly(command: &mut std::process::Command, limit: Duration) -> Option<String> {
+    hide_console_window(command);
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -201,10 +342,45 @@ impl Drop for ProbeFile {
 }
 
 /// The first of these directories that holds the program.
+///
+/// On Windows a program is found by name plus one of `PATHEXT`'s extensions,
+/// directory by directory, as the system itself searches. The bare name is not
+/// enough and must not count: npm leaves an extensionless shell script called
+/// `claude` beside `claude.cmd`, which is a file and cannot be run.
 fn find_in(dirs: impl IntoIterator<Item = PathBuf>, name: &str) -> Option<PathBuf> {
+    let candidates = executable_names(name);
     dirs.into_iter()
-        .map(|dir| dir.join(name))
+        .flat_map(|dir| {
+            candidates
+                .iter()
+                .map(move |candidate| dir.join(candidate))
+                .collect::<Vec<_>>()
+        })
         .find(|path| path.is_file())
+}
+
+/// The file names a program called `name` may have on this platform.
+fn executable_names(name: &str) -> Vec<String> {
+    if !cfg!(windows) {
+        return vec![name.to_string()];
+    }
+
+    let extensions = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+    let already_has_one = extensions.split(';').any(|extension| {
+        !extension.is_empty()
+            && name
+                .to_ascii_uppercase()
+                .ends_with(&extension.to_ascii_uppercase())
+    });
+    if already_has_one {
+        return vec![name.to_string()];
+    }
+
+    extensions
+        .split(';')
+        .filter(|extension| !extension.is_empty())
+        .map(|extension| format!("{name}{}", extension.to_ascii_lowercase()))
+        .collect()
 }
 
 /// Where the installers people actually use put their binaries.
@@ -212,6 +388,10 @@ fn find_in(dirs: impl IntoIterator<Item = PathBuf>, name: &str) -> Option<PathBu
 /// Claude Code's own installer writes to `~/.local/bin`, which is on the PATH
 /// of an interactive shell and nothing else — the exact gap this closes.
 fn install_locations() -> Vec<PathBuf> {
+    if cfg!(windows) {
+        return windows_install_locations();
+    }
+
     let mut dirs = Vec::new();
 
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
@@ -240,6 +420,40 @@ fn install_locations() -> Vec<PathBuf> {
         PathBuf::from("/bin"),
     ]);
 
+    dirs
+}
+
+/// The same, for Windows.
+///
+/// Only consulted when the PATH Beacon inherited does not have the program —
+/// which happens when it was installed after the daemon started, since a
+/// running process never sees PATH change. Claude Code's installer writes to
+/// `~/.local/bin` here too; `winget` links portable programs into one folder;
+/// npm, pnpm, Volta, Scoop and Git for Windows each have their own.
+fn windows_install_locations() -> Vec<PathBuf> {
+    let home = crate::paths::home_dir();
+    let from_env = |key: &str| std::env::var_os(key).map(PathBuf::from);
+
+    let mut dirs = vec![
+        home.join(".local").join("bin"),
+        home.join(".bun").join("bin"),
+        home.join(".cargo").join("bin"),
+        home.join("scoop").join("shims"),
+    ];
+    if let Some(roaming) = from_env("APPDATA") {
+        dirs.push(roaming.join("npm"));
+    }
+    if let Some(local) = from_env("LOCALAPPDATA") {
+        dirs.extend([
+            local.join("Microsoft").join("WinGet").join("Links"),
+            local.join("pnpm"),
+            local.join("Volta").join("bin"),
+            local.join("Programs").join("Git").join("cmd"),
+        ]);
+    }
+    if let Some(programs) = from_env("ProgramFiles") {
+        dirs.push(programs.join("Git").join("cmd"));
+    }
     dirs
 }
 
@@ -287,6 +501,7 @@ pub(crate) use crate::session::STRIPPED_ENV;
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn the_answer_is_found_despite_a_prompt_writing_a_terminal_title() {
         // A themed prompt writes an OSC title sequence that lands on the same
@@ -316,6 +531,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_last_marker_wins_when_a_shell_echoes_the_script() {
         let echoed = "BEACON_RESOLVED=$(command -v sh)\nBEACON_RESOLVED=/bin/sh\n";
@@ -325,6 +541,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_shell_that_will_not_finish_is_given_up_on() {
         // The real case: a prompt theme whose git daemon wedges, so the shell
@@ -350,6 +567,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_shell_that_answers_and_then_hangs_still_counts_as_an_answer() {
         // Writing to a file rather than a pipe is what makes this work: the
@@ -360,6 +578,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     fn resolve_via_hanging_shell(name: &str) -> Option<PathBuf> {
         let answer = ProbeFile::new(name)?;
         let script = format!(
@@ -379,6 +598,7 @@ mod tests {
         extract_resolved_path(&std::fs::read_to_string(&answer.path).ok()?)
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_program_is_found_where_installers_put_it() {
         // /bin is one of the places we look, and every machine that runs this
@@ -411,5 +631,62 @@ mod tests {
         let first = ProbeFile::new("claude").unwrap();
         let second = ProbeFile::new("claude").unwrap();
         assert_ne!(first.path, second.path);
+    }
+
+    /// npm leaves an extensionless shell script beside its `.cmd` shim. It is
+    /// a file, and it cannot be run on Windows; finding it would be finding
+    /// nothing.
+    #[cfg(windows)]
+    #[test]
+    fn a_program_is_found_by_its_windows_name_and_never_as_a_bare_script() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("tool"), "#!/bin/sh\n").unwrap();
+        std::fs::write(dir.path().join("tool.cmd"), "@echo off\r\n").unwrap();
+
+        let found = find_in([dir.path().to_path_buf()], "tool").expect("the shim");
+        assert!(
+            found
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("cmd")),
+            "found {}",
+            found.display()
+        );
+    }
+
+    /// The shape `npm install -g` writes for a package whose bin is a program,
+    /// which is what Claude Code's package is.
+    #[cfg(windows)]
+    #[test]
+    fn an_npm_shim_is_looked_through_to_the_program_it_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("node_modules").join("pkg").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("tool.exe"), "").unwrap();
+
+        let shim = dir.path().join("tool.cmd");
+        std::fs::write(
+            &shim,
+            "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\n\
+             SETLOCAL\r\nCALL :find_dp0\r\n\"%dp0%\\node_modules\\pkg\\bin\\tool.exe\"   %*\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(launchable(shim), bin.join("tool.exe"));
+    }
+
+    /// A shim that starts a script through node has no program to look
+    /// through to, and is left to cmd.exe to run.
+    #[cfg(windows)]
+    #[test]
+    fn a_shim_that_runs_a_script_is_left_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = dir.path().join("tool.cmd");
+        std::fs::write(
+            &shim,
+            "@ECHO off\r\n\"%_prog%\"  \"%dp0%\\node_modules\\pkg\\cli.js\" %*\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(launchable(shim.clone()), shim);
     }
 }

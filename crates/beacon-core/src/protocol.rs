@@ -590,13 +590,16 @@ pub enum Message {
 /// survive a reboot. Access control is the containing directory's permissions —
 /// the socket is only reachable by the user who owns it.
 pub fn socket_path() -> PathBuf {
-    socket_dir().join("daemon.sock")
+    socket_dir().join(crate::transport::SOCKET_FILE)
 }
 
 pub fn socket_dir() -> PathBuf {
     // On Linux this is shared between users, so the name has to distinguish
-    // them. On macOS the temporary directory is already per-user.
-    let user = std::env::var("USER").unwrap_or_else(|_| "beacon".to_string());
+    // them. On macOS and Windows the temporary directory is already per-user —
+    // and Windows spells the variable differently, which is harmless there but
+    // worth getting right.
+    let user = std::env::var(if cfg!(windows) { "USERNAME" } else { "USER" })
+        .unwrap_or_else(|_| "beacon".to_string());
     std::env::temp_dir().join(format!("beacon-split-{user}"))
 }
 
@@ -1003,7 +1006,7 @@ mod tests {
     #[test]
     fn the_socket_lives_outside_the_config_directory() {
         let path = socket_path();
-        assert!(path.ends_with("daemon.sock"));
+        assert!(path.ends_with(crate::transport::SOCKET_FILE));
         assert!(
             !path.to_string_lossy().contains("Application Support"),
             "runtime state does not belong with synced configuration"

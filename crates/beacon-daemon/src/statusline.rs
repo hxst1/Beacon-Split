@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 
 use beacon_core::domain::ProjectId;
 use beacon_core::protocol::{Envelope, PromptCache, Request, UsageReport};
+use beacon_core::transport::LocalStream;
 
 /// Runs as Claude Code's status line and reports what a session is costing.
 ///
@@ -40,7 +40,7 @@ fn report(payload: &str) -> Option<()> {
     })
     .ok()?;
 
-    let mut stream = UnixStream::connect(socket).ok()?;
+    let mut stream = LocalStream::connect(socket).ok()?;
     stream.write_all(line.as_bytes()).ok()?;
     stream.write_all(b"\n").ok()?;
     stream.flush().ok()?;
@@ -159,12 +159,32 @@ fn print_line(payload: &str, delegate: Option<String>) {
     println!("{}", parts.join(" · "));
 }
 
-fn run_delegate(command: &str, payload: &str) -> Option<String> {
-    use std::process::{Command, Stdio};
+/// The shell the displaced status line expects: the one Claude Code would have
+/// run it with. `sh` on unix; on Windows Git Bash when it is installed and
+/// PowerShell when it is not, which is the order Claude Code itself tries.
+fn delegate_shell(command: &str) -> std::process::Command {
+    use std::process::Command;
 
-    let mut child = Command::new("/bin/sh")
-        .arg("-c")
-        .arg(command)
+    if cfg!(windows) {
+        if let Some(bash) = beacon_core::tools::git_bash() {
+            let mut shell = Command::new(bash);
+            shell.arg("-c").arg(command);
+            return shell;
+        }
+        let mut shell = Command::new("powershell.exe");
+        shell.args(["-NoProfile", "-NonInteractive", "-Command", command]);
+        return shell;
+    }
+
+    let mut shell = Command::new("/bin/sh");
+    shell.arg("-c").arg(command);
+    shell
+}
+
+fn run_delegate(command: &str, payload: &str) -> Option<String> {
+    use std::process::Stdio;
+
+    let mut child = delegate_shell(command)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

@@ -1,5 +1,4 @@
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -14,6 +13,7 @@ use beacon_core::session::{
     ClaudeLaunch, ClaudeStart, SessionEvents, SessionId, SessionKind, SessionManager,
 };
 use beacon_core::settings::ShellSpec;
+use beacon_core::transport::{LocalListener, LocalStream};
 use beacon_core::workstreams::{Workstream, WorkstreamBook, WorkstreamId, WorkstreamStore};
 
 /// How long the daemon stays up with nothing to do.
@@ -30,7 +30,7 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 const WORKSTREAM_SAVE_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Everything a connected client can be sent to.
-type Clients = Arc<Mutex<Vec<Arc<Mutex<UnixStream>>>>>;
+type Clients = Arc<Mutex<Vec<Arc<Mutex<LocalStream>>>>>;
 
 struct Broadcaster {
     clients: Clients,
@@ -167,7 +167,7 @@ struct Daemon {
 }
 
 /// Accepts connections until asked to stop or left idle for long enough.
-pub fn serve(listener: UnixListener, socket: std::path::PathBuf) {
+pub fn serve(listener: LocalListener, socket: std::path::PathBuf) {
     let clients: Clients = Arc::new(Mutex::new(Vec::new()));
     let events: Arc<dyn SessionEvents> = Arc::new(Broadcaster {
         clients: Arc::clone(&clients),
@@ -258,11 +258,11 @@ fn stop(daemon: &Daemon) {
     daemon.persist_workstreams();
     let _ = std::fs::remove_file(&daemon.socket);
     // Connecting wakes `incoming()`, which then sees the stopping flag.
-    let _ = UnixStream::connect(&daemon.socket);
+    let _ = LocalStream::connect(&daemon.socket);
     std::process::exit(0);
 }
 
-fn handle(daemon: Arc<Daemon>, stream: UnixStream) {
+fn handle(daemon: Arc<Daemon>, stream: LocalStream) {
     let Ok(reader_half) = stream.try_clone() else {
         return;
     };
@@ -522,7 +522,7 @@ fn request_id(line: &str) -> Option<u64> {
         .as_u64()
 }
 
-fn reply(writer: &Arc<Mutex<UnixStream>>, response: Response) {
+fn reply(writer: &Arc<Mutex<LocalStream>>, response: Response) {
     // A reply that cannot be encoded must not vanish: the client would wait for
     // it until the request timed out, and the real fault would be invisible.
     let line = match serde_json::to_string(&response) {
