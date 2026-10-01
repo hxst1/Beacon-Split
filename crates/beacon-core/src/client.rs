@@ -545,6 +545,13 @@ impl Shared {
                         .unwrap_or_else(|| *RECONNECT_BACKOFF.last().expect("not empty"));
                     std::thread::sleep(wait);
 
+                    // Asked again after the wait, which is most of the time
+                    // this loop spends: a client dropped during it must not
+                    // go on to start a daemon nobody will ever attach to.
+                    if shared.stopped.load(Ordering::SeqCst) {
+                        break;
+                    }
+
                     if shared.open().is_ok() {
                         tracing::info!("back on the session daemon");
                         // Possibly a different daemon, so nothing holding a

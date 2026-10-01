@@ -85,6 +85,42 @@ fn private_socket(dir: &std::path::Path) -> PathBuf {
     dir.join(beacon_core::transport::SOCKET_FILE)
 }
 
+/// Stops whatever daemon is listening on a test's socket when the test ends,
+/// however it ends.
+///
+/// A daemon outlives its clients by design, so without this every test left
+/// one behind until the idle timeout — five of them a run, for five minutes
+/// each. Elsewhere that is only clutter; on Windows a running daemon also
+/// locks the binary the next build has to replace.
+///
+/// Declared after the test's temporary directory, so it is dropped first and
+/// the socket it reaches through is still there.
+struct StopsTheDaemon(PathBuf);
+
+impl Drop for StopsTheDaemon {
+    fn drop(&mut self) {
+        use std::io::{Read, Write};
+
+        let Ok(mut stream) = beacon_core::transport::LocalStream::connect(&self.0) else {
+            return;
+        };
+        let envelope = beacon_core::protocol::Envelope {
+            id: 0,
+            request: beacon_core::protocol::Request::Shutdown {},
+        };
+        let mut line = serde_json::to_string(&envelope).expect("an envelope serialises");
+        line.push('\n');
+        if stream.write_all(line.as_bytes()).is_err() {
+            return;
+        }
+        // Read until the daemon hangs up, so the next test never starts
+        // while this one's daemon is still going.
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+        let mut rest = Vec::new();
+        let _ = stream.read_to_end(&mut rest);
+    }
+}
+
 /// A daemon of this test's own, with a configuration directory of its own.
 ///
 /// Started here rather than left to the client, so its environment can be set.
@@ -137,6 +173,7 @@ fn a_session_outlives_the_client_that_started_it() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let project = ProjectId::generate();
 
     // First client: start a shell and leave a mark in it.
@@ -246,6 +283,7 @@ fn closing_a_project_stops_its_sessions_but_not_the_daemon() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let recorder = Arc::new(Recorder::default());
     let client = DaemonClient::connect_at(
         &binary,
@@ -303,6 +341,7 @@ fn the_client_gets_itself_back_after_the_daemon_is_replaced() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let recorder = Arc::new(Recorder::default());
     let client = DaemonClient::connect_at(
         &binary,
@@ -375,6 +414,7 @@ fn a_clip_travels_from_the_mcp_server_to_the_window_and_to_disk() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let config = tempfile::tempdir().unwrap();
     let socket = private_socket(dir.path());
 
@@ -542,6 +582,7 @@ fn a_claude_hook_reaches_the_window() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let socket = private_socket(dir.path());
     let recorder = Arc::new(Recorder::default());
     let client = DaemonClient::connect_at(
@@ -644,6 +685,9 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
     use std::io::{BufRead, BufReader, Write};
 
     let dir = tempfile::tempdir().unwrap();
+    // Under load the stand-in can be slow enough to answer that the client starts
+    // a real daemon instead, which must not outlive the test either.
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let socket = private_socket(dir.path());
     let listener = LocalListener::bind(&socket).expect("the stand-in should bind");
 
