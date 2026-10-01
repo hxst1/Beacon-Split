@@ -24,7 +24,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'self'"
+          "value": "default-src 'self'; script-src 'self' https://jimy-superveil.vercel.app; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com https://jimy-superveil.vercel.app; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'self'"
         }
       ]
     },
