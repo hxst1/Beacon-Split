@@ -100,6 +100,22 @@ export const clamp = (value: number, min: number, max: number): number =>
  */
 export const AGENT_PANELS = ['claude', 'codex'] as const satisfies readonly PanelId[]
 
+/**
+ * Whether a panel can be put away.
+ *
+ * Mirrors the rule the backend enforces, and the two have different jobs.
+ * Here it decides whether to offer the button at all, because a button that
+ * does nothing is worse than no button. There it is enforced, because the
+ * keyboard can ask for the same thing without passing through here.
+ */
+export function canHide(panel: PanelId, hidden: readonly PanelId[]): boolean {
+  const agents: readonly PanelId[] = AGENT_PANELS
+  if (!agents.includes(panel)) return true
+
+  // Some other agent is still on screen to work in.
+  return agents.some((agent) => agent !== panel && !hidden.includes(agent))
+}
+
 export const PANEL_LABELS: Record<PanelId, string> = {
   claude: 'Claude',
   codex: 'Codex',

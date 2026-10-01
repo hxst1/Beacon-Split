@@ -102,3 +102,30 @@
   background: var(--surface-3);
   color: var(--fg-1);
 }
+
+/* Closing a panel. Quiet until the header is under the pointer: it is a thing
+   you reach for occasionally, and a row of crosses would read as clutter in a
+   window that is mostly panels. */
+.close {
+  margin-left: 4px;
+  padding: 0 5px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 90ms ease;
+}
+
+.header:hover .close,
+.close:focus-visible {
+  opacity: 1;
+}
+
+.close:hover {
+  background: color-mix(in oklab, var(--fg) 12%, transparent);
+  color: var(--fg);
+}
