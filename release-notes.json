@@ -2,13 +2,16 @@
   {
     "version": "0.6.0",
     "date": "2026-10-01",
-    "summary": "Codex runs beside Claude Code, in its own panel and its own conversation — and every session can finally reach the tools you installed.",
+    "summary": "Beacon runs on Windows, and Codex runs beside Claude Code — in its own panel, its own conversation, and if you want it, its own checkout.",
     "changes": [
+      "Beacon runs on Windows 10 and 11. The whole of it: the session daemon, real terminals, the clip drawer, the hooks that tell a tab what Claude is doing. The window draws its own caption buttons and the installer comes as both an NSIS setup and an MSI. Contributed by jimy-k4, built and used on a real Windows machine, and now checked on every push alongside macOS.",
       "Codex is a second agent, not a replacement. It gets a panel of its own (⌘⇧O), its own conversations, and can run at the same time as Claude Code in the same project. It starts hidden, so nothing moves until you ask for it. Settings → Codex installs the small plugin that lets it report what it is doing; Codex will not run a hook it has not been shown, so there is one step left to you afterwards, and that screen says so.",
       "Every session can reach the programs you installed. Started from the Dock, Beacon had nothing on its PATH but the four system directories, and an agent inherits that — so `node`, `cargo`, anything a version manager put there, and any hook that needed them, were simply not found. Sessions now run with the PATH your login shell sets. A terminal panel never showed this, because a shell works its own out.",
       "A project can give each agent a checkout of its own. Two agents editing the same files means the second one to save wins; turning this on puts each in a git worktree instead, on its own branch, and leaves the project directory to you. Off unless you ask for it. The git panel can be pointed at any of them to read what an agent has done — the file tree and the editor always stay on your own copy, so saving always writes where you think it does.",
       "When the session daemon will not start, it says why. It had been explaining itself perfectly well to a stream pointed at nowhere, while every panel showed the one thing you could already see.",
-      "An agent installed with npm starts. Those are not binaries but scripts that need their interpreter, and Beacon found them and could not run them — which looks exactly like not having installed them."
+      "An agent installed with npm starts. Those are not binaries but scripts that need their interpreter, and Beacon found them and could not run them — which looks exactly like not having installed them.",
+      "The file tree says what each thing is before saying what it is called. A hundred or so endings and the names you know at a glance — package.json is not merely some JSON, and package-lock.json is not merely some package.json. Anything unrecognised gets a plain file, never a blank.",
+      "Reopening no longer shows a panel of shredded text. A terminal was being built at eighty columns and then filled with output that had been wrapped for a different width; it is now built at the width that output was written for. Pressing Resume used to be the way out of it."
     ]
   },
   {
