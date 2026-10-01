@@ -106,21 +106,9 @@ impl DaemonClient {
         socket: &Path,
         events: Arc<dyn DaemonEvents>,
     ) -> Result<Self> {
-        let shared = Arc::new(Shared {
-            stream: Mutex::new(None),
-            pending: Mutex::new(HashMap::new()),
-            next_id: AtomicU64::new(1),
-            binary: daemon_binary.to_path_buf(),
-            socket: socket.to_path_buf(),
-            events,
-            stopped: AtomicBool::new(false),
-            reconnecting: AtomicBool::new(false),
-            generation: AtomicU64::new(0),
-            replacing: AtomicBool::new(false),
-            opening: Mutex::new(()),
-        });
-
-        let client = Self { shared };
+        let client = Self {
+            shared: Shared::new(daemon_binary, socket, events),
+        };
         client.shared.open()?;
 
         let greeting = client.hello()?;
@@ -410,11 +398,35 @@ impl Drop for DaemonClient {
 }
 
 impl Shared {
+    fn new(binary: &Path, socket: &Path, events: Arc<dyn DaemonEvents>) -> Arc<Self> {
+        Arc::new(Shared {
+            stream: Mutex::new(None),
+            pending: Mutex::new(HashMap::new()),
+            next_id: AtomicU64::new(1),
+            binary: binary.to_path_buf(),
+            socket: socket.to_path_buf(),
+            events,
+            stopped: AtomicBool::new(false),
+            reconnecting: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
+            replacing: AtomicBool::new(false),
+            opening: Mutex::new(()),
+        })
+    }
+
     /// Connects to a running daemon, or starts one and waits for it.
     ///
     /// One attempt at a time, and a no-op when somebody else got there first:
     /// a reconnect loop racing a caller would otherwise start a second daemon
     /// and leave the window attached twice, hearing every event two times.
+    ///
+    /// Never starts one for a client that has been dropped. The reconnect loop
+    /// asks before it gets here, but the client can go between that and this
+    /// — or while this waits its turn behind another attempt — and it is here,
+    /// last, that the answer decides whether a daemon nobody will attach to
+    /// gets started. (A drop in the instant between this check and the start
+    /// still gets one; with no sessions and nobody attached, it stops itself
+    /// after its idle timeout.)
     fn open(self: &Arc<Self>) -> Result<()> {
         let _one_at_a_time = self.opening.lock_or_recover();
         if self.stream.lock_or_recover().is_some() {
@@ -424,6 +436,11 @@ impl Shared {
         let stream = match connect_once(&self.socket) {
             Some(stream) => stream,
             None => {
+                if self.stopped.load(Ordering::SeqCst) {
+                    return Err(CoreError::invalid(
+                        "the client was dropped; not starting a daemon for it",
+                    ));
+                }
                 spawn_daemon(&self.binary, &self.socket)?;
                 wait_for_daemon(&self.socket)?
             }
@@ -821,5 +838,83 @@ trait LockOrRecover<T> {
 impl<T> LockOrRecover<T> for Mutex<T> {
     fn lock_or_recover(&self) -> std::sync::MutexGuard<'_, T> {
         self.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Ignored;
+
+    impl DaemonEvents for Ignored {
+        fn event(&self, _: Event) {}
+        fn disconnected(&self) {}
+        fn reattached(&self) {}
+    }
+
+    /// A client with nothing listening on its socket, and a "daemon" that is
+    /// only a file: enough for `spawn_daemon` to get as far as creating the log
+    /// it writes beside the socket, which is how a test can tell it was called.
+    fn unattached(dir: &Path) -> Arc<Shared> {
+        let binary = dir.join("not-a-daemon");
+        std::fs::write(&binary, b"").unwrap();
+        Shared::new(
+            &binary,
+            &dir.join(crate::transport::SOCKET_FILE),
+            Arc::new(Ignored),
+        )
+    }
+
+    fn tried_to_start_a_daemon(dir: &Path) -> bool {
+        log_path(dir).exists()
+    }
+
+    /// The race the reconnect loop had: it asked whether the client was gone
+    /// only before its wait, so a client dropped during the wait — which is
+    /// most of the time the loop spends — still got a daemon started for it.
+    #[test]
+    fn a_client_dropped_while_the_reconnect_loop_waits_starts_no_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = unattached(dir.path());
+
+        shared.start_reconnecting();
+        // Well inside the first wait of the backoff.
+        std::thread::sleep(RECONNECT_BACKOFF[0] / 4);
+        shared.stopped.store(true, Ordering::SeqCst);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while shared.reconnecting.load(Ordering::SeqCst) {
+            assert!(
+                Instant::now() < deadline,
+                "the reconnect loop never stopped"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!tried_to_start_a_daemon(dir.path()));
+    }
+
+    /// The narrower window: dropped after the loop's last look, or while
+    /// `open` waited its turn behind another attempt.
+    #[test]
+    fn opening_for_a_dropped_client_starts_no_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = unattached(dir.path());
+        shared.stopped.store(true, Ordering::SeqCst);
+
+        assert!(shared.open().is_err());
+        assert!(!tried_to_start_a_daemon(dir.path()));
+    }
+
+    /// The other side of both: a live client with no daemon does start one.
+    /// Without this, the two above would pass just as well if nothing were
+    /// ever started at all.
+    #[test]
+    fn opening_for_a_live_client_does_start_a_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = unattached(dir.path());
+
+        assert!(shared.open().is_err(), "the stand-in is not a daemon");
+        assert!(tried_to_start_a_daemon(dir.path()));
     }
 }

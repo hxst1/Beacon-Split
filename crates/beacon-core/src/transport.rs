@@ -41,6 +41,9 @@ mod loopback {
     use std::io::{self, ErrorKind, Read, Write};
     use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex, OnceLock, PoisonError, mpsc};
     use std::time::Duration;
 
     /// What a client says first, before the token.
@@ -49,10 +52,13 @@ mod loopback {
     const WELCOME: &str = "BEACON OK";
     /// How long either side waits for the other's half of the handshake.
     ///
-    /// Short, because both ends are on this machine, and because the daemon
-    /// checks each connection on its accept loop: something that connects and
-    /// says nothing holds up the next connection by at most this long.
+    /// Short, because both ends are on this machine. Something that connects
+    /// and says nothing ties up one handshake thread for this long, and holds
+    /// up nobody else.
     const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
+    /// How many connections may be mid-handshake at once before more are
+    /// turned away unheard.
+    const MAX_PENDING_HANDSHAKES: usize = 64;
     /// How long a connection gets to be accepted.
     ///
     /// Far shorter than the handshake, because of how Windows refuses one: a
@@ -136,7 +142,13 @@ mod loopback {
     #[derive(Debug)]
     pub struct LocalListener {
         listener: TcpListener,
-        token: String,
+        token: Arc<str>,
+        /// Connections that passed the handshake, from the one thread that
+        /// accepts for this listener. Started by the first call to
+        /// [`LocalListener::incoming`]; every later call reads the same queue.
+        admitted: OnceLock<Mutex<mpsc::Receiver<io::Result<LocalStream>>>>,
+        /// Tells that thread to let go of the port.
+        closed: Arc<AtomicBool>,
     }
 
     impl LocalListener {
@@ -145,56 +157,136 @@ mod loopback {
         /// Refuses with `AddrInUse` when the file is already there, as binding
         /// a unix socket does — the caller decides whether that file belongs to
         /// a live daemon or a dead one by trying to connect through it.
+        ///
+        /// Checking and claiming the file are one step, as they are for a unix
+        /// socket: two daemons started at once cannot both get past it, so the
+        /// second never overwrites the first's address and leaves it running
+        /// with sessions nobody can reach.
         pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<LocalListener> {
-            let path = path.as_ref();
-            if path.exists() {
-                return Err(io::Error::new(
-                    ErrorKind::AddrInUse,
-                    "an endpoint file is already there",
-                ));
-            }
-
             let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
             let port = listener.local_addr()?.port();
             let token = new_token();
-            write_endpoint(path, port, &token)?;
-            Ok(LocalListener { listener, token })
-        }
-
-        /// Connections that passed the handshake. Any that did not are closed
-        /// and skipped, never handed out.
-        pub fn incoming(&self) -> impl Iterator<Item = io::Result<LocalStream>> + '_ {
-            std::iter::from_fn(move || {
-                loop {
-                    let stream = match self.listener.accept() {
-                        Ok((stream, _)) => stream,
-                        Err(err) => return Some(Err(err)),
-                    };
-                    match self.admit(stream) {
-                        Some(stream) => return Some(Ok(stream)),
-                        None => continue,
-                    }
-                }
+            write_endpoint(path.as_ref(), port, &token)?;
+            Ok(LocalListener {
+                listener,
+                token: Arc::from(token),
+                admitted: OnceLock::new(),
+                closed: Arc::new(AtomicBool::new(false)),
             })
         }
 
-        fn admit(&self, stream: TcpStream) -> Option<LocalStream> {
-            let _ = stream.set_nodelay(true);
-            stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT)).ok()?;
+        /// Connections that passed the handshake, in the order they passed it.
+        /// Any that did not are closed and skipped, never handed out.
+        ///
+        /// Each handshake runs on a thread of its own rather than on the
+        /// accept loop. The token keeps a stranger from getting in, but not
+        /// from getting in the way: something local that connected and said
+        /// nothing would otherwise hold up every client behind it for as long
+        /// as the handshake waits.
+        ///
+        /// Called again, it carries on from the same queue, as a unix
+        /// listener's `incoming` carries on from the same socket.
+        pub fn incoming(&self) -> impl Iterator<Item = io::Result<LocalStream>> + '_ {
+            let mut failed = None;
+            let admitted = self.admitted.get_or_init(|| {
+                let (sender, receiver) = mpsc::channel();
+                match self.listener.try_clone() {
+                    Ok(listener) => {
+                        let (token, closed) = (Arc::clone(&self.token), Arc::clone(&self.closed));
+                        std::thread::spawn(move || accept_loop(listener, token, closed, sender));
+                    }
+                    // The sender goes with this closure, so after the error
+                    // the iterator simply ends.
+                    Err(err) => failed = Some(err),
+                }
+                Mutex::new(receiver)
+            });
 
-            let line = read_line(&stream).ok()?;
-            let offered = line.strip_prefix(GREETING)?.trim();
-            if !same(offered.as_bytes(), self.token.as_bytes()) {
-                tracing::warn!("turned away a connection that did not know the daemon's token");
-                return None;
-            }
-
-            (&stream)
-                .write_all(format!("{WELCOME}\n").as_bytes())
-                .ok()?;
-            stream.set_read_timeout(None).ok()?;
-            Some(LocalStream(stream))
+            std::iter::from_fn(move || match failed.take() {
+                Some(err) => Some(Err(err)),
+                None => admitted
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .recv()
+                    .ok(),
+            })
         }
+    }
+
+    impl Drop for LocalListener {
+        /// Lets go of the port, as dropping a unix listener lets go of its
+        /// socket: the accepting thread holds a copy of it, and is woken with
+        /// a connection of its own to see that it should stop.
+        fn drop(&mut self) {
+            if self.admitted.get().is_none() {
+                return;
+            }
+            self.closed.store(true, Ordering::SeqCst);
+            if let Ok(address) = self.listener.local_addr() {
+                let _ = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT);
+            }
+        }
+    }
+
+    /// Accepts until the listener is dropped, handing each connection to a
+    /// handshake of its own.
+    fn accept_loop(
+        listener: TcpListener,
+        token: Arc<str>,
+        closed: Arc<AtomicBool>,
+        admitted: mpsc::Sender<io::Result<LocalStream>>,
+    ) {
+        let pending = Arc::new(AtomicUsize::new(0));
+        loop {
+            let accepted = listener.accept();
+            if closed.load(Ordering::SeqCst) {
+                return;
+            }
+            let stream = match accepted {
+                Ok((stream, _)) => stream,
+                Err(err) => {
+                    if admitted.send(Err(err)).is_err() {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            // A bound on the threads a flood of silent connections can
+            // pin down. Far more than a person's windows and hooks will
+            // ever have mid-handshake at once.
+            if pending.fetch_add(1, Ordering::SeqCst) >= MAX_PENDING_HANDSHAKES {
+                pending.fetch_sub(1, Ordering::SeqCst);
+                tracing::warn!("turned away a connection: too many handshakes under way");
+                continue;
+            }
+            let (admitted, token, pending) =
+                (admitted.clone(), Arc::clone(&token), Arc::clone(&pending));
+            std::thread::spawn(move || {
+                let result = admit(stream, &token);
+                pending.fetch_sub(1, Ordering::SeqCst);
+                if let Some(stream) = result {
+                    let _ = admitted.send(Ok(stream));
+                }
+            });
+        }
+    }
+
+    fn admit(stream: TcpStream, token: &str) -> Option<LocalStream> {
+        let _ = stream.set_nodelay(true);
+        stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT)).ok()?;
+
+        let line = read_line(&stream).ok()?;
+        let offered = line.strip_prefix(GREETING)?.trim();
+        if !same(offered.as_bytes(), token.as_bytes()) {
+            tracing::warn!("turned away a connection that did not know the daemon's token");
+            return None;
+        }
+
+        (&stream)
+            .write_all(format!("{WELCOME}\n").as_bytes())
+            .ok()?;
+        stream.set_read_timeout(None).ok()?;
+        Some(LocalStream(stream))
     }
 
     /// A secret only someone who can read the endpoint file knows.
@@ -262,15 +354,33 @@ mod loopback {
         }
     }
 
-    /// Written through a temporary file, so a client can never read half of it.
+    /// Written through a temporary file, so a client can never read half of it,
+    /// and put in place only if nothing is there yet.
+    ///
+    /// A hard link rather than a rename, because a rename replaces what it
+    /// lands on and a link refuses to. Nor is it the file opened with
+    /// `create_new` and then written: that would claim the name atomically, but
+    /// show it empty for a moment, and a daemon starting alongside would read
+    /// nothing there, take it for a dead daemon's file and delete it.
+    ///
+    /// Each claim gets a temporary name of its own, so two daemons starting at
+    /// once never write each other's.
     ///
     /// The directory is in the user's profile, so the file inherits an access
     /// list that admits only them — which is what keeps the token secret.
     fn write_endpoint(path: &Path, port: u16, token: &str) -> io::Result<()> {
-        let temporary: PathBuf = path.with_extension("tmp");
         let pid = std::process::id();
+        let temporary: PathBuf =
+            path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4().simple()));
         std::fs::write(&temporary, format!("{port} {token} {pid}\n"))?;
-        std::fs::rename(&temporary, path)
+        let claimed = std::fs::hard_link(&temporary, path);
+        let _ = std::fs::remove_file(&temporary);
+        claimed.map_err(|err| match err.kind() {
+            ErrorKind::AlreadyExists => {
+                io::Error::new(ErrorKind::AddrInUse, "an endpoint file is already there")
+            }
+            _ => err,
+        })
     }
 
     /// Whether a process with this id is running.
@@ -361,6 +471,41 @@ mod tests {
         assert_eq!(second.kind(), std::io::ErrorKind::AddrInUse);
     }
 
+    /// Two windows opened at once each start a daemon. Exactly one may claim
+    /// the file; were both let through, the second would overwrite the first's
+    /// address and leave it running with nobody able to reach it.
+    #[test]
+    fn listeners_racing_for_the_same_file_let_exactly_one_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("daemon.sock");
+        let start = std::sync::Arc::new(std::sync::Barrier::new(8));
+
+        let racers: Vec<_> = (0..8)
+            .map(|_| {
+                let (path, start) = (path.clone(), start.clone());
+                std::thread::spawn(move || {
+                    start.wait();
+                    LocalListener::bind(&path)
+                })
+            })
+            .collect();
+        let results: Vec<_> = racers.into_iter().map(|r| r.join().unwrap()).collect();
+
+        let winners = results.iter().filter(|r| r.is_ok()).count();
+        assert_eq!(winners, 1);
+        for lost in results.iter().filter_map(|r| r.as_ref().err()) {
+            assert_eq!(lost.kind(), std::io::ErrorKind::AddrInUse);
+        }
+        // What is left on disk is the winner's address, complete, and nothing
+        // else: no temporary file stays behind from any of the losers.
+        let _stream_for_winner = std::thread::spawn({
+            let listener = results.into_iter().find_map(Result::ok).unwrap();
+            move || listener.incoming().next().unwrap().is_ok()
+        });
+        assert!(LocalStream::connect(&path).is_ok());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
     #[test]
     fn a_file_left_by_a_dead_daemon_does_not_connect() {
         let dir = tempfile::tempdir().unwrap();
@@ -396,6 +541,61 @@ mod tests {
 
         let _real = LocalStream::connect(&path).unwrap();
         assert!(server.join().unwrap());
+    }
+
+    /// `incoming` asked for more than once, one connection each time, as a
+    /// unix listener allows; and the port let go of once the listener is.
+    #[test]
+    fn each_call_to_incoming_carries_on_and_dropping_the_listener_closes_the_port() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("daemon.sock");
+        let listener = LocalListener::bind(&path).unwrap();
+
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let stream = listener.incoming().next().unwrap().unwrap();
+                std::mem::forget(stream);
+            }
+            listener
+        });
+        let _first = LocalStream::connect(&path).unwrap();
+        let _second = LocalStream::connect(&path).unwrap();
+        drop(server.join().unwrap());
+
+        assert!(LocalStream::connect(&path).is_err());
+    }
+
+    /// Something local that connects and never speaks. The token keeps it out;
+    /// this is about it not keeping everyone else waiting.
+    #[test]
+    fn a_silent_connection_does_not_hold_up_the_next_client() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("daemon.sock");
+        let listener = LocalListener::bind(&path).unwrap();
+        let port: u16 = std::fs::read_to_string(&path)
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                std::mem::forget(stream);
+            }
+        });
+
+        let _silent: Vec<_> = (0..3)
+            .map(|_| std::net::TcpStream::connect(("127.0.0.1", port)).unwrap())
+            .collect();
+        let started = std::time::Instant::now();
+        let _real = LocalStream::connect(&path).unwrap();
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(1000),
+            "took {:?}",
+            started.elapsed()
+        );
     }
 
     /// How the window and the daemon both use a connection: one thread blocked
