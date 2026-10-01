@@ -7,6 +7,7 @@ import { useEditor } from '@/features/editor/openFiles'
 import { watchActivity } from '@/features/terminal/sessionBridge'
 import type { DirEntry } from '@/types/beacon'
 import { FileMenu, type MenuPrompt } from './FileMenu'
+import { FileIcon } from './FileIcon'
 import { liveTree } from './liveTree'
 import { parentOf, useTree, visibleRows, type TreeRow } from './treeStore'
 import styles from './FileTree.module.css'
@@ -334,6 +335,12 @@ function Row({
       <span className={styles['twisty']} data-open={row.expanded}>
         {isDirectory ? '▶' : ''}
       </span>
+      <FileIcon
+        name={entry.name}
+        isDirectory={isDirectory}
+        expanded={row.expanded}
+        className={styles['icon']}
+      />
       <span className={`${styles['name']} ${isDirectory ? styles['dirName'] : ''}`}>
         {entry.name}
       </span>

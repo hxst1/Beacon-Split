@@ -7,6 +7,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
@@ -141,6 +142,9 @@ export const ipc = {
     invoke<void>('reveal_project', { workspaceId, projectId }),
 
   hostPlatform: () => invoke<HostPlatform>('host_platform'),
+
+  /** The Windows build number, for the terminal; `null` elsewhere. */
+  windowsBuild: () => invoke<number | null>('windows_build'),
 
   // ---- sessions ----
 
@@ -356,6 +360,21 @@ export const ipc = {
   gitPush: (at: Checkout) => invoke<string>('git_push', { ...at }),
 
   gitPull: (at: Checkout) => invoke<string>('git_pull', { ...at }),
+}
+
+/**
+ * The window's own buttons, for where it has no system title bar to put them
+ * in — Windows. Closing goes through the same request a system button makes,
+ * so whatever guards closing (unsaved files) still gets its say.
+ */
+export const windowControls = {
+  minimize: () => getCurrentWindow().minimize(),
+  toggleMaximize: () => getCurrentWindow().toggleMaximize(),
+  close: () => getCurrentWindow().close(),
+  isMaximized: () => getCurrentWindow().isMaximized(),
+  /** Calls back on every resize, which is when maximised can change. */
+  onResized: (callback: () => void): Promise<() => void> =>
+    getCurrentWindow().onResized(() => callback()),
 }
 
 /** Native folder picker. Resolves to `null` when the user cancels. */

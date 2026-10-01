@@ -5,13 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Beacon Split — keep your agents moving</title>
 <meta name="description" content="An agent-first development workspace. Run Claude Code and Codex side by side, with real terminals, files and git — and know the moment an agent needs you. Free and open source for macOS and Windows.">
-<link rel="canonical" href="https://beacon-split.vercel.app/">
-<meta property="og:url" content="https://beacon-split.vercel.app/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Beacon Split — keep your agents moving">
 <meta property="og:description" content="An agent-first development workspace for running Claude Code and Codex side by side. Free, open source, macOS and Windows.">
-<meta property="og:image" content="https://beacon-split.vercel.app/og.png">
+<meta property="og:image" content="/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="The Beacon Split window: three project tabs, one of them amber because its Claude session is waiting for an answer.">
@@ -20,7 +18,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Beacon Split — keep your agents moving">
 <meta name="twitter:description" content="An agent-first development workspace for running Claude Code and Codex side by side. Free, open source, macOS and Windows.">
-<meta name="twitter:image" content="https://beacon-split.vercel.app/og.png">
+<meta name="twitter:image" content="/og.png">
 <meta name="twitter:image:alt" content="The Beacon Split window: three project tabs, one of them amber because its Claude session is waiting for an answer.">
 <meta name="theme-color" content="#08080b">
 <meta name="color-scheme" content="dark">
@@ -49,7 +47,7 @@
   "applicationCategory": "DeveloperApplication",
   "applicationSubCategory": "Integrated development environment",
   "operatingSystem": "macOS, Windows",
-  "processorRequirements": "Apple Silicon, Intel, or x64 Windows",
+  "processorRequirements": "Apple Silicon or Intel on macOS; x64 on Windows",
   "softwareRequirements": "Claude Code and git on the PATH; Codex is optional",
   "description": "An agent-first development workspace. Run Claude Code and Codex side by side, each with real terminals, files and git, and know the moment an agent needs you. Sessions run in a background daemon, so they outlive the window.",
   "license": "https://github.com/hxst1/Beacon-Split/blob/main/LICENSE",
@@ -97,6 +95,14 @@
     },
     {
       "@type": "Question",
+      "name": "Do I need my own Claude subscription?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Beacon runs Claude Code as Anthropic publishes it and never asks for, handles, stores or forwards a Claude credential. You sign in yourself and your usage is billed to you under your own agreement with Anthropic. Beacon is not affiliated with or endorsed by Anthropic."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "Does Beacon Split work with Codex?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -108,7 +114,7 @@
       "name": "Which platforms does Beacon Split run on?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "macOS is available for Apple Silicon and Intel, and Windows is available for x64 PCs. Linux is being worked on and has not shipped yet."
+        "text": "macOS, on both Apple Silicon and Intel, and Windows 10 and 11 on x64. A Linux build is being worked on and has never been run, so nothing is claimed about it."
       }
     },
     {
@@ -117,6 +123,14 @@
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "The build is not signed with an Apple Developer ID, so Gatekeeper refuses it the first time. After dragging Beacon to Applications, clear the quarantine flag once with: xattr -dr com.apple.quarantine \"/Applications/Beacon Split.app\". Signing and notarisation need an Apple Developer membership and are on the roadmap."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why does Windows warn about the installer?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The installer is not code-signed yet, so SmartScreen does not recognise it and says \"Windows protected your PC\" the first time. Choose More info, then Run anyway. It installs for your user only and needs no administrator."
       }
     },
     {
@@ -191,7 +205,7 @@
         <a class="btn btn--ghost btn--lg" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">View the source</a>
       </div>
       <p class="cta__meta">
-        v<span data-dl-version>0.6.0</span> · macOS &amp; Windows · <strong>Free</strong>, AGPL-3.0 · No account, no server
+        v<span data-dl-version>0.5.1</span> · macOS &amp; Windows · <strong>Free</strong>, AGPL-3.0 · No account, no server
       </p>
     </div>
 
@@ -216,7 +230,7 @@
   </div>
 
   <!-- The product, drawn from Beacon's own design tokens -->
-  <div class="stage" role="img" aria-label="The Beacon window. A workspace called Personal holds three project tabs — beacon-split, api-gateway and docs-site — each with a dot for what its agent session is doing. Below, Claude and Codex can work beside the project's files and git.">
+  <div class="stage" role="img" aria-label="The Beacon window. A workspace called Personal holds three project tabs — beacon-split, api-gateway and docs-site — each with a dot for what its Claude session is doing, and the title bar shows 3 hours 12 minutes of allowance left. Below, a Claude panel runs a session while Files and Git sit beside it.">
     <div class="win" id="win">
       <div class="win__accent" aria-hidden="true"></div>
 
@@ -469,7 +483,7 @@
   <div class="wrap wrap--tight">
     <h2 class="h2">Where it runs.</h2>
     <p class="body">
-      Beacon runs on macOS and Windows today. The rest is said plainly rather than promised.
+      Beacon runs on macOS and Windows. The rest is said plainly rather than promised.
     </p>
 
     <ul class="plats">
@@ -484,6 +498,17 @@
         </div>
       </li>
       <li class="plat">
+        <i class="st st--lg" data-state="working"></i>
+        <div class="plat__b">
+          <h3 class="plat__t">Windows <span class="plat__s plat__s--on">Available now</span></h3>
+          <p class="plat__d">
+            Windows 10 and 11 on x64, with an installer that asks for no administrator. Built and
+            tested on Windows 11: the same daemon, the same sessions, a window with its own caption
+            buttons, and Mica behind it.
+          </p>
+        </div>
+      </li>
+      <li class="plat">
         <i class="st st--lg" data-state="stopped"></i>
         <div class="plat__b">
           <h3 class="plat__t">Linux <span class="plat__s plat__s--soon">Being built</span></h3>
@@ -491,20 +516,13 @@
             Arch first, and it has never been built there, so nothing claims it works yet. The work
             is real and bounded: condition the window configuration by platform (vibrancy and the
             overlay title bar are macOS-only), then document the system dependencies. Everything
-            underneath is already portable Rust.
+            underneath is already portable Rust, and Windows has shown where the differences live.
           </p>
           <p class="plat__help">
             <strong>This is the single most useful thing to help with.</strong> If you run Linux and
             want Beacon on it, that contribution is worth more than any other right now.
             <a href="https://github.com/hxst1/Beacon-Split/issues" target="_blank" rel="noopener">Open an issue →</a>
           </p>
-        </div>
-      </li>
-      <li class="plat">
-        <i class="st st--lg" data-state="working"></i>
-        <div class="plat__b">
-          <h3 class="plat__t">Windows <span class="plat__s plat__s--on">Available now</span></h3>
-          <p class="plat__d">A native x64 installer ships with every release.</p>
         </div>
       </li>
     </ul>
@@ -528,25 +546,28 @@
       broken — fix that instead.
     -->
     <div class="dl" data-dl-repo="hxst1/Beacon-Split">
-      <a class="dlc" data-dl-suffix="_aarch64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.6.0/Beacon.Split_0.6.0_aarch64.dmg">
+      <a class="dlc" data-dl-suffix="_aarch64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_aarch64.dmg">
         <span class="dlc__t">Apple Silicon</span>
-        <span class="dlc__s">M1 and newer · .dmg · <span data-dl-size>6.6 MB</span></span>
+        <span class="dlc__s">M1 and newer · .dmg<span data-dl-size> · 6.5 MB</span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
-      <a class="dlc" data-dl-suffix="_x64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.6.0/Beacon.Split_0.6.0_x64.dmg">
+      <a class="dlc" data-dl-suffix="_x64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_x64.dmg">
         <span class="dlc__t">Intel</span>
-        <span class="dlc__s">x86-64 · .dmg · <span data-dl-size>4.9 MB</span></span>
+        <span class="dlc__s">x86-64 · .dmg<span data-dl-size> · 4.8 MB</span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
-      <a class="dlc" data-dl-suffix="_x64-setup.exe" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.6.0/Beacon.Split_0.6.0_x64-setup.exe">
+      <!-- No release carried a Windows build when this was written, so the floor
+           here is the releases page rather than a file; the fetch fills in the
+           installer once there is one. -->
+      <a class="dlc" data-dl-suffix="_x64-setup.exe" href="https://github.com/hxst1/Beacon-Split/releases/latest">
         <span class="dlc__t">Windows</span>
-        <span class="dlc__s">x64 · .exe · <span data-dl-size>4.3 MB</span></span>
+        <span class="dlc__s">10 and 11 · x64 · installer<span data-dl-size></span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
     </div>
 
     <p class="body body--fine dl__ver">
-      Version <b data-dl-version>0.6.0</b> ·
+      Version <b data-dl-version>0.5.1</b> ·
       <a href="https://github.com/hxst1/Beacon-Split/releases" target="_blank" rel="noopener">every release, with what changed in each</a>
     </p>
 
@@ -567,10 +588,21 @@
       </p>
     </div>
 
+    <div class="gate">
+      <h3 class="gate__t">Windows will warn you once, too.</h3>
+      <p class="gate__d">
+        The installer isn't code-signed yet, so SmartScreen doesn't recognise it and says
+        <em>"Windows protected your PC"</em> the first time. Choose <strong>More info</strong>,
+        then <strong>Run anyway</strong>. It installs for your user only, and asks for no
+        administrator.
+      </p>
+    </div>
+
     <p class="body body--fine">
       Beacon needs <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a>
       and <code>git</code> on your <code>PATH</code>. Install <code>codex</code> to add its panel and
-      conversations. Beacon checks what a session needs and tells you exactly what's missing.
+      conversations. Beacon checks what a session needs the same way a session finds it — through
+      your login shell, or on Windows the <code>PATH</code> itself.
       Updates arrive in place, and you're told what changed before anything happens.
     </p>
   </div>
@@ -601,6 +633,13 @@
         and nothing to buy later.
       </dd>
 
+      <dt class="faq__q">Do I need my own Claude subscription?</dt>
+      <dd class="faq__a">
+        Yes. Beacon runs Claude Code as Anthropic publishes it and never asks for, handles, stores
+        or forwards a Claude credential. You sign in yourself and your usage is billed to you under
+        your own agreement with Anthropic. Beacon is not affiliated with or endorsed by Anthropic.
+      </dd>
+
       <dt class="faq__q">Does Beacon Split work with Codex?</dt>
       <dd class="faq__a">
         Yes. Codex is a second agent in Beacon, with its own panel and conversations. It can run
@@ -610,8 +649,8 @@
 
       <dt class="faq__q">Which platforms does Beacon Split run on?</dt>
       <dd class="faq__a">
-        macOS is available for Apple Silicon and Intel, and Windows is available for x64 PCs.
-        Linux is being worked on and has not shipped yet.
+        macOS, on both Apple Silicon and Intel, and Windows 10 and 11 on x64. A Linux build is
+        being worked on and has never been run, so nothing is claimed about it.
       </dd>
 
       <dt class="faq__q">Why does macOS say the app is damaged?</dt>
@@ -620,6 +659,13 @@
         After dragging Beacon to Applications, clear the quarantine flag once with:
         <code>xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"</code>. Signing and
         notarisation need an Apple Developer membership and are on the roadmap.
+      </dd>
+
+      <dt class="faq__q">Why does Windows warn about the installer?</dt>
+      <dd class="faq__a">
+        The installer is not code-signed yet, so SmartScreen does not recognise it and says
+        "Windows protected your PC" the first time. Choose More info, then Run anyway. It installs
+        for your user only and needs no administrator.
       </dd>
 
       <dt class="faq__q">Does Beacon Split send my code anywhere?</dt>

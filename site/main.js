@@ -156,8 +156,8 @@ for (const btn of document.querySelectorAll('[data-copy]')) {
  * The links in the HTML are written out for a real release and work on their
  * own — with this file blocked, with no network beyond GitHub itself, and for
  * anything that reads the page without running scripts. What they cannot be is
- * current: they were true the day somebody typed them, and the version, the
- * two URLs and both file sizes went stale one release later every time.
+ * current: they were true the day somebody typed them, and the version,
+ * download links and file sizes went stale one release later every time.
  *
  * So this asks, and only replaces what it got an answer for. Anything missing
  * or refused — the API is rate limited by IP and says so plainly — leaves the
@@ -180,17 +180,17 @@ const fillDownloads = async (dl) => {
   if (!version || assets.length === 0) return;
 
   for (const card of dl.querySelectorAll('[data-dl-suffix]')) {
-    // Matched on the suffix each platform's build produces rather than on the
-    // whole name, which carries the version and would need this to know it.
+    // Matched on the suffix the build produces rather than on the whole name,
+    // which carries the version and would need this to know it in advance:
+    // `_aarch64.dmg` and `_x64.dmg` for macOS, `_x64-setup.exe` for Windows.
     const suffix = card.dataset.dlSuffix;
-    if (!suffix) continue;
     const asset = assets.find((a) => typeof a.name === 'string' && a.name.endsWith(suffix));
     if (!asset?.browser_download_url) continue;
 
     card.href = asset.browser_download_url;
     const size = card.querySelector('[data-dl-size]');
     if (size && typeof asset.size === 'number') {
-      size.textContent = `${(asset.size / 1024 / 1024).toFixed(1)} MB`;
+      size.textContent = ` · ${(asset.size / 1024 / 1024).toFixed(1)} MB`;
     }
   }
 

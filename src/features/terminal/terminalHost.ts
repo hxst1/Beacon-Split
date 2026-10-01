@@ -2,8 +2,10 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 
 import { cssValue } from '@/lib/appearance'
+import { windowsPty } from '@/lib/platform'
 import { ipc } from '@/ipc'
 import type { SessionKind } from '@/types/beacon'
+import { clipboardKey } from './clipboardKeys'
 import { attach, replayed } from './sessionBridge'
 
 export interface HostedTerminal {
@@ -44,17 +46,31 @@ function terminalTheme(): Record<string, string> {
   }
 }
 
-function create(project: string, kind: SessionKind, slot: number): HostedTerminal {
+function create(
+  project: string,
+  kind: SessionKind,
+  slot: number,
+  grid: { cols: number; rows: number },
+): HostedTerminal {
   const element = document.createElement('div')
   element.style.width = '100%'
   element.style.height = '100%'
+  const pty = windowsPty()
 
   const term = new Terminal({
+    // The grid the session's output was written for, rather than xterm's own
+    // default of 80x24. Replaying a snapshot into the wrong width re-wraps
+    // every line that was already wrapped, and what comes out is the shredded
+    // text you only get rid of by restarting the session. The real size
+    // follows a moment later, and reflowing from a correct state is something
+    // xterm does properly.
+    cols: grid.cols,
+    rows: grid.rows,
     // Transparent, so the panel's blurred surface shows through instead of a
     // flat black rectangle.
     allowTransparency: true,
     theme: terminalTheme(),
-    fontFamily: "'SF Mono', 'JetBrains Mono', Menlo, 'DejaVu Sans Mono', monospace",
+    fontFamily: "'SF Mono', 'JetBrains Mono', Menlo, 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace",
     fontSize: 12,
     lineHeight: 1.35,
     letterSpacing: 0,
@@ -64,13 +80,37 @@ function create(project: string, kind: SessionKind, slot: number): HostedTermina
     // xterm's own scrollbar would fight the app's; the panel handles overflow.
     scrollOnUserInput: true,
     macOptionIsMeta: true,
+    // Only set on Windows, where the session runs in a pseudo-console that
+    // xterm has to know about to resize it without losing lines.
+    ...(pty ? { windowsPty: pty } : {}),
   })
+  term.attachCustomKeyEventHandler((event) => clipboardKeys(term, event))
 
   const fit = new FitAddon()
   term.loadAddon(fit)
   term.open(element)
 
   return { term, fit, element, project, kind, slot }
+}
+
+/**
+ * Copy and paste where the primary modifier is Ctrl; see {@link clipboardKey}.
+ *
+ * Returning `false` keeps xterm from sending the key; for a paste that leaves
+ * the browser's own paste to happen, which xterm then delivers as a paste.
+ */
+function clipboardKeys(term: Terminal, event: KeyboardEvent): boolean {
+  const meaning = clipboardKey(event, term.hasSelection())
+
+  if (meaning === 'copy') {
+    if (term.hasSelection()) {
+      void navigator.clipboard.writeText(term.getSelection())
+      term.clearSelection()
+    }
+    event.preventDefault()
+    return false
+  }
+  return meaning !== 'paste'
 }
 
 /**
@@ -84,11 +124,12 @@ export async function acquire(
   project: string,
   kind: SessionKind,
   slot: number,
+  grid: { cols: number; rows: number },
 ): Promise<HostedTerminal> {
   const existing = hosted.get(sessionId)
   if (existing) return existing
 
-  const terminal = create(project, kind, slot)
+  const terminal = create(project, kind, slot, grid)
   hosted.set(sessionId, terminal)
 
   await attach(sessionId, {

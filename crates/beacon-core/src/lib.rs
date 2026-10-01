@@ -33,6 +33,7 @@ pub mod settings;
 pub mod state;
 pub mod store;
 pub mod tools;
+pub mod transport;
 pub mod ui_state;
 pub mod workstreams;
 pub mod worktrees;

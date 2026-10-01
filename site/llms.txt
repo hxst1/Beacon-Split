@@ -5,9 +5,9 @@
 > an editor, and git — and its tab says what is running, finished, or waiting
 > for you.
 
-Free and open source under AGPL-3.0. Available for macOS on Apple Silicon and
-Intel, and Windows on x64 PCs. No account, no telemetry, no server, nothing to
-buy later.
+Free and open source under AGPL-3.0. macOS, on Apple Silicon and Intel, and
+Windows 10 and 11 on x64. No account, no telemetry, no server, nothing to buy
+later.
 
 ## What it is
 
@@ -31,22 +31,27 @@ measure of the value of a person's work.
 
 ## Requirements
 
-- macOS (Apple Silicon and Intel) or Windows (x64). A Linux build is being
-  worked on and has not shipped yet.
+- macOS, or Windows 10 or 11 on x64. A Linux build is being worked on and has
+  never been run, so nothing is claimed about it.
 - Claude Code and `git` on the `PATH`. Codex is optional; install it to add its
-  panel and conversations. Beacon checks what a session needs and says what is
-  missing and how to install it.
+  panel and conversations. Beacon checks what a session needs the way a session
+  finds it — through the login shell, or on Windows the `PATH` itself.
 - Your own Claude subscription or API key. Beacon never asks for, handles,
   stores or forwards a Claude credential; you sign in yourself and your usage
   is billed to you under your own agreement with Anthropic.
 
 ## Installing
 
-Download the `.dmg` for your Mac or the `.exe` installer for Windows from the
-releases page. The macOS build is not signed with an Apple Developer ID, so
-macOS refuses it the first time: after dragging Beacon to Applications, run
+Download the `.dmg` for your architecture from the releases page. The build is
+not signed with an Apple Developer ID, so macOS refuses it the first time:
+after dragging Beacon to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"` once. Signing
 and notarisation need an Apple Developer membership and are on the roadmap.
+
+On Windows, run the `-setup.exe` installer from the same page. It installs for
+the current user and needs no administrator. It is not code-signed yet, so
+SmartScreen says "Windows protected your PC" the first time: choose More info,
+then Run anyway.
 
 ## Affiliation
 

@@ -12,9 +12,10 @@ import {
   refreshAccent,
 } from '@/features/terminal/terminalHost'
 import { errorMessage, ipc } from '@/ipc'
+import { AGENT_PANELS } from '@/lib/layout'
 import { applyAccent } from '@/lib/accent'
 import { applyAppearance, watchSystemTheme } from '@/lib/appearance'
-import { setPlatform } from '@/lib/platform'
+import { isWindows, setPlatform, setWindowsBuild } from '@/lib/platform'
 import type {
   ActionBinding,
   Appearance,
@@ -116,6 +117,13 @@ interface BeaconState {
   setPreset: (preset: LayoutPreset) => Promise<void>
   togglePanel: (panel: PanelId) => Promise<void>
   /**
+   * Gives the agent area to one agent.
+   *
+   * Showing both at once is still a thing you can do — this is the other
+   * thing, which is wanting to see one of them properly.
+   */
+  showOnlyAgent: (panel: PanelId) => Promise<void>
+  /**
    * Binds an action, or clears it with `null`.
    *
    * Returns the reason it was refused rather than raising a status-bar notice:
@@ -188,6 +196,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     load: async () => {
       try {
         setPlatform(await ipc.hostPlatform())
+        if (isWindows()) setWindowsBuild(await ipc.windowsBuild())
         accept(await ipc.getSnapshot())
         // Whatever sessions were already running have already reported.
         loadUsage()
@@ -314,6 +323,21 @@ export const useBeacon = create<BeaconState>((set, get) => {
     setPreset: (preset) => run(() => ipc.setLayoutPreset(preset)),
 
     togglePanel: (panel) => run(() => ipc.togglePanel(panel)),
+
+    showOnlyAgent: async (panel) => {
+      // Shown first, hidden second, and the order is not a detail: hiding the
+      // other while this one is still away would be refused, because that
+      // would leave no agent at all.
+      if (useBeacon.getState().snapshot?.hidden.includes(panel) === true) {
+        await run(() => ipc.togglePanel(panel))
+      }
+      for (const other of AGENT_PANELS) {
+        if (other === panel) continue
+        if (useBeacon.getState().snapshot?.hidden.includes(other) === false) {
+          await run(() => ipc.togglePanel(other))
+        }
+      }
+    },
 
     setAppearance: (appearance) => run(() => ipc.setAppearance(appearance)),
 

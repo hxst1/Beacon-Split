@@ -29,6 +29,10 @@ impl Recorder {
     }
 }
 
+/// The key a terminal sends for Enter. A unix pty turns a newline into one
+/// anyway; a Windows pseudo-console takes a bare newline as the line going on.
+const ENTER: &str = if cfg!(windows) { "\r" } else { "\n" };
+
 /// Polls until `predicate` holds, so tests do not depend on a fixed sleep.
 fn wait_for(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + timeout;
@@ -52,7 +56,11 @@ fn a_shell_session_runs_commands_and_reports_output() {
         .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .expect("session should start");
 
-    manager.write(&id, b"echo beacon-ok\n").unwrap();
+    // Split by an empty quote, so the shell echoing what was typed is not
+    // mistaken for the command having run.
+    manager
+        .write(&id, format!("echo beacon''-ok{ENTER}").as_bytes())
+        .unwrap();
 
     assert!(
         wait_for(Duration::from_secs(10), || recorder
@@ -114,6 +122,45 @@ fn closing_a_session_reports_it_gone() {
             .is_empty()),
         "the reader thread should report the exit"
     );
+}
+
+/// A shell that ends by itself — `exit` typed into it — is reported gone, and
+/// only once. Elsewhere that is the pty closing. On Windows the
+/// pseudo-console's output outlives the process, so it comes from waiting on
+/// the process instead; the reader reaching the end later must not say it
+/// again.
+#[test]
+fn a_shell_that_exits_by_itself_is_reported_once() {
+    let recorder = Arc::new(Recorder::default());
+    let manager = SessionManager::new(Arc::clone(&recorder) as Arc<dyn SessionEvents>);
+    let dir = tempfile::tempdir().unwrap();
+    let project = ProjectId::generate();
+
+    let id = manager
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
+        .unwrap();
+    manager
+        .write(&id, format!("exit{ENTER}").as_bytes())
+        .unwrap();
+
+    let reported = || {
+        recorder
+            .exits
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|exited| **exited == id)
+            .count()
+    };
+    assert!(
+        wait_for(Duration::from_secs(10), || reported() > 0),
+        "a shell that exited was never reported gone; saw: {:?}",
+        recorder.text()
+    );
+
+    drop(manager);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(reported(), 1, "the exit was reported more than once");
 }
 
 #[test]
@@ -191,5 +238,35 @@ fn resizing_a_live_session_succeeds() {
         .unwrap();
 
     manager.resize(&id, 120, 40).expect("resize should succeed");
+    manager.close(&id).unwrap();
+}
+
+/// A window rebuilding a panel has to know the grid the output it is about to
+/// replay was written for.
+#[test]
+fn a_session_reports_the_grid_its_process_was_told_about() {
+    let recorder = Arc::new(Recorder::default());
+    let manager = SessionManager::new(recorder as Arc<dyn SessionEvents>);
+    let dir = tempfile::tempdir().unwrap();
+    let project = ProjectId::generate();
+
+    let id = manager
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (132, 40), None)
+        .unwrap();
+
+    let info = manager.info(&id).unwrap();
+    assert_eq!((info.cols, info.rows), (132, 40));
+
+    // And it follows the window rather than remembering how it started —
+    // replaying at the size it was first opened at would be wrong for every
+    // session anybody has resized.
+    manager.resize(&id, 90, 30).unwrap();
+    let after = manager.info(&id).unwrap();
+    assert_eq!((after.cols, after.rows), (90, 30));
+
+    // The listing a reattaching client reads says the same thing.
+    let listed = manager.list().into_iter().find(|s| s.id == id).unwrap();
+    assert_eq!((listed.cols, listed.rows), (90, 30));
+
     manager.close(&id).unwrap();
 }

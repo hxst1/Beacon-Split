@@ -2,9 +2,21 @@ import type { HostPlatform } from '@/types/beacon'
 
 /**
  * Shortcut handling is abstracted behind "the primary modifier" so the same
- * binding table works on macOS (⌘) and Linux (Ctrl).
+ * binding table works on macOS (⌘) and on Linux and Windows (Ctrl).
+ *
+ * The backend's answer is authoritative and replaces this guess as soon as it
+ * arrives. The guess exists for the moments before that — and for a boot that
+ * fails before it — because on Windows the window draws its own close button,
+ * and a window that cannot be closed is not a detail.
  */
-let platform: HostPlatform = 'macos'
+let platform: HostPlatform = guessPlatform()
+
+function guessPlatform(): HostPlatform {
+  const agent = typeof navigator === 'undefined' ? '' : navigator.userAgent
+  if (agent.includes('Windows')) return 'windows'
+  if (agent.includes('Linux')) return 'linux'
+  return 'macos'
+}
 
 export function setPlatform(value: HostPlatform): void {
   platform = value
@@ -13,6 +25,27 @@ export function setPlatform(value: HostPlatform): void {
 
 export function isMac(): boolean {
   return platform === 'macos'
+}
+
+/** Windows, where the window has no system title bar and draws its own controls. */
+export function isWindows(): boolean {
+  return platform === 'windows'
+}
+
+let windowsBuild: number | null = null
+
+export function setWindowsBuild(value: number | null): void {
+  windowsBuild = value
+}
+
+/**
+ * What xterm needs to know about a Windows pseudo-console, or nothing at all
+ * elsewhere. With the build it can tell whether the console reflows lines on
+ * resize itself, which it does from build 21376.
+ */
+export function windowsPty(): { backend: 'conpty'; buildNumber?: number } | undefined {
+  if (!isWindows()) return undefined
+  return windowsBuild === null ? { backend: 'conpty' } : { backend: 'conpty', buildNumber: windowsBuild }
 }
 
 /** True when the event carries the platform's primary modifier. */

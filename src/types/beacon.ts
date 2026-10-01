@@ -126,6 +126,15 @@ export interface SessionInfo {
   slot: number
   cwd: string
   running: boolean
+  /**
+   * The grid the process believes it is drawing on.
+   *
+   * What a terminal has to be built at before replaying this session's output:
+   * the same bytes laid out at a different width wrap in the wrong places, and
+   * the result is a panel of shredded text.
+   */
+  cols: number
+  rows: number
 }
 
 export interface ScrollbackSnapshot {

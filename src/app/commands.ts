@@ -1,6 +1,7 @@
 import { toggleDrawer } from '@/features/clips/clips'
 import { ipc, pickFolder } from '@/ipc'
 import { useEditor } from '@/features/editor/openFiles'
+import { AGENT_PANELS, PANEL_LABELS } from '@/lib/layout'
 import { shortcutLabel } from '@/lib/platform'
 import { describeBinding } from './keymap'
 import type { LayoutPreset, PanelId } from '@/types/beacon'
@@ -135,12 +136,14 @@ export function buildCommands(): Command[] {
 
   // ---- panels ----
 
-  const panels: Array<{ panel: PanelId; label: string }> = [
-    { panel: 'files', label: 'Files' },
-    { panel: 'git', label: 'Git' },
-    { panel: 'terminal', label: 'Terminal' },
-    { panel: 'editor', label: 'the editor' },
-  ]
+  // Derived, not listed. This was written out by hand and adding the Codex
+  // panel did not update it, so searching the palette for the one panel
+  // nobody knew about found nothing — which is how it was reported.
+  const panels: Array<{ panel: PanelId; label: string }> = (
+    Object.keys(PANEL_LABELS) as PanelId[]
+  )
+    .sort()
+    .map((panel) => ({ panel, label: PANEL_LABELS[panel] }))
 
   for (const { panel, label } of panels) {
     const hidden = snapshot?.hidden.includes(panel) === true
@@ -150,6 +153,17 @@ export function buildCommands(): Command[] {
       group: 'Panels',
       ...(hintFor(`panel.toggle.${panel}`) ? { hint: hintFor(`panel.toggle.${panel}`) } : {}),
       run: () => store.togglePanel(panel),
+    })
+  }
+
+  // Said as what it does rather than as a setting: there is a space, and this
+  // is who gets it. Both at once stays reachable through the panel toggles.
+  for (const panel of AGENT_PANELS) {
+    commands.push({
+      id: `panel.only.${panel}`,
+      title: `Show only ${PANEL_LABELS[panel]}`,
+      group: 'Panels',
+      run: () => void store.showOnlyAgent(panel),
     })
   }
 

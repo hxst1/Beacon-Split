@@ -51,6 +51,18 @@ export function AgentPanel({
     ? `${project.displayPath} · beacon/${agent}`
     : project.displayPath
   const restartSession = useBeacon((s) => s.restartSession)
+  const showOnlyAgent = useBeacon((s) => s.showOnlyAgent)
+  // The other agent, when there is one installed and it is not already on
+  // screen. Offered here rather than only as a shortcut because wanting to see
+  // one of them properly is the ordinary thing to want, and a panel that could
+  // be the other one should say so.
+  const other: AgentKind = agent === 'claude' ? 'codex' : 'claude'
+  const otherSpec = AGENTS[other]
+  const otherInstalled = useBeacon(
+    (s) => !s.missing.some((entry) => entry.id === otherSpec.requirement),
+  )
+  const otherShown = useBeacon((s) => s.snapshot?.hidden.includes(otherSpec.panel) === false)
+  const canSwap = otherInstalled && !otherShown
   const missing = useBeacon((s) => s.missing.find((entry) => entry.id === spec.requirement))
   // On a Claude Code with the flags for it, restarting continues the
   // conversation instead of throwing it away — so the button says so. The old
@@ -80,6 +92,16 @@ export function AgentPanel({
               <AgentActivity projectId={project.id} />
               <WorkstreamChip workspaceId={workspaceId} projectId={project.id} />
             </>
+          ) : null}
+          {canSwap ? (
+            <button
+              type="button"
+              className={styles['action']}
+              title={`Give this space to ${otherSpec.title} instead`}
+              onClick={() => void showOnlyAgent(otherSpec.panel)}
+            >
+              {otherSpec.title}
+            </button>
           ) : null}
           <button
             type="button"

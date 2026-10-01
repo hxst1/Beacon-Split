@@ -24,13 +24,18 @@ if (!triple) {
   process.exit(1)
 }
 
-const built = join(root, 'target', profile, 'beacon-daemon')
+// Windows executables carry their suffix, and Tauri expects it after the triple:
+// `beacon-daemon-x86_64-pc-windows-msvc.exe`.
+const suffix = triple.includes('windows') ? '.exe' : ''
+
+const built = join(root, 'target', profile, `beacon-daemon${suffix}`)
 if (!existsSync(built)) {
   console.error(`no daemon at ${built} — build it first`)
   process.exit(1)
 }
 
-const destination = join(root, 'src-tauri', 'binaries', `beacon-daemon-${triple}`)
+const staged = `beacon-daemon-${triple}${suffix}`
+const destination = join(root, 'src-tauri', 'binaries', staged)
 mkdirSync(dirname(destination), { recursive: true })
 copyFileSync(built, destination)
-console.log(`staged ${profile} daemon as beacon-daemon-${triple}`)
+console.log(`staged ${profile} daemon as ${staged}`)

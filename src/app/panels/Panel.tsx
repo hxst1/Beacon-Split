@@ -1,3 +1,5 @@
+import { useBeacon } from '@/app/store'
+import { PANEL_LABELS, canHide } from '@/lib/layout'
 import type { PanelId } from '@/types/beacon'
 import { usePanelFocus } from '../panelFocus'
 import styles from './Panel.module.css'
@@ -25,6 +27,12 @@ interface PanelProps {
  */
 export function Panel({ id, title, subtitle, actions, children }: PanelProps): React.ReactElement {
   const focused = usePanelFocus((state) => state.focused === id)
+  const togglePanel = useBeacon((state) => state.togglePanel)
+  // Every panel can be opened from somewhere; until now only a shortcut could
+  // close one, so a panel somebody opened to look at was a panel they were
+  // stuck with. Not offered where it would be refused — the last agent has to
+  // stay, and a button that does nothing is worse than no button.
+  const closeable = useBeacon((state) => canHide(id, state.snapshot?.hidden ?? []))
 
   return (
     <section className={styles['panel']} data-panel={id} data-focused={focused} tabIndex={-1}>
@@ -32,6 +40,17 @@ export function Panel({ id, title, subtitle, actions, children }: PanelProps): R
         <span className={styles['title']}>{title}</span>
         {subtitle ? <span className={styles['subtitle']}>{subtitle}</span> : null}
         {actions}
+        {closeable ? (
+          <button
+            type="button"
+            className={styles['close']}
+            title={`Close ${PANEL_LABELS[id]}`}
+            aria-label={`Close ${PANEL_LABELS[id]}`}
+            onClick={() => void togglePanel(id)}
+          >
+            ×
+          </button>
+        ) : null}
       </header>
       <div className={styles['body']}>{children}</div>
     </section>

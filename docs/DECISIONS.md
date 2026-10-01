@@ -1460,7 +1460,126 @@ nothing at all.
 stdout — injecting context, denying a tool. It has never wanted to: it observes
 sessions, it does not steer them.
 
-## ADR-072: A second agent is a second kind, not an agent inside the kind
+## ADR-072: On Windows the daemon is reached over loopback TCP, with a token
+
+**Context.** Everything that talks to the daemon — the window, and the `hook`,
+`mcp` and `statusline` modes Claude Code starts — reaches it through a unix
+socket file in a per-user directory. The standard library offers unix sockets
+only on unix. Windows has had AF_UNIX since Windows 10 (1803), and that was the
+first thing tried, through `uds_windows`. On the first company laptop it ran on,
+`connect` failed with `WSAEINVAL` — even to a socket the same process had just
+bound, outside any sandbox — because AF_UNIX goes through Winsock's provider
+chain, and the security software installed there puts a provider in that chain
+that does not know it. That is a common setup on exactly the machines a tool
+like this is used on.
+
+**Decision.** On Windows the transport is a loopback TCP connection on a port
+the system picks. The file the other platforms bind as a socket
+(`daemon.endpoint` here) holds the port and a 244-bit token instead. A client
+sends the token first; the daemon answers `BEACON OK` and only then is the
+connection handed to the protocol. Anything that cannot say the token is closed
+without a word. Everything above `transport.rs` is unchanged: it still connects
+to, and binds, a path.
+
+**Why.** Named pipes were the other option and avoid Winsock entirely, but one
+connection read on one thread and written on another needs overlapped I/O, and
+a pipe needs an access list of its own to stop other users opening it. Loopback
+TCP has neither problem and works wherever a browser does. What it lacks is the
+filesystem permission that guards a socket file, and the token is that
+permission: it lives in a file in the user's profile, which only they can read.
+
+**Consequence.** A stale endpoint file names a port that is closed or taken by
+something else; the handshake fails either way, so "can I connect" still means
+"is a daemon there", which is what replacing a dead daemon's file relies on. A
+local process that connects and never speaks holds the accept loop for at most
+two seconds.
+
+Windows does not refuse a connection to a closed loopback port at once: it
+retries for two seconds. The temporary directory survives a reboot, so the first
+start after one found the last daemon's file and waited that out twice — in the
+window, and in the daemon checking for a running copy. The file therefore also
+names the daemon's process; a client that finds that process gone is refused
+immediately, and only a live one, or one it cannot tell about, is connected to,
+with half a second to accept.
+
+## ADR-073: On Windows the hooks run without a shell
+
+**Context.** A hook is registered as a command line Claude Code hands to a
+shell. On Windows that shell is Git Bash when it is installed and PowerShell
+when it is not, and the two agree on no way of quoting a path with a space in
+it: bash needs quotes, and PowerShell reads a quoted first word as a string to
+print rather than a program to run. An installed Beacon lives under a folder
+with a space in its name.
+
+**Decision.** On Windows each hook is registered in exec form — the daemon's
+path as `command`, `["hook"]` as `args` — which Claude Code starts directly. The
+status line has no exec form, so its command is written to need no quoting in
+either shell: forward slashes, and the 8.3 short name of any folder with a space
+in it. The status line it displaces is run, as before, by the shell Claude Code
+would have used: Git Bash, or PowerShell without it.
+
+**Why.** Exec form removes the question instead of answering it for two shells
+at once, and costs a hook nothing: there was never anything for a shell to do.
+
+Checked against a real Claude Code on Windows: an exec-form hook whose program
+lives under `C:\Program Files` fires on `SessionStart` and `Stop` with its `args`
+intact.
+
+**Consequence.** Drives other than the system one often keep no short names,
+and then there is no command line both shells run. The status line is written
+for the one Claude Code will use, found the way Claude Code finds it: quoted for
+Git Bash, through PowerShell's call operator (`& '…'`) without it. Installing
+Git afterwards changes which, and reinstalling the status line follows it.
+
+## ADR-074: A Windows pseudo-console is answered, watched and left alone
+
+**Context.** `portable-pty` runs sessions in a Windows pseudo-console (ConPTY),
+which differs from a unix pty in three ways that matter here. It opens by asking
+the terminal where the cursor is, and shows nothing until it hears back. It does
+not close its output when the process inside it exits. And a program cannot be
+replaced on disk while it runs, so a daemon outliving the window — the point of
+it — locks its own binary against the next build.
+
+**Decision.** The daemon answers the opening question itself, with the top left
+— true of a session it has just created — and keeps it out of the scrollback. A
+session's process is waited on directly, on a thread of its own, and its exit
+reported from there. Before a daemon is built, a running one's binary is renamed
+out of the way (`scripts/free-daemon.mjs`), which Windows allows.
+
+**Why.** The question cannot wait for a window: sessions are started by the
+daemon, often with nobody watching, and would sit silent until somebody was.
+Left in the scrollback it would be answered again by every window that replays
+it, into the shell's input. Waiting on the process is the only signal Windows
+gives; reading to the end of the output never ends. Renaming is what macOS does
+implicitly when a build replaces a running binary.
+
+**Consequence.** The daemon also stops the window's own stdout from being
+inherited by it, which Windows does by default and which kept test runners and
+`tauri dev` waiting for output that never ended.
+
+## ADR-075: On Windows the window draws its own caption buttons
+
+**Context.** The overlay title bar that puts macOS's traffic lights inside
+Beacon's own top row has no Windows equivalent in Tauri. Left decorated, the
+window gets the system title bar as a second row of chrome above Beacon's, and
+a transparent window under it draws badly.
+
+**Decision.** `tauri.windows.conf.json` makes the window undecorated, and the
+title bar draws minimise, maximise and close at its right edge, shaped and
+placed as every Windows application has them. Closing goes through the same
+close request a system button makes. Frosting is Windows 11's Mica.
+
+**Why.** One row of chrome is the design. Mica rather than acrylic because
+acrylic trails the window by a frame or more while it is dragged, and a window
+that smears as it moves is worse than one that is merely a little different
+from macOS's frosting.
+
+**Consequence.** Windows 10 has no Mica, so the switch leaves the window sharp
+there, and says so in the log. Snap Layouts on hovering maximise, which only
+the system button offers, are not available; Win+Z and dragging to an edge
+still are.
+
+## ADR-076: A second agent is a second kind, not an agent inside the kind
 
 **Context.** Beacon ran one agent, and `SessionKind` was `Shell` or `Claude`.
 Running Codex beside it needed the kind to say which agent it was. The tidier
@@ -1482,7 +1601,7 @@ rather than one place. The conversion exists so the daemon can cross between
 "conversations by agent" and "sessions by kind" without writing the match out
 each time.
 
-## ADR-073: A conversation's id may belong to the agent rather than to Beacon
+## ADR-077: A conversation's id may belong to the agent rather than to Beacon
 
 **Context.** Beacon names a conversation before it exists: it generates a UUID
 and hands it to Claude Code with `--session-id`, which is what makes a
@@ -1508,7 +1627,7 @@ afterwards is refused rather than allowed to point Beacon's conversation at
 something it does not own. Without hooks there is no id at all, which is why
 Codex's capability check asks for hooks and resume together.
 
-## ADR-074: Beacon installs itself into Codex as a plugin, and cannot trust it
+## ADR-078: Beacon installs itself into Codex as a plugin, and cannot trust it
 
 **Context.** Claude Code takes hooks as entries in a settings file, which Beacon
 writes and removes. Codex takes hooks from plugins, and plugins from
@@ -1532,7 +1651,7 @@ plugin is generated rather than shipped because the hook names the daemon on
 this machine, which moves when the application does — a moved daemon reads as
 stale and reinstalling is the fix.
 
-## ADR-075: Separate checkouts are all of an agent's or none of them
+## ADR-079: Separate checkouts are all of an agent's or none of them
 
 **Context.** Two agents in one project write to the same files and the second
 one to save wins. Git worktrees are the existing answer, but who gets moved

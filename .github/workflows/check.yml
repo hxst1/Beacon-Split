@@ -11,7 +11,13 @@ on:
 
 jobs:
   check:
-    runs-on: macos-latest
+    # Every platform Beacon is built for: a change that only compiles on the
+    # machine it was written on is the commonest way to break the other one.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 

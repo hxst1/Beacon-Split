@@ -24,8 +24,15 @@ jobs:
             target: aarch64-apple-darwin
           - platform: macos-latest
             target: x86_64-apple-darwin
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.platform }}
+
+    # Bash on every runner, Windows included, so each step is written once.
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
@@ -52,11 +59,14 @@ jobs:
       # named for the target it was built for, so a bundle can never pick up a
       # binary meant for another machine.
       - name: Build and stage the session daemon
+        # On Windows both names carry `.exe`, the staged one after the triple.
         run: |
           cargo build --release -p beacon-daemon --target ${{ matrix.target }}
+          suffix=""
+          case "${{ matrix.target }}" in *windows*) suffix=".exe" ;; esac
           mkdir -p src-tauri/binaries
-          cp "target/${{ matrix.target }}/release/beacon-daemon" \
-             "src-tauri/binaries/beacon-daemon-${{ matrix.target }}"
+          cp "target/${{ matrix.target }}/release/beacon-daemon$suffix" \
+             "src-tauri/binaries/beacon-daemon-${{ matrix.target }}$suffix"
 
       # Everything must pass before anything is published: a release is the one
       # build nobody gets to try again.

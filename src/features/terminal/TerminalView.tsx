@@ -60,7 +60,17 @@ export function TerminalView({
       if (cancelled) return
       useActivity.getState().sessionOpened(session.id, projectId)
 
-      const terminal = await acquire(session.id, projectId, kind, slot)
+      // The session's grid, not the panel's: this terminal is about to replay
+      // what that session has already printed, and those bytes were wrapped
+      // for the width the process was told about. `apply` below moves it to
+      // the panel's real size once the snapshot is in.
+      const terminal = await acquire(session.id, projectId, kind, slot, {
+        // Zero means a daemon older than this, which does not report a size.
+        // The panel's own measurement is what this did before, and it is right
+        // whenever the panel has not changed shape since.
+        cols: session.cols || probe.cols,
+        rows: session.rows || probe.rows,
+      })
       if (cancelled) return
 
       container.append(terminal.element)

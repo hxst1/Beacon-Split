@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -12,7 +13,7 @@ use crate::domain::ProjectId;
 use crate::error::{CoreError, Result};
 use crate::scrollback::{DEFAULT_CAPACITY, Scrollback};
 use crate::settings::ShellSpec;
-use crate::tools::{resolve_program, user_shell};
+use crate::tools::{resolve_program, user_shell, user_shell_args};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -282,11 +283,18 @@ pub(crate) const STRIPPED_ENV: &[&str] = &[
 /// The permissions are the access control — on Linux the temporary directory is
 /// shared between users, and a session is a shell — so a directory recreated
 /// here has to be as closed as the one the daemon made at startup.
+///
+/// On Windows the temporary directory is inside the user's profile, and what is
+/// made there inherits an ACL that already admits only that user.
 fn ensure_private_dir(dir: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
     std::fs::create_dir_all(dir)?;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
 }
 
 fn write_mcp_config(dir: &Path) -> std::io::Result<PathBuf> {
@@ -347,6 +355,108 @@ fn ensure_utf8_locale(command: &mut CommandBuilder) {
     }
 }
 
+/// A session's input, shared between whoever types into it and — on Windows —
+/// the reader, which has one question of the pseudo-console's to answer.
+type SharedWriter = Arc<Mutex<Box<dyn Write + Send>>>;
+
+/// What a Windows pseudo-console asks before it shows anything: where is the
+/// cursor?
+#[cfg(windows)]
+const CURSOR_QUERY: &[u8] = b"\x1b[6n";
+
+/// Answers the pseudo-console's opening question, and keeps it out of the
+/// output.
+///
+/// The console is created to carry on from the terminal's cursor, so the first
+/// thing it does is ask the terminal where that is — and it shows nothing at
+/// all until it hears back. In a window that would be xterm's to answer, but a
+/// session here is started by the daemon, often with no window attached, and
+/// would sit silent until one was. So the daemon answers, with the truth for a
+/// session that has only just been created: the top left. The question is then
+/// dropped from what is recorded, because a window replaying the scrollback
+/// later would answer it again, into the shell's input, where it reads as
+/// `^[[1;1R` typed at the prompt.
+///
+/// Only the first is answered. Programs inside the session ask the console,
+/// which answers them itself; nothing else reaches here asking this.
+#[cfg(windows)]
+fn answer_cursor_query(bytes: &[u8], writer: &SharedWriter) -> Option<Vec<u8>> {
+    let at = bytes
+        .windows(CURSOR_QUERY.len())
+        .position(|window| window == CURSOR_QUERY)?;
+
+    let mut writer = writer.lock_or_recover();
+    let _ = writer.write_all(b"\x1b[1;1R");
+    let _ = writer.flush();
+
+    let mut rest = bytes[..at].to_vec();
+    rest.extend_from_slice(&bytes[at + CURSOR_QUERY.len()..]);
+    Some(rest)
+}
+
+/// Reports a session's process ending, on Windows, when it ends.
+///
+/// Everywhere else the reader learns it for free: the process exits, the pty
+/// closes, the read returns nothing. A Windows pseudo-console does not close
+/// with its process — the output pipe stays open until the console itself is
+/// closed, which here is not until the session is dropped — so a Claude that
+/// quit would sit in its panel looking alive. The process is waited on
+/// directly instead, by its own thread, and the reader keeps draining whatever
+/// output was still on its way.
+///
+/// The process is opened by id while `child` still holds a handle to it, so
+/// the id cannot have been reused by the time this runs.
+#[cfg(windows)]
+fn watch_for_exit(
+    pid: u32,
+    id: SessionId,
+    project: ProjectId,
+    events: Arc<dyn SessionEvents>,
+    exit_reported: Arc<AtomicBool>,
+) {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, INFINITE, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    };
+
+    let process = unsafe {
+        OpenProcess(
+            PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+            0,
+            pid,
+        )
+    };
+    if process.is_null() {
+        tracing::warn!(session = %id, pid, "could not watch the session's process; its exit will show late");
+        return;
+    }
+
+    // Handles are not `Send`; the address is, and it is only used by the
+    // thread that closes it.
+    let process = process as usize;
+    let spawned = std::thread::Builder::new()
+        .name(format!("exit-{id}"))
+        .spawn(move || {
+            let process = process as windows_sys::Win32::Foundation::HANDLE;
+            let mut code = 0u32;
+            let known = unsafe {
+                WaitForSingleObject(process, INFINITE);
+                let known = GetExitCodeProcess(process, &mut code) != 0;
+                CloseHandle(process);
+                known
+            };
+
+            if !exit_reported.swap(true, Ordering::SeqCst) {
+                events.exited(&id, &project, known.then_some(code as i32));
+            }
+        });
+
+    if spawned.is_err() {
+        unsafe { CloseHandle(process as windows_sys::Win32::Foundation::HANDLE) };
+    }
+}
+
 /// How the host is told about things the session does on its own.
 ///
 /// Implemented by the Tauri layer today (which forwards to the webview) and by
@@ -385,6 +495,22 @@ pub struct SessionInfo {
     pub slot: u32,
     pub cwd: String,
     pub running: bool,
+    /// The grid the process believes it is drawing on.
+    ///
+    /// Carried so a window can build its terminal at the size the output it is
+    /// about to replay was written for. Replaying into a different width lays
+    /// every wrapped line out again in the wrong place, and the result is a
+    /// panel of shredded text that only a restart clears.
+    ///
+    /// Defaulted, because a window can be newer than the daemon it reattaches
+    /// to: the protocol only forces a swap when its version moves, and this
+    /// did not. A daemon that predates this says nothing, which reads as zero,
+    /// and a window that gets zero measures the panel instead — the behaviour
+    /// it had before any of this.
+    #[serde(default)]
+    pub cols: u16,
+    #[serde(default)]
+    pub rows: u16,
 }
 
 struct Session {
@@ -393,7 +519,7 @@ struct Session {
     slot: u32,
     cwd: PathBuf,
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    writer: SharedWriter,
     child: Box<dyn Child + Send + Sync>,
     scrollback: Arc<Mutex<Scrollback>>,
     /// The last size the process was told about.
@@ -601,7 +727,9 @@ impl SessionManager {
                     }
                     None => {
                         let mut command = CommandBuilder::new(user_shell());
-                        command.arg("-l");
+                        for arg in user_shell_args() {
+                            command.arg(arg);
+                        }
                         command
                     }
                 };
@@ -780,13 +908,27 @@ impl SessionManager {
             .master
             .try_clone_reader()
             .map_err(|err| CoreError::session("could not read from the pty", err))?;
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|err| CoreError::session("could not write to the pty", err))?;
+        let writer: SharedWriter =
+            Arc::new(Mutex::new(pair.master.take_writer().map_err(|err| {
+                CoreError::session("could not write to the pty", err)
+            })?));
 
         let id = SessionId::generate();
         let scrollback = Arc::new(Mutex::new(Scrollback::new(DEFAULT_CAPACITY)));
+        // Whoever learns of the exit first says so, and only once: the reader
+        // reaching the end, or — on Windows — the process itself ending.
+        let exit_reported = Arc::new(AtomicBool::new(false));
+
+        #[cfg(windows)]
+        if let Some(pid) = child.process_id() {
+            watch_for_exit(
+                pid,
+                id.clone(),
+                project.clone(),
+                Arc::clone(&self.events),
+                Arc::clone(&exit_reported),
+            );
+        }
 
         {
             // The PTY read is blocking, so it gets its own thread. It ends when
@@ -795,6 +937,9 @@ impl SessionManager {
             let owner = project.clone();
             let events = Arc::clone(&self.events);
             let scrollback = Arc::clone(&scrollback);
+            let exit_reported = Arc::clone(&exit_reported);
+            #[cfg(windows)]
+            let mut unanswered = Some(Arc::clone(&writer));
             std::thread::Builder::new()
                 .name(format!("pty-{id}"))
                 .spawn(move || {
@@ -803,11 +948,22 @@ impl SessionManager {
                         match reader.read(&mut chunk) {
                             Ok(0) => break,
                             Ok(n) => {
-                                let bytes = &chunk[..n];
+                                #[allow(unused_mut)]
+                                let mut bytes = std::borrow::Cow::Borrowed(&chunk[..n]);
+                                #[cfg(windows)]
+                                if let Some(writer) = &unanswered
+                                    && let Some(rest) = answer_cursor_query(&bytes, writer)
+                                {
+                                    bytes = std::borrow::Cow::Owned(rest);
+                                    unanswered = None;
+                                }
+                                if bytes.is_empty() {
+                                    continue;
+                                }
                                 // Recording and numbering happen under one lock
                                 // so a snapshot can never interleave with this.
-                                let offset = scrollback.lock_or_recover().push(bytes);
-                                events.output(&id, &owner, offset, bytes);
+                                let offset = scrollback.lock_or_recover().push(&bytes);
+                                events.output(&id, &owner, offset, &bytes);
                             }
                             Err(err) => {
                                 tracing::debug!(session = %id, error = %err, "pty read ended");
@@ -815,7 +971,9 @@ impl SessionManager {
                             }
                         }
                     }
-                    events.exited(&id, &owner, None);
+                    if !exit_reported.swap(true, Ordering::SeqCst) {
+                        events.exited(&id, &owner, None);
+                    }
                 })
                 .map_err(|err| CoreError::session("could not start the reader thread", err))?;
         }
@@ -849,12 +1007,11 @@ impl SessionManager {
         let session = sessions
             .get_mut(id)
             .ok_or_else(|| CoreError::SessionNotFound(id.to_string()))?;
-        session
-            .writer
+        let mut writer = session.writer.lock_or_recover();
+        writer
             .write_all(bytes)
             .map_err(|err| CoreError::session("could not write to the session", err))?;
-        session
-            .writer
+        writer
             .flush()
             .map_err(|err| CoreError::session("could not flush the session", err))
     }
@@ -921,6 +1078,8 @@ impl SessionManager {
                     slot: session.slot,
                     cwd: session.cwd.to_string_lossy().into_owned(),
                     running: session.child.try_wait().ok().flatten().is_none(),
+                    cols: session.size.0,
+                    rows: session.size.1,
                 })
             })
             .collect()
@@ -938,6 +1097,8 @@ impl SessionManager {
             slot: session.slot,
             cwd: session.cwd.to_string_lossy().into_owned(),
             running: session.child.try_wait().ok().flatten().is_none(),
+            cols: session.size.0,
+            rows: session.size.1,
         })
     }
 
@@ -1140,6 +1301,7 @@ mod tests {
 
     /// The sweep can take the directory with it. Restoring it must not leave it
     /// open to anyone else on the machine.
+    #[cfg(unix)]
     #[test]
     fn a_restored_runtime_directory_stays_private() {
         use std::os::unix::fs::PermissionsExt;
@@ -1255,5 +1417,49 @@ mod tests {
 
         manager.forget_agent_launch(&project, AgentKind::Claude);
         assert!(manager.agent_launch(&project, AgentKind::Claude).is_none());
+    }
+
+    /// Stands in for a session's input, keeping what was written to it.
+    #[cfg(windows)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    #[cfg(windows)]
+    impl Write for Captured {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[cfg(windows)]
+    fn captured() -> (SharedWriter, Arc<Mutex<Vec<u8>>>) {
+        let input = Arc::new(Mutex::new(Vec::new()));
+        let writer: SharedWriter = Arc::new(Mutex::new(Box::new(Captured(Arc::clone(&input)))));
+        (writer, input)
+    }
+
+    /// What a pseudo-console prints first, in the order it prints it.
+    #[cfg(windows)]
+    #[test]
+    fn the_pseudo_consoles_opening_question_is_answered_and_not_recorded() {
+        let (writer, input) = captured();
+        let opening = b"\x1b[?9001h\x1b[?1004h\x1b[6n\x1b[?25l";
+
+        let rest = answer_cursor_query(opening, &writer).expect("the query should be found");
+
+        assert_eq!(input.lock().unwrap().as_slice(), b"\x1b[1;1R");
+        assert_eq!(rest, b"\x1b[?9001h\x1b[?1004h\x1b[?25l");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn output_without_the_question_is_left_alone() {
+        let (writer, input) = captured();
+        assert!(answer_cursor_query(b"PS C:\\> ", &writer).is_none());
+        assert!(input.lock().unwrap().is_empty());
     }
 }

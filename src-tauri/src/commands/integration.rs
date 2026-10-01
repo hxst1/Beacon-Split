@@ -33,17 +33,21 @@ pub fn daemon_available() -> bool {
 /// Quoted, because Claude Code hands hook commands to a shell and the packaged
 /// application lives at `/Applications/Beacon Split.app` — a space the shell
 /// would otherwise read as the end of the command.
+///
+/// On Windows it is the path alone: the hook is registered with `hook` in its
+/// `args`, which Claude Code runs without a shell. See ADR-073.
 fn hook_command() -> String {
-    format!(
-        "{} hook",
-        claude_hooks::shell_quote(&daemon_binary_path().to_string_lossy())
-    )
+    let daemon = daemon_binary_path().to_string_lossy().into_owned();
+    if cfg!(windows) {
+        return daemon;
+    }
+    format!("{} hook", claude_hooks::shell_quote(&daemon))
 }
 
 fn status_line_command() -> String {
     format!(
         "{} statusline",
-        claude_hooks::shell_quote(&daemon_binary_path().to_string_lossy())
+        claude_hooks::command_word(&daemon_binary_path().to_string_lossy())
     )
 }
 
@@ -61,7 +65,7 @@ pub struct Integration {
 pub fn claude_integration() -> CommandResult<Integration> {
     Ok(Integration {
         hooks: claude_hooks::status(std::path::Path::new(&hook_command()))?,
-        hook_command: hook_command(),
+        hook_command: claude_hook_command(),
         status_line: claude_hooks::status_line_installed()?,
         status_line_command: status_line_command(),
     })
@@ -114,6 +118,11 @@ pub fn remove_claude_hooks() -> CommandResult<HookStatus> {
 /// is asking to add before agreeing to it.
 #[tauri::command]
 pub fn claude_hook_command() -> String {
+    if cfg!(windows) {
+        // What runs, written the way someone would type it: the entry itself
+        // holds the path and its argument separately.
+        return format!("\"{}\" hook", hook_command());
+    }
     hook_command()
 }
 

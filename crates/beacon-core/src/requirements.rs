@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::tools::{resolve_program, strip_terminal_identity};
+use crate::tools::{hide_console_window, resolve_program, strip_terminal_identity};
 
 /// How badly Beacon needs something.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -75,16 +75,29 @@ fn check_claude() -> Requirement {
         path: path.map(|path| path.to_string_lossy().into_owned()),
         what_breaks: "Beacon runs the real claude command in each project. \
                       Without it, the Claude panel has nothing to run — everything else works.",
-        install: vec![
-            InstallOption {
-                label: "Official installer",
-                command: "curl -fsSL https://claude.ai/install.sh | bash",
-            },
-            InstallOption {
-                label: "Homebrew",
-                command: "brew install --cask claude-code",
-            },
-        ],
+        install: if cfg!(windows) {
+            vec![
+                InstallOption {
+                    label: "Official installer (PowerShell)",
+                    command: "irm https://claude.ai/install.ps1 | iex",
+                },
+                InstallOption {
+                    label: "WinGet",
+                    command: "winget install Anthropic.ClaudeCode",
+                },
+            ]
+        } else {
+            vec![
+                InstallOption {
+                    label: "Official installer",
+                    command: "curl -fsSL https://claude.ai/install.sh | bash",
+                },
+                InstallOption {
+                    label: "Homebrew",
+                    command: "brew install --cask claude-code",
+                },
+            ]
+        },
         note: Some(
             "Claude Code needs a Pro, Max, Team or Enterprise account. \
              After installing, run `claude` once in a terminal to sign in — \
@@ -143,20 +156,30 @@ fn check_git() -> Requirement {
         what_breaks: "The Git panel needs it, and Quick Open uses it to respect \
                       your ignore rules. Without it those fall back or go quiet; \
                       terminals and Claude are unaffected.",
-        install: vec![
-            InstallOption {
-                label: "Apple command line tools",
-                command: "xcode-select --install",
-            },
-            InstallOption {
-                label: "Homebrew",
-                command: "brew install git",
-            },
-        ],
-        note: Some(
+        install: if cfg!(windows) {
+            vec![InstallOption {
+                label: "Git for Windows (WinGet)",
+                command: "winget install --id Git.Git -e --source winget",
+            }]
+        } else {
+            vec![
+                InstallOption {
+                    label: "Apple command line tools",
+                    command: "xcode-select --install",
+                },
+                InstallOption {
+                    label: "Homebrew",
+                    command: "brew install git",
+                },
+            ]
+        },
+        note: Some(if cfg!(windows) {
+            "Git for Windows also brings Git Bash, which Claude Code prefers \
+             for running commands and hooks when it is there."
+        } else {
             "The Apple tools are the smaller install and enough for everything \
-             Beacon does with git.",
-        ),
+             Beacon does with git."
+        }),
     }
 }
 
@@ -168,6 +191,7 @@ fn version_of(path: &std::path::Path, flag: &str) -> Option<String> {
     let mut command = std::process::Command::new(path);
     command.arg(flag);
     strip_terminal_identity(&mut command);
+    hide_console_window(&mut command);
     // An npm-installed agent is a Node script and needs its interpreter, which
     // lives beside it. Without this the program is found and then refuses to
     // say its version, which reads as a broken install rather than a missing
