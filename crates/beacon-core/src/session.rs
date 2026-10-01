@@ -385,6 +385,22 @@ pub struct SessionInfo {
     pub slot: u32,
     pub cwd: String,
     pub running: bool,
+    /// The grid the process believes it is drawing on.
+    ///
+    /// Carried so a window can build its terminal at the size the output it is
+    /// about to replay was written for. Replaying into a different width lays
+    /// every wrapped line out again in the wrong place, and the result is a
+    /// panel of shredded text that only a restart clears.
+    ///
+    /// Defaulted, because a window can be newer than the daemon it reattaches
+    /// to: the protocol only forces a swap when its version moves, and this
+    /// did not. A daemon that predates this says nothing, which reads as zero,
+    /// and a window that gets zero measures the panel instead — the behaviour
+    /// it had before any of this.
+    #[serde(default)]
+    pub cols: u16,
+    #[serde(default)]
+    pub rows: u16,
 }
 
 struct Session {
@@ -921,6 +937,8 @@ impl SessionManager {
                     slot: session.slot,
                     cwd: session.cwd.to_string_lossy().into_owned(),
                     running: session.child.try_wait().ok().flatten().is_none(),
+                    cols: session.size.0,
+                    rows: session.size.1,
                 })
             })
             .collect()
@@ -938,6 +956,8 @@ impl SessionManager {
             slot: session.slot,
             cwd: session.cwd.to_string_lossy().into_owned(),
             running: session.child.try_wait().ok().flatten().is_none(),
+            cols: session.size.0,
+            rows: session.size.1,
         })
     }
 

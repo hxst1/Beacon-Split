@@ -874,6 +874,8 @@ mod tests {
             slot: 0,
             cwd: "/tmp/project".into(),
             running: true,
+            cols: 132,
+            rows: 40,
         };
 
         let replies = vec![

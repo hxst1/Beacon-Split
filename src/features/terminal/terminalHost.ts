@@ -44,12 +44,25 @@ function terminalTheme(): Record<string, string> {
   }
 }
 
-function create(project: string, kind: SessionKind, slot: number): HostedTerminal {
+function create(
+  project: string,
+  kind: SessionKind,
+  slot: number,
+  grid: { cols: number; rows: number },
+): HostedTerminal {
   const element = document.createElement('div')
   element.style.width = '100%'
   element.style.height = '100%'
 
   const term = new Terminal({
+    // The grid the session's output was written for, rather than xterm's own
+    // default of 80x24. Replaying a snapshot into the wrong width re-wraps
+    // every line that was already wrapped, and what comes out is the shredded
+    // text you only get rid of by restarting the session. The real size
+    // follows a moment later, and reflowing from a correct state is something
+    // xterm does properly.
+    cols: grid.cols,
+    rows: grid.rows,
     // Transparent, so the panel's blurred surface shows through instead of a
     // flat black rectangle.
     allowTransparency: true,
@@ -84,11 +97,12 @@ export async function acquire(
   project: string,
   kind: SessionKind,
   slot: number,
+  grid: { cols: number; rows: number },
 ): Promise<HostedTerminal> {
   const existing = hosted.get(sessionId)
   if (existing) return existing
 
-  const terminal = create(project, kind, slot)
+  const terminal = create(project, kind, slot, grid)
   hosted.set(sessionId, terminal)
 
   await attach(sessionId, {

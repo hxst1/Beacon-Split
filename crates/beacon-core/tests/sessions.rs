@@ -193,3 +193,33 @@ fn resizing_a_live_session_succeeds() {
     manager.resize(&id, 120, 40).expect("resize should succeed");
     manager.close(&id).unwrap();
 }
+
+/// A window rebuilding a panel has to know the grid the output it is about to
+/// replay was written for.
+#[test]
+fn a_session_reports_the_grid_its_process_was_told_about() {
+    let recorder = Arc::new(Recorder::default());
+    let manager = SessionManager::new(recorder as Arc<dyn SessionEvents>);
+    let dir = tempfile::tempdir().unwrap();
+    let project = ProjectId::generate();
+
+    let id = manager
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (132, 40), None)
+        .unwrap();
+
+    let info = manager.info(&id).unwrap();
+    assert_eq!((info.cols, info.rows), (132, 40));
+
+    // And it follows the window rather than remembering how it started —
+    // replaying at the size it was first opened at would be wrong for every
+    // session anybody has resized.
+    manager.resize(&id, 90, 30).unwrap();
+    let after = manager.info(&id).unwrap();
+    assert_eq!((after.cols, after.rows), (90, 30));
+
+    // The listing a reattaching client reads says the same thing.
+    let listed = manager.list().into_iter().find(|s| s.id == id).unwrap();
+    assert_eq!((listed.cols, listed.rows), (90, 30));
+
+    manager.close(&id).unwrap();
+}
