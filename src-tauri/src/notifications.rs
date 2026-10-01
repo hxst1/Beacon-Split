@@ -16,6 +16,10 @@
 use serde::Serialize;
 
 /// What macOS will do with a notification from Beacon.
+///
+/// Elsewhere only `Authorized` is ever reported; the rest stay so the window
+/// speaks one vocabulary on every platform.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Permission {
@@ -168,13 +172,12 @@ mod platform {
     }
 
     pub fn request() {}
-
-    pub fn post(_title: &str, _body: &str) -> Result<(), String> {
-        Err("posting is handled by tauri-plugin-notification on this platform".into())
-    }
 }
 
-pub use platform::{permission, post, request};
+// Posting goes through tauri-plugin-notification everywhere but macOS.
+#[cfg(target_os = "macos")]
+pub use platform::post;
+pub use platform::{permission, request};
 
 /// Where in System Settings a person can undo a refusal.
 ///

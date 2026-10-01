@@ -239,6 +239,7 @@ name = "beacon-core"
 version = "0.6.0"
 dependencies = [
  "base64 0.22.1",
+ "dunce",
  "portable-pty",
  "serde",
  "serde_json",
@@ -247,6 +248,7 @@ dependencies = [
  "tracing",
  "trash",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -284,6 +286,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "window-vibrancy",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

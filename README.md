@@ -64,12 +64,12 @@ window, and whether what shows through is frosted.
 
 ## Install
 
-Beacon is macOS today. Releases carry an Apple Silicon and an Intel build;
-Apple Silicon is the one it is developed and tested on. Linux is next; Windows
-is not planned.
+Beacon runs on macOS and Windows. Releases carry an Apple Silicon and an Intel
+build for macOS — Apple Silicon is the one it is developed and tested on — and
+an x64 installer for Windows 10 and 11. Linux is next.
 
-**From a release** — [download the latest][releases], open the `.dmg`, drag
-Beacon to Applications.
+**From a release, on macOS** — [download the latest][releases], open the
+`.dmg`, drag Beacon to Applications.
 
 macOS will refuse it the first time with *"Beacon Split is damaged and can't be
 opened"*. It is not damaged: the build is not signed with an Apple Developer ID.
@@ -83,6 +83,13 @@ That removes a check macOS applies to software it cannot verify. It is a
 reasonable thing to do for a build you chose to download; it is not something to
 do casually. See [`docs/DISTRIBUTING.md`](docs/DISTRIBUTING.md) for the
 alternatives.
+
+**From a release, on Windows** — run the `-setup.exe` from the [latest
+release][releases]. It installs for your user only and needs no administrator.
+The installer is not code-signed, so SmartScreen will say *"Windows protected
+your PC"* the first time: **More info → Run anyway**. Beacon's window has its
+own minimise, maximise and close buttons at the top right, and frosting uses
+Windows 11's Mica.
 
 **From source** — see [Building it](#building-it). A build made on the machine
 it runs on is never quarantined.
@@ -98,13 +105,26 @@ and in Settings → Requirements.
 | [Claude Code][claude] | The Claude panel — the point of the application | `curl -fsSL https://claude.ai/install.sh \| bash` |
 | Git | The Git panel, and Quick Open honouring your ignore rules | `xcode-select --install` |
 
+On Windows:
+
+| | Needed for | Install |
+| --- | --- | --- |
+| [Claude Code][claude] | The Claude panel | `irm https://claude.ai/install.ps1 \| iex` in PowerShell |
+| Git for Windows | The Git panel — and Git Bash, which Claude Code prefers for its commands | `winget install --id Git.Git -e --source winget` |
+
+A Claude Code installed with npm works too: Beacon looks through npm's
+`claude.cmd` to the program it starts.
+
 Claude Code needs a Pro, Max, Team or Enterprise account, and you sign in by
 running `claude` once in a terminal. Beacon does not handle signing in — it runs
 the CLI you already use.
 
 ## Keyboard
 
-`⌘` on macOS, `Ctrl` on Linux. All of these are editable in Settings → Keyboard.
+`⌘` on macOS, `Ctrl` on Linux and Windows. All of these are editable in
+Settings → Keyboard. In a terminal on Windows, Ctrl+C copies when something is
+selected and interrupts when nothing is, and Ctrl+V pastes; Ctrl+Shift+C and
+Ctrl+Shift+V always copy and paste.
 
 | | |
 | --- | --- |
@@ -119,7 +139,10 @@ the CLI you already use.
 
 ## Building it
 
-You need Node 20+, pnpm 10+, Rust 1.85+, and the Xcode command line tools.
+You need Node 20+, pnpm 10+, Rust 1.85+, and the Xcode command line tools. On
+Windows, instead of Xcode: the Rust MSVC toolchain (`winget install
+Rustlang.Rustup`) and Visual Studio's C++ build tools ("Desktop development with
+C++"); the WebView2 runtime ships with Windows 11.
 
 ```sh
 git clone https://github.com/hxst1/Beacon-Split.git
@@ -131,7 +154,7 @@ pnpm app:dev
 | | |
 | --- | --- |
 | `pnpm app:dev` | Run it, with the frontend hot-reloading |
-| `pnpm app:build` | Produce a `.app` and a `.dmg` |
+| `pnpm app:build` | Produce a `.app` and a `.dmg` — or, on Windows, an installer `.exe` and an `.msi` |
 | `pnpm check` | Typecheck, tests, rustfmt, clippy — what CI runs |
 
 ## Where things live

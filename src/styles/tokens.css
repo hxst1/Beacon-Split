@@ -41,7 +41,7 @@
   --font-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui,
     sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Menlo',
-    'DejaVu Sans Mono', monospace;
+    'Cascadia Mono', 'Consolas', 'DejaVu Sans Mono', monospace;
 
   --text-xs: 11px;
   --text-sm: 12px;

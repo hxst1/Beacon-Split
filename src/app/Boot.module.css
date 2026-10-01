@@ -5,6 +5,16 @@
   gap: 12px;
 }
 
+/* A title bar's worth of strip to drag by, holding the window buttons where
+   the platform has none of its own. Out of the flow, so the mark stays centred. */
+.chrome {
+  position: fixed;
+  inset: 0 0 auto 0;
+  display: flex;
+  justify-content: flex-end;
+  height: var(--titlebar-height);
+}
+
 .mark {
   width: 3px;
   height: 34px;

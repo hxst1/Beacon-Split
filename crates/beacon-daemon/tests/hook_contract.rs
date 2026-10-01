@@ -12,8 +12,9 @@
 //! that broke: the hook that prints something *else* as well.
 
 use std::io::Write;
-use std::os::unix::net::UnixListener;
 use std::process::{Command, Stdio};
+
+use beacon_core::transport::LocalListener;
 
 /// Every event Beacon registers, with a payload shaped like Claude Code's.
 fn payload(event: &str) -> String {
@@ -73,11 +74,11 @@ fn run_hook(stdin: &str, env: &[(&str, &str)]) -> Run {
 /// A socket that accepts one connection and hands back what was written to it.
 fn listening(dir: &std::path::Path) -> (String, std::thread::JoinHandle<String>) {
     let path = dir.join("hook.sock");
-    let listener = UnixListener::bind(&path).expect("could not listen");
+    let listener = LocalListener::bind(&path).expect("could not listen");
 
     let handle = std::thread::spawn(move || {
         use std::io::Read;
-        let Ok((mut stream, _)) = listener.accept() else {
+        let Some(Ok(mut stream)) = listener.incoming().next() else {
             return String::new();
         };
         let mut line = String::new();

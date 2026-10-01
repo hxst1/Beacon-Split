@@ -5,6 +5,7 @@ import { UsageMeter } from '@/features/usage/UsageMeter'
 import { WorkspaceMenu } from '@/features/workspaces/WorkspaceMenu'
 import { selectActiveWorkspace, useBeacon } from './store'
 import { Popover } from './ui/Popover'
+import { WindowControls } from './WindowControls'
 import styles from './TitleBar.module.css'
 
 /**
@@ -49,6 +50,8 @@ export function TitleBar(): React.ReactElement {
       >
         <GearIcon />
       </button>
+
+      <WindowControls />
 
       {menuAnchor ? (
         <Popover anchor={menuAnchor} onClose={() => setMenuAnchor(null)}>

@@ -162,17 +162,33 @@ pub fn install_at(path: &Path, command: &Path) -> Result<()> {
         remove_ours(groups);
         groups.push(json!({
             "matcher": "*",
-            "hooks": [{
-                "type": "command",
-                "command": command.to_string_lossy(),
-                // A hook that hangs would hang Claude. This one writes a line
-                // to a socket and exits.
-                "timeout": 5
-            }]
+            "hooks": [hook_entry(&command.to_string_lossy())]
         }));
     }
 
     write(path, &settings)
+}
+
+/// One hook, as Claude Code reads it.
+///
+/// On unix `command` is a shell command line, the daemon's quoted path and
+/// `hook`. On Windows it is the daemon's path alone, and `hook` goes in `args`:
+/// with `args` present Claude Code starts the program directly instead of
+/// through a shell, and which shell it would have used there depends on the
+/// machine — Git Bash when installed, PowerShell when not — and the two agree
+/// on no way of quoting a path with a space in it. See ADR-073.
+fn hook_entry(command: &str) -> Value {
+    let mut entry = json!({
+        "type": "command",
+        "command": command,
+        // A hook that hangs would hang Claude. This one writes a line to a
+        // socket and exits.
+        "timeout": 5
+    });
+    if cfg!(windows) {
+        entry["args"] = json!(["hook"]);
+    }
+    entry
 }
 
 /// Takes the hooks out again, leaving the rest of the file alone.
@@ -321,6 +337,72 @@ pub fn shell_quote(command: &str) -> String {
     format!("'{}'", command.replace('\'', r"'\''"))
 }
 
+/// A program's path as the first word of a command line Claude Code will hand
+/// to a shell — the status line, which unlike a hook has no `args` to avoid one.
+///
+/// Quoted, on unix. On Windows the shell is Git Bash when it is installed and
+/// PowerShell when it is not, and they share no quoting for a path with a space
+/// in it: bash needs the quotes, and PowerShell reads a quoted first word as a
+/// string to print rather than a program to run. So the path is written to need
+/// none — forward slashes, which both accept and bash does not take for
+/// escapes, and the short 8.3 name of any folder with a space in it, which
+/// Windows keeps for callers exactly like this one.
+///
+/// Volumes other than the system one often keep no short names, and then there
+/// is no form both shells run. It is written for the one Claude Code will use,
+/// worked out the way Claude Code works it out: quoted for Git Bash, through
+/// PowerShell's call operator without it. Installing Git afterwards changes the
+/// answer, and reinstalling the status line is what follows it.
+pub fn command_word(path: &str) -> String {
+    if !cfg!(windows) {
+        return shell_quote(path);
+    }
+    command_word_for(path, short_path(path), crate::tools::git_bash().is_some())
+}
+
+/// [`command_word`] on Windows, with what it depends on passed in.
+fn command_word_for(path: &str, short: Option<String>, git_bash: bool) -> String {
+    let path = if path.contains(' ') {
+        short.unwrap_or_else(|| path.to_string())
+    } else {
+        path.to_string()
+    };
+    if !path.contains(' ') {
+        return path.replace('\\', "/");
+    }
+
+    if git_bash {
+        format!("\"{}\"", path.replace('\\', "/"))
+    } else {
+        format!("& '{}'", path.replace('\'', "''"))
+    }
+}
+
+/// The 8.3 form of a path, when the volume keeps one.
+#[cfg(windows)]
+fn short_path(path: &str) -> Option<String> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
+
+    let wide: Vec<u16> = std::ffi::OsStr::new(path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut buffer = vec![0u16; 1024];
+    let written =
+        unsafe { GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) };
+    if written == 0 || written as usize >= buffer.len() {
+        return None;
+    }
+    buffer.truncate(written as usize);
+    std::ffi::OsString::from_wide(&buffer).into_string().ok()
+}
+
+#[cfg(not(windows))]
+fn short_path(_path: &str) -> Option<String> {
+    None
+}
+
 fn read(path: &Path) -> Result<Value> {
     match std::fs::read(path) {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(|source| CoreError::Parse {
@@ -427,6 +509,7 @@ mod tests {
         assert_eq!(status_at(&path, &beacon()).unwrap(), HookStatus::Stale);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_path_with_a_space_in_it_survives_the_shell() {
         // "/Applications/Beacon Split.app" is two words to a shell, and Claude
@@ -653,6 +736,57 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             "{ this is not json"
+        );
+    }
+
+    /// On Windows the status line goes through Git Bash or PowerShell. A path
+    /// without a space is written so both run it: forward slashes, which bash
+    /// does not eat as escapes.
+    #[test]
+    fn a_windows_path_without_spaces_runs_in_either_shell() {
+        assert_eq!(
+            command_word_for(r"D:\work\beacon\beacon-daemon.exe", None, false),
+            "D:/work/beacon/beacon-daemon.exe"
+        );
+    }
+
+    #[test]
+    fn a_spaced_windows_path_uses_its_short_name_when_the_volume_has_one() {
+        assert_eq!(
+            command_word_for(
+                r"C:\Program Files\Beacon Split\beacon-daemon.exe",
+                Some(r"C:\PROGRA~1\BEACON~1\beacon-daemon.exe".into()),
+                false,
+            ),
+            "C:/PROGRA~1/BEACON~1/beacon-daemon.exe"
+        );
+    }
+
+    /// The case on a second drive, which keeps no short names: written for the
+    /// shell Claude Code will actually use.
+    #[test]
+    fn a_spaced_windows_path_without_a_short_name_is_written_for_the_shell_in_use() {
+        let path = r"D:\Beacon Split\beacon-daemon.exe";
+        assert_eq!(
+            command_word_for(path, None, true),
+            "\"D:/Beacon Split/beacon-daemon.exe\""
+        );
+        assert_eq!(
+            command_word_for(path, None, false),
+            r"& 'D:\Beacon Split\beacon-daemon.exe'"
+        );
+    }
+
+    /// With `args`, Claude Code starts the hook without a shell, so nothing about
+    /// how a shell would split the path can matter.
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_hook_is_registered_without_a_shell() {
+        let entry = hook_entry(r"C:\Program Files\Beacon Split\beacon-daemon.exe");
+        assert_eq!(entry["args"], json!(["hook"]));
+        assert_eq!(
+            entry["command"],
+            r"C:\Program Files\Beacon Split\beacon-daemon.exe"
         );
     }
 }

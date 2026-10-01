@@ -6,8 +6,9 @@
 > you know which one has stopped and is waiting for an answer without checking
 > each in turn.
 
-Free and open source under AGPL-3.0. macOS today, on Apple Silicon and Intel.
-No account, no telemetry, no server, nothing to buy later.
+Free and open source under AGPL-3.0. macOS, on Apple Silicon and Intel, and
+Windows 10 and 11 on x64. No account, no telemetry, no server, nothing to buy
+later.
 
 ## What it is
 
@@ -23,10 +24,11 @@ were instead of starting again.
 
 ## Requirements
 
-- macOS. A Linux build is being worked on and has never been run, so nothing is
-  claimed about it. Windows is not planned.
-- Claude Code and `git` on the `PATH`. Beacon checks for both through the same
-  login shell a session uses, and says what is missing and how to install it.
+- macOS, or Windows 10 or 11 on x64. A Linux build is being worked on and has
+  never been run, so nothing is claimed about it.
+- Claude Code and `git` on the `PATH`. Beacon checks for both the way a session
+  finds them — through the login shell, or on Windows the `PATH` itself — and
+  says what is missing and how to install it.
 - Your own Claude subscription or API key. Beacon never asks for, handles,
   stores or forwards a Claude credential; you sign in yourself and your usage
   is billed to you under your own agreement with Anthropic.
@@ -38,6 +40,11 @@ not signed with an Apple Developer ID, so macOS refuses it the first time:
 after dragging Beacon to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"` once. Signing
 and notarisation need an Apple Developer membership and are on the roadmap.
+
+On Windows, run the `-setup.exe` installer from the same page. It installs for
+the current user and needs no administrator. It is not code-signed yet, so
+SmartScreen says "Windows protected your PC" the first time: choose More info,
+then Run anyway.
 
 ## Affiliation
 
