@@ -352,6 +352,20 @@ export interface AgentActivity {
  * The id is the conversation's, chosen by Beacon and handed to Claude Code with
  * `--session-id`. Nothing here is read out of a transcript.
  */
+/**
+ * Which checkout a git command acts on.
+ *
+ * Bundled rather than passed beside the project so that every call has to say
+ * it. A command that quietly kept the default would be reading — or staging —
+ * the wrong copy of the repository, and nothing on screen would look wrong.
+ */
+export interface Checkout {
+  workspaceId: string
+  projectId: string
+  /** Absent is the project's own directory, which is where everything starts. */
+  agent?: AgentKind | undefined
+}
+
 /** Which agent a conversation belongs to. */
 export type AgentKind = 'claude' | 'codex'
 

@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { MissingTool } from '@/features/settings/MissingTool'
 import { useBeacon } from '@/app/store'
 import { useClips } from '@/features/clips/clips'
 import { errorMessage, ipc } from '@/ipc'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
-import type { FileState, GitEntry, GitStatus } from '@/types/beacon'
+import type { AgentKind, Checkout, FileState, GitEntry, GitStatus } from '@/types/beacon'
 import { noNotices, reduceNotices, type Notices } from './notices'
 import { remoteActions } from './remote'
 import { createRequestSequence } from './requestSequence'
@@ -46,13 +46,35 @@ type DiffState =
  * Anything more involved is what the terminal panel is for; Beacon is not
  * trying to be a git client.
  */
+/// Your checkout, then each agent's, then back.
+///
+/// A cycle rather than a menu because there are three of them at most and a
+/// menu for three is a menu nobody opens.
+export function nextCheckout(current: AgentKind | undefined): AgentKind | undefined {
+  const order: Array<AgentKind | undefined> = [undefined, 'claude', 'codex']
+  const at = order.indexOf(current)
+  return order[(at + 1) % order.length]
+}
+
 export function GitPane({
   workspaceId,
   projectId,
+  /** Whether this project keeps a checkout per agent, so there is a choice. */
+  separateCheckouts,
 }: {
   workspaceId: string
   projectId: string
+  separateCheckouts: boolean
 }): React.ReactElement {
+  // Which checkout this panel is reading. The project's own unless somebody
+  // asks, and never remembered across a restart: coming back to a window that
+  // is quietly showing an agent's branch instead of your own is exactly the
+  // confusion this feature could cause.
+  const [agent, setAgent] = useState<AgentKind | undefined>(undefined)
+  const at = useMemo<Checkout>(
+    () => ({ workspaceId, projectId, agent: separateCheckouts ? agent : undefined }),
+    [workspaceId, projectId, agent, separateCheckouts],
+  )
   const missingGit = useBeacon((s) => s.missing.find((entry) => entry.id === 'git'))
   const overlay = useBeacon((s) => s.overlay)
   const clipDrawerOpen = useClips((s) => s.open)
@@ -104,7 +126,7 @@ export function GitPane({
     const request = gitRequests.current.begin()
 
     try {
-      const next = await ipc.gitStatus(workspaceId, projectId)
+      const next = await ipc.gitStatus(at)
       if (!gitRequests.current.isCurrent(request)) return false
       applyStatus(next)
       notify({ type: 'pollSucceeded' })
@@ -114,7 +136,7 @@ export function GitPane({
       notify({ type: 'pollFailed', text: errorMessage(err) })
       return false
     }
-  }, [applyStatus, workspaceId, projectId])
+  }, [applyStatus, at])
 
   useEffect(() => {
     gitRequests.current.invalidate()
@@ -173,7 +195,7 @@ export function GitPane({
     }
 
     ipc
-      .gitDiff(workspaceId, projectId, selected.path, selected.staged, selected.untracked)
+      .gitDiff(at, selected.path, selected.staged, selected.untracked)
       .then((text) => settle({ identity: diffIdentity, status: 'ready', text }))
       .catch((err: unknown) =>
         settle({ identity: diffIdentity, status: 'error', message: errorMessage(err) }),
@@ -289,7 +311,7 @@ export function GitPane({
   const commit = async (): Promise<void> => {
     if (busyRef.current || !message.trim() || !canCommit) return
     const submittedMessage = message
-    const succeeded = await act(() => ipc.gitCommit(workspaceId, projectId, submittedMessage))
+    const succeeded = await act(() => ipc.gitCommit(at, submittedMessage))
     if (succeeded) {
       setMessage((current) => (current === submittedMessage ? '' : current))
     }
@@ -314,6 +336,24 @@ export function GitPane({
       }}
     >
       <div className={styles['branchBar']}>
+        {/* The indicator is the control. Which checkout you are reading is
+            something you have to be able to see at all times, so the thing
+            that tells you is the thing you press — no extra chrome, and no
+            way to be looking at an agent's branch without knowing it.
+
+            Only when there is a choice: a project whose agents share this
+            directory has exactly one checkout, and a picker offering one
+            option is noise. */}
+        {separateCheckouts ? (
+          <button
+            type="button"
+            className={styles['checkout']}
+            title="Which checkout this panel is reading"
+            onClick={() => setAgent(nextCheckout(agent))}
+          >
+            {agent ? `${agent}'s copy` : 'Your copy'}
+          </button>
+        ) : null}
         <span className={styles['branch']}>{status.branch ?? 'detached'}</span>
         {status.ahead > 0 || status.behind > 0 ? (
           <span className={styles['tracking']}>
@@ -344,7 +384,7 @@ export function GitPane({
           className={styles['action']}
           title={remote.reason ?? 'Pull, fast-forward only'}
           disabled={busy || !remote.canPull}
-          onClick={() => void act(() => ipc.gitPull(workspaceId, projectId))}
+          onClick={() => void act(() => ipc.gitPull(at))}
         >
           Pull
         </button>
@@ -353,7 +393,7 @@ export function GitPane({
           className={styles['action']}
           title={remote.reason ?? 'Push this branch'}
           disabled={busy || !remote.canPush}
-          onClick={() => void act(() => ipc.gitPush(workspaceId, projectId))}
+          onClick={() => void act(() => ipc.gitPush(at))}
         >
           Push
         </button>
@@ -391,8 +431,8 @@ export function GitPane({
                 onClick={() =>
                   void act(() =>
                     selected.staged
-                      ? ipc.gitUnstage(workspaceId, projectId, selected.path)
-                      : ipc.gitStage(workspaceId, projectId, selected.path),
+                      ? ipc.gitUnstage(at, selected.path)
+                      : ipc.gitStage(at, selected.path),
                   )
                 }
               >
@@ -443,7 +483,7 @@ export function GitPane({
                     label: '✓',
                     title: 'Mark resolved',
                     onAction: () =>
-                      void act(() => ipc.gitStage(workspaceId, projectId, entry.path)),
+                      void act(() => ipc.gitStage(at, entry.path)),
                   }}
                 />
               ))}
@@ -469,7 +509,7 @@ export function GitPane({
                     label: '−',
                     title: 'Unstage',
                     onAction: () =>
-                      void act(() => ipc.gitUnstage(workspaceId, projectId, entry.path)),
+                      void act(() => ipc.gitUnstage(at, entry.path)),
                   }}
                 />
               ))}
@@ -485,7 +525,7 @@ export function GitPane({
                   type="button"
                   className={styles['action']}
                   disabled={busy}
-                  onClick={() => void act(() => ipc.gitStageAll(workspaceId, projectId))}
+                  onClick={() => void act(() => ipc.gitStageAll(at))}
                 >
                   Stage all
                 </button>
@@ -510,7 +550,7 @@ export function GitPane({
                   action={{
                     label: '+',
                     title: 'Stage',
-                    onAction: () => void act(() => ipc.gitStage(workspaceId, projectId, entry.path)),
+                    onAction: () => void act(() => ipc.gitStage(at, entry.path)),
                   }}
                 />
               ))}

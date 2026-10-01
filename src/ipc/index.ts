@@ -19,6 +19,7 @@ import type {
   Requirement,
   Integration,
   ClaudeCapabilities,
+  Checkout,
   CodexIntegration,
   Workstreams,
   OpenedWorkstream,
@@ -338,34 +339,23 @@ export const ipc = {
   // ---- git ----
 
   /** `null` when the project is not a repository, which is not an error. */
-  gitStatus: (workspaceId: string, projectId: string) =>
-    invoke<GitStatus | null>('git_status', { workspaceId, projectId }),
+  gitStatus: (at: Checkout) => invoke<GitStatus | null>('git_status', { ...at }),
 
-  gitDiff: (
-    workspaceId: string,
-    projectId: string,
-    path: string,
-    staged: boolean,
-    untracked: boolean,
-  ) => invoke<string>('git_diff', { workspaceId, projectId, path, staged, untracked }),
+  gitDiff: (at: Checkout, path: string, staged: boolean, untracked: boolean) =>
+    invoke<string>('git_diff', { ...at, path, staged, untracked }),
 
-  gitStage: (workspaceId: string, projectId: string, path: string) =>
-    invoke<GitStatus>('git_stage', { workspaceId, projectId, path }),
+  gitStage: (at: Checkout, path: string) => invoke<GitStatus>('git_stage', { ...at, path }),
 
-  gitUnstage: (workspaceId: string, projectId: string, path: string) =>
-    invoke<GitStatus>('git_unstage', { workspaceId, projectId, path }),
+  gitUnstage: (at: Checkout, path: string) => invoke<GitStatus>('git_unstage', { ...at, path }),
 
-  gitStageAll: (workspaceId: string, projectId: string) =>
-    invoke<GitStatus>('git_stage_all', { workspaceId, projectId }),
+  gitStageAll: (at: Checkout) => invoke<GitStatus>('git_stage_all', { ...at }),
 
-  gitCommit: (workspaceId: string, projectId: string, message: string) =>
-    invoke<GitStatus>('git_commit', { workspaceId, projectId, message }),
+  gitCommit: (at: Checkout, message: string) =>
+    invoke<GitStatus>('git_commit', { ...at, message }),
 
-  gitPush: (workspaceId: string, projectId: string) =>
-    invoke<string>('git_push', { workspaceId, projectId }),
+  gitPush: (at: Checkout) => invoke<string>('git_push', { ...at }),
 
-  gitPull: (workspaceId: string, projectId: string) =>
-    invoke<string>('git_pull', { workspaceId, projectId }),
+  gitPull: (at: Checkout) => invoke<string>('git_pull', { ...at }),
 }
 
 /** Native folder picker. Resolves to `null` when the user cancels. */

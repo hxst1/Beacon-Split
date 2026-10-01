@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::agent::AgentKind;
 use crate::appearance::Appearance;
 use crate::detect::{ProjectKind, detect_kinds, suggest_name};
 use crate::domain::{Project, ProjectId, Workspace, WorkspaceId, WorkspacesFile, normalize_accent};
@@ -240,6 +241,38 @@ impl Beacon {
             .ok_or_else(|| CoreError::ProjectNotFound(project.to_string()))?
             .path
             .resolve(&home))
+    }
+
+    /// The checkout the git panel is being pointed at.
+    ///
+    /// `None` is the project's own directory, which is where everything looks
+    /// unless somebody asks otherwise. `Some(agent)` is that agent's worktree,
+    /// for reading what it has done — and it falls back to the project when
+    /// this project does not keep separate checkouts, so a stale selection
+    /// shows the user's own work rather than failing.
+    ///
+    /// Deliberately not used by the file tree or the editor. A file there is
+    /// identified by its path relative to the project, so repointing the root
+    /// under them would make saving write the same relative path into a
+    /// different checkout — the one silent way this feature could lose
+    /// somebody's work.
+    pub fn checkout_root(
+        &self,
+        workspace: &WorkspaceId,
+        project: &ProjectId,
+        agent: Option<AgentKind>,
+    ) -> Result<PathBuf> {
+        let root = self.resolve_project_path(workspace, project)?;
+        let Some(agent) = agent else {
+            return Ok(root);
+        };
+
+        let separate = self
+            .workspace(workspace)?
+            .project(project)
+            .is_some_and(|project| project.agent_worktrees);
+
+        crate::worktrees::root_for(&root, project, agent, separate)
     }
 
     /// Where a session for this kind should start.

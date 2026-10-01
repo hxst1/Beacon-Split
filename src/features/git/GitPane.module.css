@@ -315,3 +315,20 @@
 .removed { color: var(--danger); background: color-mix(in oklab, var(--danger) 8%, transparent); }
 .hunk { color: var(--fg-4); background: var(--surface-1); }
 .meta { color: var(--fg-4); }
+
+/* Which checkout the panel is reading. Quiet until it is not the user's own,
+   because "your copy" is the answer nobody needs to be told twice. */
+.checkout {
+  padding: 2px 7px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--fg) 8%, transparent);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.checkout:hover {
+  background: color-mix(in oklab, var(--fg) 14%, transparent);
+  color: var(--fg);
+}

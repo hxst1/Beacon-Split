@@ -11,7 +11,8 @@ export function GitPanel({
 }): React.ReactElement {
   return (
     <Panel id="git" title="Git" subtitle={project.name}>
-      <GitPane key={project.id} workspaceId={workspaceId} projectId={project.id} />
+      <GitPane
+      separateCheckouts={project.agentWorktrees} key={project.id} workspaceId={workspaceId} projectId={project.id} />
     </Panel>
   )
 }

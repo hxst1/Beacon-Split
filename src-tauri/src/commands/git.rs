@@ -1,3 +1,4 @@
+use beacon_core::agent::AgentKind;
 use beacon_core::domain::{ProjectId, WorkspaceId};
 use beacon_core::git::{self, GitStatus};
 use tauri::State;
@@ -19,10 +20,11 @@ pub async fn git_status(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
 ) -> CommandResult<Option<GitStatus>> {
     let root = state
         .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
+        .checkout_root(&workspace_id, &project_id, agent)?;
     run_off_thread(move || {
         if !git::is_repository(&root) {
             return Ok(None);
@@ -37,13 +39,14 @@ pub async fn git_diff(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
     path: String,
     staged: bool,
     untracked: bool,
 ) -> CommandResult<String> {
     let root = state
         .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
+        .checkout_root(&workspace_id, &project_id, agent)?;
     run_off_thread(move || git::diff(&root, &path, staged, untracked)).await
 }
 
@@ -52,11 +55,12 @@ pub async fn git_stage(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
     path: String,
 ) -> CommandResult<GitStatus> {
     let root = state
         .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
+        .checkout_root(&workspace_id, &project_id, agent)?;
     run_off_thread(move || {
         git::stage(&root, &path)?;
         git::status(&root)
@@ -69,11 +73,12 @@ pub async fn git_unstage(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
     path: String,
 ) -> CommandResult<GitStatus> {
     let root = state
         .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
+        .checkout_root(&workspace_id, &project_id, agent)?;
     run_off_thread(move || {
         git::unstage(&root, &path)?;
         git::status(&root)
@@ -86,10 +91,11 @@ pub async fn git_stage_all(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
 ) -> CommandResult<GitStatus> {
     let root = state
         .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
+        .checkout_root(&workspace_id, &project_id, agent)?;
     run_off_thread(move || {
         git::stage_all(&root)?;
         git::status(&root)
@@ -107,11 +113,12 @@ pub async fn git_commit(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
     message: String,
 ) -> CommandResult<GitStatus> {
     let root = state
         .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
+        .checkout_root(&workspace_id, &project_id, agent)?;
     // The message is the user's; nothing here logs it.
     run_off_thread(move || {
         git::commit(&root, &message)?;
@@ -132,10 +139,11 @@ pub async fn git_push(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
 ) -> CommandResult<String> {
     let root = state
         .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
+        .checkout_root(&workspace_id, &project_id, agent)?;
     run_off_thread(move || git::push(&root)).await
 }
 
@@ -144,10 +152,11 @@ pub async fn git_pull(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
+    agent: Option<AgentKind>,
 ) -> CommandResult<String> {
     let root = state
         .beacon()
-        .resolve_project_path(&workspace_id, &project_id)?;
+        .checkout_root(&workspace_id, &project_id, agent)?;
     run_off_thread(move || git::pull(&root)).await
 }
 
