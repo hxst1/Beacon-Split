@@ -660,7 +660,7 @@ function SystemPermission(): React.ReactElement {
           </button>
         ) : null}
 
-        <button type="button" className={styles['revert']} onClick={() => void test()}>
+        <button type="button" className={styles['secondary']} onClick={() => void test()}>
           Send a test notification
         </button>
 
