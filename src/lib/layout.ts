@@ -92,6 +92,14 @@ export function panelsOf(node: LayoutNode): PanelId[] {
 export const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value))
 
+/**
+ * The panels that run an agent.
+ *
+ * A layout must keep one of them: a window with no agent in it is what is left
+ * when somebody puts away the one they were using to reach the other.
+ */
+export const AGENT_PANELS = ['claude', 'codex'] as const satisfies readonly PanelId[]
+
 export const PANEL_LABELS: Record<PanelId, string> = {
   claude: 'Claude',
   codex: 'Codex',
