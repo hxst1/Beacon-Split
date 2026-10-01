@@ -907,7 +907,8 @@ kbd {
 
 /* ── install ──────────────────────────────────────────────────────── */
 
-.dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 14px; margin-top: 42px; max-width: 720px; }
+/* Wide enough for the three builds — two for macOS, one for Windows — in one row. */
+.dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 14px; margin-top: 42px; max-width: 900px; }
 .dlc {
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 16px;
   padding: 20px 22px;
