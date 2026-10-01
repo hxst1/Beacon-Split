@@ -63,8 +63,33 @@ fn set_frosted<R: Runtime>(window: &tauri::WebviewWindow<R>, frosted: bool) {
     }
 }
 
+/// Windows 11's Mica, the material its own applications use behind their
+/// windows.
+///
+/// Mica rather than acrylic, which is the closer match to what macOS does —
+/// acrylic frosts whatever is behind the window, Mica tints with the desktop
+/// wallpaper — because acrylic lags the window by a frame or more while it is
+/// dragged or resized, and a window that smears as it moves is worse than one
+/// that is merely a little different. Windows 10 has no Mica; the call says so
+/// and the window stays sharp.
+#[cfg(target_os = "windows")]
+fn set_frosted<R: Runtime>(window: &tauri::WebviewWindow<R>, frosted: bool) {
+    let outcome = if frosted {
+        // `None` follows the system's light or dark setting, as the rest of
+        // the material does.
+        window_vibrancy::apply_mica(window, None)
+    } else {
+        window_vibrancy::clear_mica(window)
+    };
+
+    match outcome {
+        Ok(()) => tracing::info!(frosted, "window frosting set"),
+        Err(err) => tracing::warn!(error = %err, frosted, "could not set the window frosting"),
+    }
+}
+
 /// No window server here offers this yet.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn set_frosted<R: Runtime>(_window: &tauri::WebviewWindow<R>, frosted: bool) {
     if frosted {
         tracing::info!("frosting is not available on this platform; leaving the window sharp");

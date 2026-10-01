@@ -111,6 +111,19 @@ fn an_untracked_file_still_has_a_diff_to_show() {
     assert!(diff.contains("+fresh"), "got: {diff}");
 }
 
+/// `core.autocrlf` — on by default in Git for Windows — makes git warn on
+/// stderr that a new file's line endings will change. A warning is not a
+/// failure to read the file, and the diff must still be shown.
+#[test]
+fn an_untracked_file_still_has_a_diff_when_git_warns_about_line_endings() {
+    let dir = repository();
+    git_raw(dir.path(), &["config", "core.autocrlf", "true"]);
+    std::fs::write(dir.path().join("unix.ts"), "written with a newline\n").unwrap();
+
+    let diff = git::diff(dir.path(), "unix.ts", false, true).unwrap();
+    assert!(diff.contains("+written with a newline"), "got: {diff}");
+}
+
 #[test]
 fn a_rename_is_reported_with_where_it_came_from() {
     let dir = repository();

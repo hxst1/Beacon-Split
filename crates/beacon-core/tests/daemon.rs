@@ -60,6 +60,12 @@ impl Recorder {
     }
 }
 
+/// The key a terminal sends for Enter, as a test typing into a shell has to.
+///
+/// A unix pty turns a newline into one anyway; a Windows pseudo-console takes
+/// a bare newline as the line continuing, and the command never runs.
+const ENTER: &str = if cfg!(windows) { "\r" } else { "\n" };
+
 fn wait_for(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
@@ -76,7 +82,43 @@ fn wait_for(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
 /// Never the default one: running the tests must not be able to reach — or shut
 /// down — a daemon somebody is actually working in.
 fn private_socket(dir: &std::path::Path) -> PathBuf {
-    dir.join("daemon.sock")
+    dir.join(beacon_core::transport::SOCKET_FILE)
+}
+
+/// Stops whatever daemon is listening on a test's socket when the test ends,
+/// however it ends.
+///
+/// A daemon outlives its clients by design, so without this every test left
+/// one behind until the idle timeout — five of them a run, for five minutes
+/// each. Elsewhere that is only clutter; on Windows a running daemon also
+/// locks the binary the next build has to replace.
+///
+/// Declared after the test's temporary directory, so it is dropped first and
+/// the socket it reaches through is still there.
+struct StopsTheDaemon(PathBuf);
+
+impl Drop for StopsTheDaemon {
+    fn drop(&mut self) {
+        use std::io::{Read, Write};
+
+        let Ok(mut stream) = beacon_core::transport::LocalStream::connect(&self.0) else {
+            return;
+        };
+        let envelope = beacon_core::protocol::Envelope {
+            id: 0,
+            request: beacon_core::protocol::Request::Shutdown {},
+        };
+        let mut line = serde_json::to_string(&envelope).expect("an envelope serialises");
+        line.push('\n');
+        if stream.write_all(line.as_bytes()).is_err() {
+            return;
+        }
+        // Read until the daemon hangs up, so the next test never starts
+        // while this one's daemon is still going.
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+        let mut rest = Vec::new();
+        let _ = stream.read_to_end(&mut rest);
+    }
 }
 
 /// A daemon of this test's own, with a configuration directory of its own.
@@ -100,10 +142,10 @@ fn daemon_with_private_config(
     // The client connects to whatever is already listening, so it has to be
     // listening before the client is built or it would start a second one —
     // with the real configuration.
-    let socket = socket_dir.join("daemon.sock");
+    let socket = socket_dir.join(beacon_core::transport::SOCKET_FILE);
     assert!(
         wait_for(Duration::from_secs(10), || {
-            std::os::unix::net::UnixStream::connect(&socket).is_ok()
+            beacon_core::transport::LocalStream::connect(&socket).is_ok()
         }),
         "the private daemon never started listening"
     );
@@ -119,7 +161,7 @@ fn daemon_binary() -> PathBuf {
     if dir.ends_with("deps") {
         dir.pop();
     }
-    dir.join("beacon-daemon")
+    dir.join(format!("beacon-daemon{}", std::env::consts::EXE_SUFFIX))
 }
 
 #[test]
@@ -131,6 +173,7 @@ fn a_session_outlives_the_client_that_started_it() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let project = ProjectId::generate();
 
     // First client: start a shell and leave a mark in it.
@@ -154,7 +197,9 @@ fn a_session_outlives_the_client_that_started_it() {
             )
             .expect("should start a session");
 
-        client.write(&session.id, "echo bea''con-lives\n").unwrap();
+        client
+            .write(&session.id, &format!("echo bea''con-lives{ENTER}"))
+            .unwrap();
 
         assert!(
             wait_for(Duration::from_secs(15), || first
@@ -208,7 +253,9 @@ fn a_session_outlives_the_client_that_started_it() {
     assert!(end_offset > 0);
 
     // And it is still a live shell, not a recording.
-    client.write(&session.id, "echo still''-here\n").unwrap();
+    client
+        .write(&session.id, &format!("echo still''-here{ENTER}"))
+        .unwrap();
     assert!(
         wait_for(Duration::from_secs(15), || second
             .text()
@@ -236,6 +283,7 @@ fn closing_a_project_stops_its_sessions_but_not_the_daemon() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let recorder = Arc::new(Recorder::default());
     let client = DaemonClient::connect_at(
         &binary,
@@ -293,6 +341,7 @@ fn the_client_gets_itself_back_after_the_daemon_is_replaced() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let recorder = Arc::new(Recorder::default());
     let client = DaemonClient::connect_at(
         &binary,
@@ -365,6 +414,7 @@ fn a_clip_travels_from_the_mcp_server_to_the_window_and_to_disk() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let config = tempfile::tempdir().unwrap();
     let socket = private_socket(dir.path());
 
@@ -532,6 +582,7 @@ fn a_claude_hook_reaches_the_window() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let socket = private_socket(dir.path());
     let recorder = Arc::new(Recorder::default());
     let client = DaemonClient::connect_at(
@@ -630,12 +681,15 @@ fn a_hook_outside_beacon_does_nothing_at_all() {
 /// pane the daemon went away, and there is no daemon going away here.
 #[test]
 fn a_daemon_from_another_version_is_replaced_without_a_word() {
+    use beacon_core::transport::LocalListener;
     use std::io::{BufRead, BufReader, Write};
-    use std::os::unix::net::UnixListener;
 
     let dir = tempfile::tempdir().unwrap();
+    // Under load the stand-in can be slow enough to answer that the client starts
+    // a real daemon instead, which must not outlive the test either.
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
     let socket = private_socket(dir.path());
-    let listener = UnixListener::bind(&socket).expect("the stand-in should bind");
+    let listener = LocalListener::bind(&socket).expect("the stand-in should bind");
 
     // Two connections on one socket: the first speaks last version's protocol
     // and hangs up when asked to stop, the second is the daemon that replaced
@@ -646,7 +700,7 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
     ];
     let stand_in = std::thread::spawn(move || {
         for version in versions {
-            let Ok((stream, _)) = listener.accept() else {
+            let Some(Ok(stream)) = listener.incoming().next() else {
                 return;
             };
             let mut writer = stream.try_clone().expect("a writable half");

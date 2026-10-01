@@ -73,6 +73,7 @@ pub fn run() {
             commands::set_active_project,
             commands::reveal_project,
             commands::host_platform,
+            commands::windows_build,
             commands::report_frontend_error,
             commands::list_dir,
             commands::read_file,

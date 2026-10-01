@@ -338,9 +338,8 @@ impl Beacon {
         }
 
         let home = self.projects_home();
-        let canonical = absolute_path
-            .canonicalize()
-            .map_err(|err| CoreError::io(absolute_path, err))?;
+        let canonical =
+            dunce::canonicalize(absolute_path).map_err(|err| CoreError::io(absolute_path, err))?;
         let stored = ProjectPath::from_absolute(&canonical, &home);
 
         let workspace = self.workspace_mut(workspace_id)?;

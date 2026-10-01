@@ -78,16 +78,14 @@ pub fn resolve_within(root: &Path, relative: &str) -> Result<PathBuf> {
         return Err(CoreError::invalid("path must stay inside the project"));
     }
 
-    let root = root
-        .canonicalize()
-        .map_err(|err| CoreError::io(root, err))?;
+    let root = dunce::canonicalize(root).map_err(|err| CoreError::io(root, err))?;
     let joined = root.join(candidate);
 
     // The target may not exist yet — creating a file is a normal case — so the
     // deepest existing ancestor is what gets checked.
     let mut existing = joined.as_path();
     let resolved = loop {
-        match existing.canonicalize() {
+        match dunce::canonicalize(existing) {
             Ok(path) => break path,
             Err(_) => match existing.parent() {
                 Some(parent) => existing = parent,
@@ -119,9 +117,7 @@ fn relative_of(root: &Path, path: &Path) -> String {
 pub fn list_dir(root: &Path, relative: &str) -> Result<Vec<DirEntry>> {
     let dir = resolve_within(root, relative)?;
     let reader = std::fs::read_dir(&dir).map_err(|err| CoreError::io(&dir, err))?;
-    let root = root
-        .canonicalize()
-        .map_err(|err| CoreError::io(root, err))?;
+    let root = dunce::canonicalize(root).map_err(|err| CoreError::io(root, err))?;
 
     let mut entries = Vec::new();
     for entry in reader {
@@ -383,7 +379,7 @@ fn is_same_entry(a: &Path, b: &Path) -> bool {
 
 #[cfg(not(unix))]
 fn is_same_entry(a: &Path, b: &Path) -> bool {
-    match (a.canonicalize(), b.canonicalize()) {
+    match (dunce::canonicalize(a), dunce::canonicalize(b)) {
         (Ok(a), Ok(b)) => a == b,
         _ => false,
     }
@@ -398,9 +394,7 @@ pub fn duplicate(root: &Path, relative: &str) -> Result<String> {
     let target = available_name(parent, &source);
 
     copy_path(&source, &target)?;
-    let root = root
-        .canonicalize()
-        .map_err(|err| CoreError::io(root, err))?;
+    let root = dunce::canonicalize(root).map_err(|err| CoreError::io(root, err))?;
     Ok(relative_of(&root, &target))
 }
 
@@ -422,9 +416,7 @@ pub fn copy_into(root: &Path, source_relative: &str, target_dir: &str) -> Result
     }
 
     copy_path(&source, &target)?;
-    let root = root
-        .canonicalize()
-        .map_err(|err| CoreError::io(root, err))?;
+    let root = dunce::canonicalize(root).map_err(|err| CoreError::io(root, err))?;
     Ok(relative_of(&root, &target))
 }
 
@@ -523,9 +515,7 @@ pub fn list_project_files(root: &Path) -> Result<Vec<String>> {
         // A repository git refuses to read is still a folder we can walk.
     }
 
-    let root = root
-        .canonicalize()
-        .map_err(|err| CoreError::io(root, err))?;
+    let root = dunce::canonicalize(root).map_err(|err| CoreError::io(root, err))?;
     let mut found = Vec::new();
     walk(&root, &root, &mut found);
     found.sort();
@@ -608,6 +598,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_symlink_pointing_outside_the_project_is_refused() {
         let dir = project();

@@ -77,15 +77,29 @@ fn a_session_does_not_inherit_the_launchers_state() {
         .unwrap();
 
     // The markers are split across printf arguments so the shell echoing the
-    // command back does not itself look like the answer.
-    let probe = concat!(
-        "printf 'pr%s=[%s] si%s=[%s] chi%s=[%s] tok%s=[%s] ba%s=[%s]\\n' ",
-        "og \"$TERM_PROGRAM\" ",
-        "d \"$TERM_SESSION_ID\" ",
-        "ld \"$CLAUDE_CODE_CHILD_SESSION\" ",
-        "en \"$CLAUDE_CODE_MESSAGING_TOKEN\" ",
-        "se \"$ANTHROPIC_BASE_URL\"\n",
-    );
+    // command back does not itself look like the answer. On Windows the shell
+    // is PowerShell, which says the same thing in its own words, and Enter is
+    // the carriage return a terminal actually sends: a pseudo-console takes a
+    // bare newline as the line continuing.
+    let probe = if cfg!(windows) {
+        concat!(
+            "'pr{0}=[{1}] si{2}=[{3}] chi{4}=[{5}] tok{6}=[{7}] ba{8}=[{9}]' -f ",
+            "'og',$env:TERM_PROGRAM,",
+            "'d',$env:TERM_SESSION_ID,",
+            "'ld',$env:CLAUDE_CODE_CHILD_SESSION,",
+            "'en',$env:CLAUDE_CODE_MESSAGING_TOKEN,",
+            "'se',$env:ANTHROPIC_BASE_URL\r",
+        )
+    } else {
+        concat!(
+            "printf 'pr%s=[%s] si%s=[%s] chi%s=[%s] tok%s=[%s] ba%s=[%s]\\n' ",
+            "og \"$TERM_PROGRAM\" ",
+            "d \"$TERM_SESSION_ID\" ",
+            "ld \"$CLAUDE_CODE_CHILD_SESSION\" ",
+            "en \"$CLAUDE_CODE_MESSAGING_TOKEN\" ",
+            "se \"$ANTHROPIC_BASE_URL\"\n",
+        )
+    };
     manager.write(&id, probe.as_bytes()).unwrap();
 
     assert!(

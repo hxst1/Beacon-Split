@@ -221,8 +221,8 @@ billable session by itself.
 
 ## Milestone 9 — Handing it to someone else 🚧
 
-macOS first; Arch Linux is next and has never been built, so nothing here claims
-it works there.
+macOS first, and now Windows; Arch Linux is next and has never been built, so
+nothing here claims it works there.
 
 Done:
 
@@ -239,12 +239,23 @@ Done:
   an infinite render loop that unmounted the whole tree, leaving a blank window
   with no clue in it. Uncaught render errors now reach the backend log
 
+- Windows 10 and 11, x64. What it took is in ADR-072 to ADR-075: the daemon is
+  reached over loopback TCP with a token, because AF_UNIX dies in the Winsock
+  provider chain of a typical company laptop; hooks are registered in exec form;
+  a pseudo-console's opening cursor query is answered by the daemon and its exit
+  watched for directly; the window draws its own caption buttons and frosts with
+  Mica. Programs are found on the PATH rather than through a login shell, and
+  npm's `.cmd` shims are looked through to the program they start. The whole
+  test suite runs on Windows, and CI runs it on both platforms
+
 Remaining:
 
 - Signing and notarisation, which needs an Apple Developer membership
 - A universal build; today's is Apple Silicon only
+- Code-signing the Windows installer, so SmartScreen stops warning about it
 - Linux: build it, condition the window configuration by platform — vibrancy and
-  the overlay title bar are macOS-only — and document the system dependencies
+  the overlay title bar are macOS-only — and document the system dependencies.
+  Windows already has its own window configuration to follow
 
 ## Milestone 10 — Appearance ✅
 

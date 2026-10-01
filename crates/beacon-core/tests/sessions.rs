@@ -29,6 +29,10 @@ impl Recorder {
     }
 }
 
+/// The key a terminal sends for Enter. A unix pty turns a newline into one
+/// anyway; a Windows pseudo-console takes a bare newline as the line going on.
+const ENTER: &str = if cfg!(windows) { "\r" } else { "\n" };
+
 /// Polls until `predicate` holds, so tests do not depend on a fixed sleep.
 fn wait_for(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + timeout;
@@ -52,7 +56,11 @@ fn a_shell_session_runs_commands_and_reports_output() {
         .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
         .expect("session should start");
 
-    manager.write(&id, b"echo beacon-ok\n").unwrap();
+    // Split by an empty quote, so the shell echoing what was typed is not
+    // mistaken for the command having run.
+    manager
+        .write(&id, format!("echo beacon''-ok{ENTER}").as_bytes())
+        .unwrap();
 
     assert!(
         wait_for(Duration::from_secs(10), || recorder
@@ -114,6 +122,45 @@ fn closing_a_session_reports_it_gone() {
             .is_empty()),
         "the reader thread should report the exit"
     );
+}
+
+/// A shell that ends by itself — `exit` typed into it — is reported gone, and
+/// only once. Elsewhere that is the pty closing. On Windows the
+/// pseudo-console's output outlives the process, so it comes from waiting on
+/// the process instead; the reader reaching the end later must not say it
+/// again.
+#[test]
+fn a_shell_that_exits_by_itself_is_reported_once() {
+    let recorder = Arc::new(Recorder::default());
+    let manager = SessionManager::new(Arc::clone(&recorder) as Arc<dyn SessionEvents>);
+    let dir = tempfile::tempdir().unwrap();
+    let project = ProjectId::generate();
+
+    let id = manager
+        .ensure(&project, SessionKind::Shell, 0, dir.path(), (80, 24), None)
+        .unwrap();
+    manager
+        .write(&id, format!("exit{ENTER}").as_bytes())
+        .unwrap();
+
+    let reported = || {
+        recorder
+            .exits
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|exited| **exited == id)
+            .count()
+    };
+    assert!(
+        wait_for(Duration::from_secs(10), || reported() > 0),
+        "a shell that exited was never reported gone; saw: {:?}",
+        recorder.text()
+    );
+
+    drop(manager);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(reported(), 1, "the exit was reported more than once");
 }
 
 #[test]

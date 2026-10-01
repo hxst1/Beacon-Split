@@ -179,17 +179,18 @@ const fillDownloads = async (dl) => {
   const assets = Array.isArray(release.assets) ? release.assets : [];
   if (!version || assets.length === 0) return;
 
-  for (const card of dl.querySelectorAll('[data-dl-asset]')) {
+  for (const card of dl.querySelectorAll('[data-dl-suffix]')) {
     // Matched on the suffix the build produces rather than on the whole name,
-    // which carries the version and would need this to know it in advance.
-    const suffix = `_${card.dataset.dlAsset}.dmg`;
+    // which carries the version and would need this to know it in advance:
+    // `_aarch64.dmg` and `_x64.dmg` for macOS, `_x64-setup.exe` for Windows.
+    const suffix = card.dataset.dlSuffix;
     const asset = assets.find((a) => typeof a.name === 'string' && a.name.endsWith(suffix));
     if (!asset?.browser_download_url) continue;
 
     card.href = asset.browser_download_url;
     const size = card.querySelector('[data-dl-size]');
     if (size && typeof asset.size === 'number') {
-      size.textContent = `${(asset.size / 1024 / 1024).toFixed(1)} MB`;
+      size.textContent = ` · ${(asset.size / 1024 / 1024).toFixed(1)} MB`;
     }
   }
 

@@ -1,0 +1,42 @@
+/*
+ * The Windows caption buttons: full height of the bar, 46 pixels wide, flush
+ * against the right edge, with close turning red. Not a house style — what
+ * every application on the platform does, so a hand reaching for the corner
+ * finds what it expects.
+ */
+.controls {
+  display: flex;
+  align-self: stretch;
+  flex: none;
+  margin-left: 4px;
+}
+
+.button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  color: var(--fg-3);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.button svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.button:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}
+
+.button:active {
+  background: var(--surface-3);
+}
+
+.close:hover,
+.close:active {
+  background: #c42b1c;
+  color: #fff;
+}

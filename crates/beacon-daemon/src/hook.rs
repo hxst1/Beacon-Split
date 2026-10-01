@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 
 use beacon_core::domain::ProjectId;
 use beacon_core::protocol::{ClaudeActivity, Envelope, Request};
+use beacon_core::transport::LocalStream;
 
 /// Runs as a Claude Code hook and tells the daemon what the session is doing.
 ///
@@ -97,7 +97,7 @@ fn send(socket: &str, request: Request) -> Option<()> {
     })
     .ok()?;
 
-    let mut stream = UnixStream::connect(socket).ok()?;
+    let mut stream = LocalStream::connect(socket).ok()?;
     stream.write_all(line.as_bytes()).ok()?;
     stream.write_all(b"\n").ok()?;
     stream.flush().ok()?;

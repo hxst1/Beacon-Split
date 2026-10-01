@@ -6,7 +6,7 @@ import { ACCENT_PRESETS } from '@/lib/accent'
 import { applyAppearance } from '@/lib/appearance'
 import { PANEL_LABELS } from '@/lib/layout'
 import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
-import { modifierLabel } from '@/lib/platform'
+import { isMac, isWindows, modifierLabel } from '@/lib/platform'
 import { describePermission } from '@/features/notifications/copy'
 import { useNotificationPermission } from '@/features/notifications/permission'
 import { useWorkstreamsSupported } from '@/features/workstreams/capabilities'
@@ -20,6 +20,7 @@ import type {
   Requirement,
 } from '@/types/beacon'
 import { LayoutThumb } from './LayoutThumb'
+import { formatShell, parseShell } from './shell'
 import styles from './SettingsScreen.module.css'
 
 type SectionId =
@@ -271,8 +272,8 @@ function RequirementsSection(): React.ReactElement {
       <h2 className={styles['sectionTitle']}>What Beacon needs</h2>
       <p className={styles['sectionNote']}>
         Beacon runs the tools you already have rather than bundling its own. Each is looked for
-        through your login shell, which is the same way a session finds it — so what this says is
-        what will actually happen.
+        {isWindows() ? ' on your PATH' : ' through your login shell'}, which is the same way a
+        session finds it — so what this says is what will actually happen.
       </p>
 
       {daemon === false ? (
@@ -466,7 +467,7 @@ function WorkspaceSection(): React.ReactElement {
         <h2 className={styles['sectionTitle']}>Projects</h2>
         <p className={styles['sectionNote']}>
           Projects under this folder are stored relative to it, so the same configuration works on
-          macOS and Linux. Projects elsewhere keep their absolute path.
+          macOS, Linux and Windows. Projects elsewhere keep their absolute path.
         </p>
         <div className={styles['rows']}>
           <div className={styles['row']}>
@@ -528,9 +529,9 @@ function KeyboardSection(): React.ReactElement {
       <h2 className={styles['sectionTitle']}>Shortcuts</h2>
       <p className={styles['sectionNote']}>
         Every shortcut includes the primary modifier — {modifierLabel()} here — so one table is
-        correct on macOS and Linux, and nothing fires while you are typing. Click a shortcut and
-        press the new one; Escape cancels. Jumping to a numbered tab is fixed, since the binding is
-        the number.
+        correct on macOS, Linux and Windows, and nothing fires while you are typing. Click a
+        shortcut and press the new one; Escape cancels. Jumping to a numbered tab is fixed, since
+        the binding is the number.
       </p>
 
       <div className={styles['rows']}>
@@ -610,7 +611,9 @@ function SystemPermission(): React.ReactElement {
   const test = async (): Promise<void> => {
     try {
       await ipc.sendNotification('Beacon Split', 'This is what a notification looks like.')
-      setTested('Sent. If nothing appeared, macOS is holding it back.')
+      setTested(
+        `Sent. If nothing appeared, ${isMac() ? 'macOS' : 'the system'} is holding it back.`,
+      )
     } catch (error) {
       setTested(String(error))
     }
@@ -663,12 +666,10 @@ function TerminalSection(): React.ReactElement {
   const setNotifications = useBeacon((s) => s.setNotifications)
   const [draft, setDraft] = useState<string | null>(null)
 
-  const value = draft ?? (shell ? [shell.program, ...shell.args].join(' ') : '')
+  const value = draft ?? (shell ? formatShell(shell) : '')
 
   const commit = (): void => {
-    const parts = value.trim().split(/\s+/).filter(Boolean)
-    const [program, ...args] = parts
-    void setShell(program ? { program, args } : null)
+    void setShell(parseShell(value))
     setDraft(null)
   }
 
@@ -676,16 +677,25 @@ function TerminalSection(): React.ReactElement {
     <>
       <section className={styles['section']}>
         <h2 className={styles['sectionTitle']}>Shell</h2>
-        <p className={styles['sectionNote']}>
-          Beacon is the terminal emulator, so this is a shell — zsh, fish, nu — and not another
-          one. Leave it empty for your account's shell, started as a login shell, which is what
-          every terminal does. Arguments go after the program.
-        </p>
+        {isWindows() ? (
+          <p className={styles['sectionNote']}>
+            Beacon is the terminal emulator, so this is a shell — PowerShell, Git Bash, cmd, nu —
+            and not another one. Leave it empty for PowerShell: version 7 when it is installed,
+            Windows PowerShell otherwise. Arguments go after the program; quote a path with spaces
+            in it.
+          </p>
+        ) : (
+          <p className={styles['sectionNote']}>
+            Beacon is the terminal emulator, so this is a shell — zsh, fish, nu — and not another
+            one. Leave it empty for your account's shell, started as a login shell, which is what
+            every terminal does. Arguments go after the program.
+          </p>
+        )}
 
         <input
           className={styles['command']}
           style={{ width: '100%' }}
-          placeholder={`Default: ${'$SHELL'} -l`}
+          placeholder={isWindows() ? 'Default: PowerShell -NoLogo' : `Default: ${'$SHELL'} -l`}
           spellCheck={false}
           value={value}
           onChange={(event) => setDraft(event.target.value)}

@@ -22,7 +22,7 @@ const editorTheme = (): Extension => EditorView.theme(
       fontSize: '12.5px',
     },
     '.cm-content': {
-      fontFamily: "'SF Mono', 'JetBrains Mono', Menlo, 'DejaVu Sans Mono', monospace",
+      fontFamily: "'SF Mono', 'JetBrains Mono', Menlo, 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace",
       padding: '8px 0',
       caretColor: 'var(--accent)',
     },
