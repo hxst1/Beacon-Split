@@ -104,7 +104,7 @@ Three things exist for that and are easy to break by accident:
 ## Keeping it honest
 
 The install section used to go stale one release after anybody touched it: the
-version, both `.dmg` links and both file sizes were hand-written against a
+version, download links and file sizes were hand-written against a
 specific tag. They are now filled in from the latest GitHub release by
 `main.js`, asked for only once the download section comes into view — this page
 says it has no telemetry, and reaching a third party on load for something most
@@ -113,6 +113,12 @@ visitors never scroll to would be a small lie.
 The written-out links are still real and still work; they are the floor for
 anyone with scripts blocked or the API rate-limited. **If they ever need
 editing by hand, the fetch is broken — fix that instead.**
+
+The contributor list follows the same rule. It is a lazy request to GitHub's
+contributors endpoint only when the section approaches the viewport, and its
+static fallback is the project's contributor graph. GitHub's count is commits
+to the default branch: a reproducible form of credit, not a measure of the
+value of anybody's work.
 
 What is still hand-written and does go stale:
 

@@ -179,10 +179,11 @@ const fillDownloads = async (dl) => {
   const assets = Array.isArray(release.assets) ? release.assets : [];
   if (!version || assets.length === 0) return;
 
-  for (const card of dl.querySelectorAll('[data-dl-asset]')) {
-    // Matched on the suffix the build produces rather than on the whole name,
-    // which carries the version and would need this to know it in advance.
-    const suffix = `_${card.dataset.dlAsset}.dmg`;
+  for (const card of dl.querySelectorAll('[data-dl-suffix]')) {
+    // Matched on the suffix each platform's build produces rather than on the
+    // whole name, which carries the version and would need this to know it.
+    const suffix = card.dataset.dlSuffix;
+    if (!suffix) continue;
     const asset = assets.find((a) => typeof a.name === 'string' && a.name.endsWith(suffix));
     if (!asset?.browser_download_url) continue;
 
@@ -220,6 +221,83 @@ if (downloads) {
       { rootMargin: '400px 0px' },
     );
     io.observe(downloads);
+  } else {
+    ask();
+  }
+}
+
+/* ── contributors ─────────────────────────────────────────────────── */
+
+/*
+ * A credit list belongs to the people who made the work, not to a manually
+ * maintained sentence that will be forgotten at the next merge. GitHub's
+ * contributors endpoint reports commits that reached the default branch; that
+ * is an honest, reproducible ranking, but deliberately not a claim about the
+ * value of any person's work.
+ */
+const fillContributors = async (section) => {
+  const repo = section.dataset.contributorsRepo;
+  const list = section.querySelector('.contributors__list');
+  if (!repo || !list) return;
+
+  const limit = Number.parseInt(section.dataset.contributorsLimit ?? '', 10) || 8;
+  const response = await fetch(`https://api.github.com/repos/${repo}/contributors?per_page=${limit}`, {
+    headers: { Accept: 'application/vnd.github+json' },
+  });
+  if (!response.ok) return;
+
+  const contributors = await response.json();
+  if (!Array.isArray(contributors) || contributors.length === 0) return;
+
+  const rows = contributors
+    .filter((contributor) =>
+      typeof contributor?.login === 'string' &&
+      typeof contributor?.html_url === 'string' &&
+      typeof contributor?.contributions === 'number',
+    )
+    .map((contributor, index) => {
+      const row = document.createElement('li');
+      row.className = 'contributor';
+
+      const rank = document.createElement('span');
+      rank.className = 'contributor__rank';
+      rank.textContent = String(index + 1);
+
+      const profile = document.createElement('a');
+      profile.className = 'contributor__profile';
+      profile.href = contributor.html_url;
+      profile.target = '_blank';
+      profile.rel = 'noopener';
+      profile.textContent = `@${contributor.login}`;
+
+      const count = document.createElement('span');
+      count.className = 'contributor__count';
+      count.textContent = `${contributor.contributions} ${contributor.contributions === 1 ? 'commit' : 'commits'}`;
+
+      row.append(rank, profile, count);
+      return row;
+    });
+
+  if (rows.length > 0) list.replaceChildren(...rows);
+};
+
+const contributorSection = document.querySelector('[data-contributors-repo]');
+
+if (contributorSection) {
+  // Like download metadata, this only asks GitHub once the visitor can see why
+  // it is being asked for. The fallback link remains useful with scripts off.
+  const ask = () => fillContributors(contributorSection).catch(() => {});
+
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        io.disconnect();
+        ask();
+      },
+      { rootMargin: '300px 0px' },
+    );
+    io.observe(contributorSection);
   } else {
     ask();
   }

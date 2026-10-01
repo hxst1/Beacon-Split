@@ -928,6 +928,19 @@ kbd {
 .dlc__i { grid-column: 2; grid-row: 1 / 3; color: var(--t-3); transition: color var(--dur-1) var(--ease); }
 .dlc:hover .dlc__i { color: var(--accent-lift); }
 
+.chip--agents { display: grid; gap: 1px; overflow: hidden; }
+.agentline {
+  display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 10px;
+  padding: 15px 17px; color: var(--t-3); font-size: 0.91rem;
+  border-bottom: 1px solid var(--line-1);
+}
+.agentline .st { width: 7px; height: 7px; }
+.agentline b { color: var(--t-1); font-weight: 600; }
+.agentline span { text-align: right; }
+.agentpath {
+  padding: 12px 17px; color: var(--t-3); font: 0.8rem var(--font-mono);
+}
+
 .gate {
   margin-top: 34px; padding: 24px;
   border-radius: var(--radius-lg);
@@ -1011,6 +1024,27 @@ kbd {
 .help__l li::marker { color: var(--t-4); font-variant-numeric: tabular-nums; }
 .help__l b { color: var(--t-1); font-weight: 600; }
 .help__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+
+/* ── contributors ─────────────────────────────────────────────────── */
+
+.contributors { margin-top: 56px; max-width: 720px; }
+.contributors .body { margin-top: 14px; }
+.contributors__list { margin-top: 28px; padding: 0; list-style: none; border-top: 1px solid var(--line-1); }
+.contributor {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 14px;
+  min-height: 54px; border-bottom: 1px solid var(--line-1);
+}
+.contributor__rank { color: var(--t-4); font: 0.82rem var(--font-mono); font-variant-numeric: tabular-nums; }
+.contributor__profile { color: var(--t-1); font-size: 0.96rem; font-weight: 600; text-decoration: none; }
+.contributor__profile:hover { color: var(--accent-lift); text-decoration: underline; text-underline-offset: 3px; }
+.contributor__count { color: var(--t-3); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.contributors__fallback { padding: 16px 0; border-bottom: 1px solid var(--line-1); }
+.contributors__fallback a { color: var(--accent-lift); text-underline-offset: 3px; }
+.contributors__note { margin-top: 14px; color: var(--t-3); font-size: 0.86rem; line-height: 1.55; }
+@media (max-width: 400px) {
+  .contributor { grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding-block: 10px; }
+  .contributor__count { grid-column: 2; }
+}
 
 /* ── footer ───────────────────────────────────────────────────────── */
 

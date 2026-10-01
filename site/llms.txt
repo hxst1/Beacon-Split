@@ -1,41 +1,50 @@
 # Beacon Split
 
-> A desktop workspace for working with several Claude Code sessions at once.
-> Each project gets a Claude session, real terminals, a file tree with an
-> editor, and git — and its tab says what that project's session is doing, so
-> you know which one has stopped and is waiting for an answer without checking
-> each in turn.
+> A desktop workspace for working with Claude Code and Codex across several
+> projects. Each project gets real agent sessions, terminals, a file tree with
+> an editor, and git — and its tab says what is running, finished, or waiting
+> for you.
 
-Free and open source under AGPL-3.0. macOS today, on Apple Silicon and Intel.
-No account, no telemetry, no server, nothing to buy later.
+Free and open source under AGPL-3.0. Available for macOS on Apple Silicon and
+Intel, and Windows on x64 PCs. No account, no telemetry, no server, nothing to
+buy later.
 
 ## What it is
 
 Beacon Split is a desktop application, not a plugin and not a hosted service.
-It runs Claude Code, a shell and git as they are published, rather than
-reimplementing any of them. What it adds is the thing a terminal multiplexer
-cannot tell you: across every project you have open, which session is working,
-which has finished, and which has stopped and is waiting for you.
+It runs Claude Code, Codex, a shell and git as they are published, rather than
+reimplementing any of them. Codex has its own panel and conversations, so it
+can work beside Claude Code in the same project. What Beacon adds is the thing
+a terminal multiplexer cannot tell you: across every project you have open,
+which agent is working, which has finished, and which has stopped and is
+waiting for you.
 
 Sessions live in a background daemon rather than in the window, with their
 output buffered, so closing Beacon and reopening it puts you back where you
 were instead of starting again.
 
+## Contributors
+
+The website credits contributors from GitHub's default-branch commit count and
+links to the project contributor graph. The count is reproducible credit, not a
+measure of the value of a person's work.
+
 ## Requirements
 
-- macOS. A Linux build is being worked on and has never been run, so nothing is
-  claimed about it. Windows is not planned.
-- Claude Code and `git` on the `PATH`. Beacon checks for both through the same
-  login shell a session uses, and says what is missing and how to install it.
+- macOS (Apple Silicon and Intel) or Windows (x64). A Linux build is being
+  worked on and has not shipped yet.
+- Claude Code and `git` on the `PATH`. Codex is optional; install it to add its
+  panel and conversations. Beacon checks what a session needs and says what is
+  missing and how to install it.
 - Your own Claude subscription or API key. Beacon never asks for, handles,
   stores or forwards a Claude credential; you sign in yourself and your usage
   is billed to you under your own agreement with Anthropic.
 
 ## Installing
 
-Download the `.dmg` for your architecture from the releases page. The build is
-not signed with an Apple Developer ID, so macOS refuses it the first time:
-after dragging Beacon to Applications, run
+Download the `.dmg` for your Mac or the `.exe` installer for Windows from the
+releases page. The macOS build is not signed with an Apple Developer ID, so
+macOS refuses it the first time: after dragging Beacon to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"` once. Signing
 and notarisation need an Apple Developer membership and are on the roadmap.
 
