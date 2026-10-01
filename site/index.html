@@ -184,7 +184,7 @@
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33C3.81 14.36 3.34 13 3.34 13c-.36-.93-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.23 1.88.87 2.34.67.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
         <span>GitHub</span>
       </a>
-      <a class="btn btn--sm" href="#install">Download</a>
+      <a class="btn btn--sm" href="#install" data-superveil="cta:nav">Download</a>
     </nav>
   </div>
 </header>
@@ -202,7 +202,7 @@
         real sessions, real git, and a tab that tells you the moment an agent needs an answer.
       </p>
       <div class="cta">
-        <a class="btn btn--lg" href="#install">
+        <a class="btn btn--lg" href="#install" data-superveil="cta:hero">
           <svg viewBox="0 0 14 15" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
           Download Beacon
         </a>
@@ -550,12 +550,12 @@
       broken — fix that instead.
     -->
     <div class="dl" data-dl-repo="hxst1/Beacon-Split">
-      <a class="dlc" data-dl-suffix="_aarch64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_aarch64.dmg">
+      <a class="dlc" data-superveil="download:mac-arm" data-dl-suffix="_aarch64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_aarch64.dmg">
         <span class="dlc__t">Apple Silicon</span>
         <span class="dlc__s">M1 and newer · .dmg<span data-dl-size> · 6.5 MB</span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
-      <a class="dlc" data-dl-suffix="_x64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_x64.dmg">
+      <a class="dlc" data-superveil="download:mac-intel" data-dl-suffix="_x64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_x64.dmg">
         <span class="dlc__t">Intel</span>
         <span class="dlc__s">x86-64 · .dmg<span data-dl-size> · 4.8 MB</span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
@@ -563,7 +563,7 @@
       <!-- No release carried a Windows build when this was written, so the floor
            here is the releases page rather than a file; the fetch fills in the
            installer once there is one. -->
-      <a class="dlc" data-dl-suffix="_x64-setup.exe" href="https://github.com/hxst1/Beacon-Split/releases/latest">
+      <a class="dlc" data-superveil="download:windows" data-dl-suffix="_x64-setup.exe" href="https://github.com/hxst1/Beacon-Split/releases/latest">
         <span class="dlc__t">Windows</span>
         <span class="dlc__s">10 and 11 · x64 · installer<span data-dl-size></span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
@@ -583,7 +583,7 @@
       </p>
       <div class="cmd">
         <code id="cmd">xattr -dr com.apple.quarantine "/Applications/Beacon Split.app"</code>
-        <button class="cmd__c" type="button" data-copy="#cmd" aria-label="Copy command" aria-live="polite">Copy</button>
+        <button class="cmd__c" type="button" data-superveil="copy:install" data-copy="#cmd" aria-label="Copy command" aria-live="polite">Copy</button>
       </div>
       <p class="gate__d gate__d--fine">
         That removes a check macOS applies to software it cannot verify. It's a reasonable thing to
