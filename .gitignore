@@ -1,3 +1,8 @@
+# Without the slash as well: a trailing slash matches only a directory, and a
+# `node_modules` that is a symlink slipped past it straight into a commit —
+# where it pointed at an absolute path on one machine and dangled on every
+# other, including CI.
+node_modules
 node_modules/
 dist/
 target/
