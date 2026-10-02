@@ -1747,7 +1747,7 @@ sound is the system's, the same as every other application's.
 
 **Decision.** Two chimes, for the same moments a notification is for: Claude
 waiting for you, and a turn long enough to announce finishing. Each has a
-switch of its own in Settings → Terminal, beside the notification one, with a
+switch of its own in Settings → Notifications, beside the notification one, with a
 button to hear it; both are off by default — a sound reaches the whole room,
 and nobody updating should start hearing one unasked — and saved with the
 other settings. They follow
