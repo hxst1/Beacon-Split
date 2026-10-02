@@ -123,6 +123,14 @@ pub fn set_release_notices(state: State<'_, AppState>, enabled: bool) -> Command
     Ok(beacon.snapshot())
 }
 
+/// Records that the welcome guide has been through, finished or skipped.
+#[tauri::command]
+pub fn mark_welcomed(state: State<'_, AppState>) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.mark_welcomed()?;
+    Ok(beacon.snapshot())
+}
+
 /// Whether the file tree lists dotfiles.
 #[tauri::command]
 pub fn set_show_hidden_files(state: State<'_, AppState>, shown: bool) -> CommandResult<Snapshot> {
