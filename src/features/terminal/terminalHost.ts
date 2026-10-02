@@ -80,7 +80,11 @@ function create(
     scrollback: 10_000,
     // xterm's own scrollbar would fight the app's; the panel handles overflow.
     scrollOnUserInput: true,
-    macOptionIsMeta: true,
+    // Option is how most non-US Mac layouts type @, #, [, ], {, }, \, | and ~,
+    // so it has to stay a character key. Option with an arrow, Backspace or
+    // Enter still reaches the session with its modifier; xterm only consults
+    // this for keys that produce a character.
+    macOptionIsMeta: false,
     // Only set on Windows, where the session runs in a pseudo-console that
     // xterm has to know about to resize it without losing lines.
     ...(pty ? { windowsPty: pty } : {}),
