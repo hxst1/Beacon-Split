@@ -35,7 +35,7 @@ export function StatusBar(): React.ReactElement {
   }
 
   return (
-    <footer className={styles['bar']}>
+    <footer className={styles['bar']} data-region="statusbar">
       <span className={styles['path']}>{project?.displayPath ?? ''}</span>
 
       {missingRequired.length > 0 ? (

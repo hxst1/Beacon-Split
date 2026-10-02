@@ -18,7 +18,7 @@ export function TitleBar(): React.ReactElement {
   const setOverlay = useBeacon((s) => s.setOverlay)
 
   return (
-    <header className={styles['bar']} data-tauri-drag-region>
+    <header className={styles['bar']} data-tauri-drag-region data-region="titlebar">
       <button
         type="button"
         className={styles['workspace']}

@@ -112,6 +112,9 @@ export const ipc = {
   setReleaseNotices: (enabled: boolean) =>
     invoke<Snapshot>('set_release_notices', { enabled }),
 
+  /** Records that the welcome guide has been through, finished or skipped. */
+  markWelcomed: () => invoke<Snapshot>('mark_welcomed'),
+
   /** Whether the file tree lists dotfiles. */
   setShowHiddenFiles: (shown: boolean) =>
     invoke<Snapshot>('set_show_hidden_files', { shown }),

@@ -18,7 +18,7 @@ import styles from './NotificationPrompt.module.css'
  * It needs nothing remembered. `notDetermined` is a state macOS never returns
  * to once answered, so this cannot appear twice to anyone who answers it.
  */
-export function NotificationPrompt(): React.ReactElement | null {
+export function NotificationPrompt({ held = false }: { held?: boolean }): React.ReactElement | null {
   const enabled = useBeacon((s) => s.snapshot?.notifications ?? true)
   const { permission, asking, request, openSettings } = useNotificationPermission()
   const [dismissed, setDismissed] = useState(false)
@@ -29,7 +29,9 @@ export function NotificationPrompt(): React.ReactElement | null {
   const refused = asked && permission === 'denied'
   const unanswered = permission === 'notDetermined'
 
-  if (dismissed || !enabled || (!unanswered && !refused)) return null
+  // Held back while something else has the window — the welcome guide — and
+  // kept mounted meanwhile, so "Not now" stays said.
+  if (held || dismissed || !enabled || (!unanswered && !refused)) return null
 
   return createPortal(
     <div className={styles['scrim']}>
