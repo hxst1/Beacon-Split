@@ -133,10 +133,18 @@
   --line-1: rgb(0 0 0 / 0.08);
   --line-2: rgb(0 0 0 / 0.14);
 
+  /* Text, by descending importance, held to the same rule as the dark
+   * palette: every level is text somewhere, so every level clears 4.5:1.
+   * Here the worst ground is the other way round — --surface-3 with a black
+   * desktop behind the window at --window-alpha, which dims the light material
+   * — and that is what sets the floor of the lowest level. The steps between
+   * them are smaller than in the dark palette, because dark ink cannot go far
+   * below 0.66 and stay legible. Lowering any of these is a contrast
+   * regression. */
   --fg-1: rgb(20 20 26 / 0.94);
-  --fg-2: rgb(20 20 26 / 0.66);
-  --fg-3: rgb(20 20 26 / 0.44);
-  --fg-4: rgb(20 20 26 / 0.28);
+  --fg-2: rgb(20 20 26 / 0.84);
+  --fg-3: rgb(20 20 26 / 0.75);
+  --fg-4: rgb(20 20 26 / 0.66);
 
   --solid-1: #ffffff;
   --solid-2: #f2f2f5;
@@ -145,12 +153,14 @@
   --scrollbar: rgb(0 0 0 / 0.14);
   --scrollbar-hover: rgb(0 0 0 / 0.24);
 
-  /* Darkened so they carry on a light ground; the hues are the same. */
-  --ok: #3f8f45;
-  --warn: #9a6413;
-  --danger: #c02828;
-  --info: #1b6fc4;
-  --purple: #6b4fd8;
+  /* Darkened until they clear 4.5:1 on the same worst ground as the text
+     levels above; each is the old colour scaled toward black, so the hues are
+     the same. */
+  --ok: #27592b;
+  --warn: #6d470d;
+  --danger: #982020;
+  --info: #13508d;
+  --purple: #523da6;
 
   --field: rgb(0 0 0 / 0.045);
   --scrim: rgb(0 0 0 / 0.24);

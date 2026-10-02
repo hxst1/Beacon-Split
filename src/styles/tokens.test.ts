@@ -89,6 +89,67 @@ describe('the dark palette', () => {
   })
 })
 
+/**
+ * The light palette, on the same terms. Its text is dark ink at an alpha over a
+ * light window, its surfaces darken rather than lighten, and its worst ground
+ * is the opposite desktop: a black one behind the window dims the material
+ * and pulls the ground toward the ink.
+ */
+const light = lightBlock(TOKENS)
+const LIGHT_WINDOW = rgbTriplet(declaration(light, '--window'))
+const INK: Rgb = [20, 20, 26]
+const LIGHT_SURFACES = (['--surface-1', '--surface-2', '--surface-3'] as const).map((token) =>
+  blackAlpha(declaration(light, token)),
+)
+const LIGHT_FIELD = blackAlpha(declaration(light, '--field'))
+
+function lightGrounds(): Array<[string, Rgb]> {
+  const all: Array<[string, Rgb]> = []
+  for (const [desktop, label] of [
+    [[0, 0, 0] as Rgb, 'black desktop'],
+    [[255, 255, 255] as Rgb, 'white desktop'],
+  ] as const) {
+    const base = over(LIGHT_WINDOW, WINDOW_ALPHA, desktop)
+    all.push([`${label}, bare`, base])
+    all.push([`${label}, field`, over([0, 0, 0], LIGHT_FIELD, base)])
+    LIGHT_SURFACES.forEach((alpha, i) => {
+      all.push([`${label}, surface-${i + 1}`, over([0, 0, 0], alpha, base)])
+    })
+  }
+  return all
+}
+
+describe('the light palette', () => {
+  it('carries every level of text at AA on every ground', () => {
+    const failing: string[] = []
+    for (const token of TEXT) {
+      const alpha = inkAlpha(declaration(light, token))
+      for (const [where, ground] of lightGrounds()) {
+        const ratio = contrast(over(INK, alpha, ground), ground)
+        if (ratio < AA) failing.push(`${token} on ${where}: ${ratio.toFixed(2)}`)
+      }
+    }
+    expect(failing).toEqual([])
+  })
+
+  it('keeps the four levels in order and apart', () => {
+    const alphas = TEXT.map((token) => inkAlpha(declaration(light, token)))
+    for (let i = 1; i < alphas.length; i += 1) {
+      expect(alphas[i - 1]! - alphas[i]!).toBeGreaterThanOrEqual(0.08)
+    }
+  })
+
+  it('carries the colours that mean something at AA on the worst ground', () => {
+    const worst = over([0, 0, 0], LIGHT_SURFACES[2]!, over(LIGHT_WINDOW, WINDOW_ALPHA, [0, 0, 0]))
+    const failing: string[] = []
+    for (const token of SEMANTIC) {
+      const ratio = contrast(hex(declaration(light, token)), worst)
+      if (ratio < AA) failing.push(`${token}: ${ratio.toFixed(2)}`)
+    }
+    expect(failing).toEqual([])
+  })
+})
+
 /* ---- the stylesheet ------------------------------------------------------- */
 
 /**
@@ -104,6 +165,24 @@ function darkBlock(css: string): string {
   // `--window-alpha` and the shape tokens live in the shared `:root` above it.
   const shared = css.slice(0, start)
   return `${shared}\n${block}`
+}
+
+/** The first light block: the palette, not the accent tints that follow it. */
+function lightBlock(css: string): string {
+  const start = css.indexOf(":root[data-theme='light'] {")
+  if (start === -1) throw new Error('no light block in tokens.css')
+  const end = css.indexOf('\n}', start)
+  // `--window-alpha` lives in the shared `:root` before the dark block; the
+  // dark block itself is left out, or its values would be read instead.
+  const shared = css.slice(0, css.indexOf(":root[data-theme='dark'] {"))
+  return `${shared}\n${css.slice(start, end)}`
+}
+
+/** `rgb(20 20 26 / 0.66)` → `0.66`. */
+function inkAlpha(value: string): number {
+  const match = /^rgb\(\s*20\s+20\s+26\s*\/\s*([\d.]+)\s*\)$/.exec(value)
+  if (!match) throw new Error(`not the ink colour with an alpha: ${value}`)
+  return Number(match[1])
 }
 
 function declaration(block: string, token: string): string {
