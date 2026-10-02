@@ -6,6 +6,7 @@ import { windowsPty } from '@/lib/platform'
 import { ipc } from '@/ipc'
 import type { SessionKind } from '@/types/beacon'
 import { clipboardKey } from './clipboardKeys'
+import { newlineKey } from './newlineKeys'
 import { attach, replayed } from './sessionBridge'
 
 export interface HostedTerminal {
@@ -84,13 +85,31 @@ function create(
     // xterm has to know about to resize it without losing lines.
     ...(pty ? { windowsPty: pty } : {}),
   })
-  term.attachCustomKeyEventHandler((event) => clipboardKeys(term, event))
+  term.attachCustomKeyEventHandler((event) => beaconKeys(term, event, kind))
 
   const fit = new FitAddon()
   term.loadAddon(fit)
   term.open(element)
 
   return { term, fit, element, project, kind, slot }
+}
+
+/**
+ * The keys Beacon reads before the session does.
+ *
+ * Returning `false` keeps xterm from sending the key on as it would have.
+ */
+function beaconKeys(term: Terminal, event: KeyboardEvent, kind: SessionKind): boolean {
+  const newline = newlineKey(event, kind)
+  if (newline !== null) {
+    // xterm would send a carriage return here and the agent would take the
+    // prompt as finished, so the newline goes in its place. It is still
+    // typing, so it scrolls and clears the selection as a key press should.
+    term.input(newline)
+    event.preventDefault()
+    return false
+  }
+  return clipboardKeys(term, event)
 }
 
 /**
