@@ -24,8 +24,16 @@ pub fn run() {
     // initialise is refusing to start — so a copy somebody compiled themselves
     // would not open at all. Those update by pulling, which is the right answer
     // for them and no reason to break the application.
+    //
+    // Nor in a development build. `tauri.conf.json` carries the update key, so
+    // `pnpm app:dev` used to look for releases like an installed copy does: it
+    // offered whatever was published as soon as the checkout fell a version
+    // behind, and accepting would have installed that release over the
+    // installed Beacon — not over the build being worked on, which updates by
+    // pulling like any other checkout.
     let context = tauri::generate_context!();
-    let updates_itself = context.config().plugins.0.contains_key("updater");
+    let updates_itself =
+        !cfg!(debug_assertions) && context.config().plugins.0.contains_key("updater");
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -142,7 +150,9 @@ pub fn run() {
     let builder = if updates_itself {
         builder.plugin(tauri_plugin_updater::Builder::new().build())
     } else {
-        tracing::info!("no update key in this build; it updates by pulling");
+        tracing::info!(
+            "not updating itself: a development build, or no update key; it updates by pulling"
+        );
         builder
     };
 
