@@ -703,6 +703,7 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             activity,
             detail,
             session,
+            reply,
         } => {
             // Two things can be learned from one report, and they are not the
             // same thing. Which conversation it came from is worth knowing at
@@ -735,6 +736,7 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
                 project,
                 activity,
                 detail,
+                reply,
             });
             Ok(Reply::Done)
         }

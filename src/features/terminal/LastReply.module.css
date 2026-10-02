@@ -1,0 +1,62 @@
+/*
+ * The last reply: a strip in the accent's wash with an accent edge, so it reads
+ * as Beacon pointing at something rather than as more terminal output.
+ */
+.reply {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 6px 8px 0;
+  padding: 8px 8px 8px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-xs);
+  background: var(--accent-wash);
+  color: var(--fg-1);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* Open, it scrolls inside a third of the panel rather than taking all of it. */
+.reply[data-open='true'] .text {
+  display: block;
+  max-height: 33vh;
+  overflow: auto;
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.action {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--accent-wash);
+  color: var(--fg-1);
+}
+
+.action:focus-visible {
+  outline: 1px solid var(--accent-line);
+}

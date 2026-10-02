@@ -52,9 +52,33 @@ fn report() -> Option<()> {
             activity,
             detail,
             session,
+            reply: reply_of(&event),
         },
     )
 }
+
+/// The turn's final reply, when this is the end of one.
+///
+/// Only `Stop` carries it, as `last_assistant_message`. Capped, because it
+/// crosses the socket on every turn and a reply can be pages: the window shows
+/// the start of it and keeps the rest a click away in Claude's own panel, so
+/// what is cut is never lost.
+pub fn reply_of(event: &serde_json::Value) -> Option<String> {
+    if event.get("hook_event_name")?.as_str()? != "Stop" {
+        return None;
+    }
+    let text = event.get("last_assistant_message")?.as_str()?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(match text.char_indices().nth(REPLY_LIMIT) {
+        Some((cut, _)) => format!("{}…", &text[..cut]),
+        None => text.to_string(),
+    })
+}
+
+/// How much of a reply travels, in characters.
+const REPLY_LIMIT: usize = 4_000;
 
 /// A subagent starting or finishing, when that is what this event is.
 ///
@@ -390,5 +414,36 @@ mod tests {
     fn anything_unrecognisable_is_ignored_rather_than_guessed_at() {
         assert!(event(serde_json::json!({})).is_none());
         assert!(event(serde_json::json!({ "hook_event_name": "SomethingNew" })).is_none());
+    }
+
+    #[test]
+    fn the_end_of_a_turn_carries_its_final_reply() {
+        let stop = serde_json::json!({
+            "hook_event_name": "Stop",
+            "last_assistant_message": "  Done — the tests pass.
+        "
+        });
+        assert_eq!(reply_of(&stop).as_deref(), Some("Done — the tests pass."));
+    }
+
+    #[test]
+    fn nothing_but_the_end_of_a_turn_carries_a_reply() {
+        let tool = serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "last_assistant_message": "not a reply"
+        });
+        assert_eq!(reply_of(&tool), None);
+        let empty =
+            serde_json::json!({ "hook_event_name": "Stop", "last_assistant_message": "  " });
+        assert_eq!(reply_of(&empty), None);
+    }
+
+    #[test]
+    fn a_long_reply_is_cut_without_splitting_a_character() {
+        let long = "é".repeat(REPLY_LIMIT + 50);
+        let stop = serde_json::json!({ "hook_event_name": "Stop", "last_assistant_message": long });
+        let reply = reply_of(&stop).unwrap();
+        assert_eq!(reply.chars().count(), REPLY_LIMIT + 1);
+        assert!(reply.ends_with('…'));
     }
 }

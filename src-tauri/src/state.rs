@@ -84,6 +84,8 @@ struct ActivityPayload {
     project: ProjectId,
     activity: beacon_core::protocol::ClaudeActivity,
     detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply: Option<String>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -163,12 +165,14 @@ impl DaemonEvents for WebviewEvents {
                 project,
                 activity,
                 detail,
+                reply,
             } => self.app.emit(
                 EVENT_ACTIVITY,
                 ActivityPayload {
                     project,
                     activity,
                     detail,
+                    reply,
                 },
             ),
             Event::Usage(report) => self.app.emit(EVENT_USAGE, report),
@@ -275,6 +279,7 @@ mod tests {
             project: ProjectId("pj_x".into()),
             activity: beacon_core::protocol::ClaudeActivity::Waiting,
             detail: Some("Bash".into()),
+            reply: Some("All four pass.".into()),
         })
         .unwrap();
         assert_eq!(
@@ -282,5 +287,10 @@ mod tests {
             Some("pj_x")
         );
         assert!(activity.get("event").is_none());
+        // The window reads `reply` to show the end of a turn apart.
+        assert_eq!(
+            activity.get("reply").and_then(|v| v.as_str()),
+            Some("All four pass.")
+        );
     }
 }

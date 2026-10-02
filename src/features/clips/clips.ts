@@ -121,7 +121,7 @@ export async function copyClip(clip: Clip): Promise<void> {
   }, COPIED_FOR_MS)
 }
 
-async function writeToClipboard(text: string): Promise<boolean> {
+export async function writeToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text)
     return true

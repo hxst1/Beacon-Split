@@ -1,3 +1,4 @@
+import { LastReply } from '@/features/terminal/LastReply'
 import { TerminalView } from '@/features/terminal/TerminalView'
 import { MissingTool } from '@/features/settings/MissingTool'
 import { AgentActivity } from '@/features/workstreams/AgentActivity'
@@ -121,14 +122,20 @@ export function AgentPanel({
       {missing ? (
         <MissingTool requirement={missing} />
       ) : (
-        <TerminalView
-          key={`${project.id}:${spec.kind}:${epoch}:${attachEpoch}`}
-          workspaceId={workspaceId}
-          projectId={project.id}
-          kind={spec.kind}
-          slot={0}
-          autoFocus={autoFocus}
-        />
+        <div className={styles['agentBody']}>
+          {/* Fed by Claude Code's Stop hook; Codex has nothing reporting yet. */}
+          {agent === 'claude' ? <LastReply projectId={project.id} /> : null}
+          <div className={styles['agentTerminal']}>
+            <TerminalView
+              key={`${project.id}:${spec.kind}:${epoch}:${attachEpoch}`}
+              workspaceId={workspaceId}
+              projectId={project.id}
+              kind={spec.kind}
+              slot={0}
+              autoFocus={autoFocus}
+            />
+          </div>
+        </div>
       )}
     </Panel>
   )

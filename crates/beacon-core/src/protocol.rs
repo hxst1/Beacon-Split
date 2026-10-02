@@ -301,6 +301,14 @@ pub enum Request {
         /// without one, or an older daemon, costs the proof and nothing else.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         session: Option<String>,
+        /// What Claude said last, when this is the end of a turn.
+        ///
+        /// Claude Code hands its `Stop` hook the final text of the turn, and
+        /// that is the one message worth setting apart from the tool output
+        /// around it. Optional, so a hook or a daemon from before it existed
+        /// still speak to each other. Held in memory only, never written.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply: Option<String>,
     },
     /// Reported by Claude Code's status line, running inside a session.
     #[serde(rename_all = "camelCase")]
@@ -583,6 +591,9 @@ pub enum Event {
         project: ProjectId,
         activity: ClaudeActivity,
         detail: Option<String>,
+        /// The turn's final reply, on `done`; see `Request::Report`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply: Option<String>,
     },
     /// A session started, but without something it was meant to have.
     ///
@@ -704,6 +715,7 @@ mod tests {
                 activity: ClaudeActivity::Waiting,
                 detail: Some("Bash".into()),
                 session: Some("cafb8c86-53eb-49c4-a8b8-609e5cbc0f49".into()),
+                reply: Some("Done — the tests pass.".into()),
             },
             Request::ReportUsage {
                 usage: Box::new(sample_usage()),
@@ -820,6 +832,7 @@ mod tests {
                 project: ProjectId("pj_x".into()),
                 activity: ClaudeActivity::Working,
                 detail: Some("Edit".into()),
+                reply: None,
             },
             Event::Degraded {
                 project: ProjectId("pj_x".into()),
@@ -1021,6 +1034,7 @@ mod tests {
             project: ProjectId("pj_x".into()),
             activity: ClaudeActivity::Waiting,
             detail: None,
+            reply: None,
         })
         .unwrap();
 

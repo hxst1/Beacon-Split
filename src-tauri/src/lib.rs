@@ -63,6 +63,7 @@ pub fn run() {
             commands::reorder_project,
             commands::set_shell,
             commands::set_notifications,
+            commands::set_sounds,
             commands::notification_permission,
             commands::request_notification_permission,
             commands::send_notification,

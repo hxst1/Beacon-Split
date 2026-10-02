@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { useBeacon } from '@/app/store'
 import { ipc } from '@/ipc'
+import { playChime, type Chime } from '@/features/notifications/sound'
 import type { ClaudeActivity } from '@/types/beacon'
 import { watchActivity } from './sessionBridge'
 
@@ -109,15 +110,34 @@ async function allowed(): Promise<boolean> {
  * if notifications are off.
  */
 async function worthSaying(project: string): Promise<boolean> {
-  const state = useBeacon.getState()
-  if (!state.snapshot?.notifications) return false
+  if (!useBeacon.getState().snapshot?.notifications) return false
+  return notLooking(project)
+}
 
-  const workspace = state.snapshot.workspaces.find((w) => w.id === state.snapshot?.activeWorkspace)
-  const showing = workspace ? state.snapshot.activeProject[workspace.id] : undefined
+/** Whether the user is somewhere other than this project. */
+async function notLooking(project: string): Promise<boolean> {
+  const snapshot = useBeacon.getState().snapshot
+  if (!snapshot) return false
+
+  const workspace = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspace)
+  const showing = workspace ? snapshot.activeProject[workspace.id] : undefined
 
   if (showing !== project) return true
   // It is the project on screen — only worth saying if the window is not.
   return !(await getCurrentWindow().isFocused())
+}
+
+/**
+ * Plays a chime for the same moments a notification is for, and under the
+ * same rule: not for the project you are looking at.
+ *
+ * Independent of notifications and of the system's permission for them. A
+ * banner waits on a screen; a sound is for someone who is not facing one, and
+ * either can be wanted without the other.
+ */
+async function chime(project: string, kind: Chime): Promise<void> {
+  if (!useBeacon.getState().snapshot?.sounds[kind]) return
+  if (await notLooking(project)) playChime(kind)
 }
 
 /**
@@ -167,6 +187,7 @@ export function startNotifications(): () => void {
         announced.delete(project)
         if (ran !== null) {
           void say(project, `Claude finished after ${spellDuration(ran)}`)
+          void chime(project, 'done')
         }
         return
       }
@@ -177,6 +198,7 @@ export function startNotifications(): () => void {
         project,
         detail ? `Claude is waiting to run ${detail}` : 'Claude is waiting for an answer',
       )
+      void chime(project, 'waiting')
     },
   })
 }

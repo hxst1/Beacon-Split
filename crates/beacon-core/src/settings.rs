@@ -56,6 +56,15 @@ pub struct Settings {
     /// window you are not looking at.
     #[serde(default = "yes")]
     pub notifications: bool,
+    /// Which moments make a sound.
+    ///
+    /// The same moments a notification is for — Claude waiting for an answer,
+    /// a long turn finished — and, like a notification, only when the project
+    /// is not the one being looked at. Separate from notifications because
+    /// they reach people differently: a banner waits on a screen, a sound
+    /// reaches someone who is not facing one.
+    #[serde(default)]
+    pub sounds: Sounds,
     /// The last version whose notes were shown.
     ///
     /// Absent means this install has never shown any, which is a first run —
@@ -100,6 +109,29 @@ impl Settings {
     }
 }
 
+/// The moments that make a sound. Both on until switched off, as notifications
+/// are, and for the same reason: a project waiting unnoticed is the thing Beacon
+/// exists to prevent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sounds {
+    /// Claude stopped and is waiting for an answer.
+    #[serde(default = "yes")]
+    pub waiting: bool,
+    /// A turn long enough to have walked away from has finished.
+    #[serde(default = "yes")]
+    pub done: bool,
+}
+
+impl Default for Sounds {
+    fn default() -> Self {
+        Self {
+            waiting: true,
+            done: true,
+        }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -108,6 +140,7 @@ impl Default for Settings {
             bindings: BTreeMap::new(),
             shell: None,
             notifications: true,
+            sounds: Sounds::default(),
             last_seen_version: None,
             release_notices: true,
             show_hidden_files: false,
@@ -143,5 +176,37 @@ mod tests {
             ..Settings::default()
         };
         assert_eq!(settings.projects_home_path(), PathBuf::from("/srv/code"));
+    }
+
+    #[test]
+    fn a_settings_file_from_before_sounds_has_both_on() {
+        let old: Settings = serde_json::from_str(r#"{ "schemaVersion": 1 }"#).unwrap();
+        assert_eq!(
+            old.sounds,
+            Sounds {
+                waiting: true,
+                done: true
+            }
+        );
+    }
+
+    #[test]
+    fn sounds_switched_off_stay_off() {
+        let settings = Settings {
+            sounds: Sounds {
+                waiting: true,
+                done: false,
+            },
+            ..Settings::default()
+        };
+        let back: Settings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(
+            back.sounds,
+            Sounds {
+                waiting: true,
+                done: false
+            }
+        );
     }
 }

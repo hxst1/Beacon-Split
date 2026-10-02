@@ -102,3 +102,15 @@
   background: var(--surface-3);
   color: var(--fg-1);
 }
+
+/* An agent's body: the last reply, when there is one, over the terminal. */
+.agentBody {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.agentTerminal {
+  flex: 1;
+  min-height: 0;
+}

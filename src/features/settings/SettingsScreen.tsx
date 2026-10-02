@@ -9,6 +9,7 @@ import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
 import { isMac, isWindows, modifierLabel } from '@/lib/platform'
 import { describePermission } from '@/features/notifications/copy'
 import { useNotificationPermission } from '@/features/notifications/permission'
+import { playChime, type Chime } from '@/features/notifications/sound'
 import { useWorkstreamsSupported } from '@/features/workstreams/capabilities'
 import type {
   Appearance,
@@ -747,11 +748,48 @@ function TerminalSection(): React.ReactElement {
               onClick={() => void setNotifications(!notifications)}
             />
           </div>
+          <SoundRow chime="waiting" label="Play a sound when Claude is waiting for you" />
+          <SoundRow chime="done" label="Play a sound when a long turn finishes" />
         </div>
 
         <SystemPermission />
       </section>
     </>
+  )
+}
+
+/**
+ * One sound's switch, and a way to hear it before deciding.
+ *
+ * Separate from notifications on purpose: a banner is for someone at the
+ * screen and a sound for someone who is not, and either can be wanted alone.
+ */
+function SoundRow({ chime, label }: { chime: Chime; label: string }): React.ReactElement {
+  const sounds = useBeacon((s) => s.snapshot?.sounds ?? { waiting: true, done: true })
+  const setSounds = useBeacon((s) => s.setSounds)
+  const on = sounds[chime]
+
+  return (
+    <div className={styles['row']}>
+      <span className={styles['rowLabel']}>{label}</span>
+      <button
+        type="button"
+        className={styles['secondary']}
+        aria-label={`Play the sound: ${label.toLowerCase()}`}
+        onClick={() => playChime(chime)}
+      >
+        Play
+      </button>
+      <button
+        type="button"
+        className={styles['toggle']}
+        data-on={on}
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        onClick={() => void setSounds({ ...sounds, [chime]: !on })}
+      />
+    </div>
   )
 }
 

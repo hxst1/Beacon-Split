@@ -27,6 +27,7 @@ import type {
   Project,
   SessionKind,
   Snapshot,
+  Sounds,
   Workspace,
 } from '@/types/beacon'
 
@@ -134,6 +135,7 @@ interface BeaconState {
   /** `null` goes back to the account's own shell. */
   setShell: (shell: ShellSpec | null) => Promise<void>
   setNotifications: (enabled: boolean) => Promise<void>
+  setSounds: (sounds: Sounds) => Promise<void>
   markReleasesSeen: () => Promise<void>
   setReleaseNotices: (enabled: boolean) => Promise<void>
   /** Whether the file tree lists dotfiles. */
@@ -344,6 +346,8 @@ export const useBeacon = create<BeaconState>((set, get) => {
     setShell: (shell) => run(() => ipc.setShell(shell)),
 
     setNotifications: (enabled) => run(() => ipc.setNotifications(enabled)),
+
+    setSounds: (sounds) => run(() => ipc.setSounds(sounds)),
 
     markReleasesSeen: () => run(() => ipc.markReleasesSeen()),
 
