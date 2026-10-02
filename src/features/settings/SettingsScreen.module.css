@@ -66,6 +66,26 @@
   overflow-y: auto;
 }
 
+/* A group of sections, under a quiet heading of its own. */
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.navGroup + .navGroup {
+  margin-top: 14px;
+}
+
+.navHeading {
+  padding: 2px 10px 4px;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .navItem {
   padding: 6px 10px;
   border-radius: var(--radius-sm);

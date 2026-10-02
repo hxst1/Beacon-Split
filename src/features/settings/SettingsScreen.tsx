@@ -1,72 +1,65 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import { selectActiveWorkspace, selectBindings, selectHidden, useBeacon } from '@/app/store'
-import { errorMessage, ipc } from '@/ipc'
-import { ACCENT_PRESETS } from '@/lib/accent'
-import { applyAppearance } from '@/lib/appearance'
-import { PANEL_LABELS } from '@/lib/layout'
-import { ACTION_TITLES, bindingOf, describeBinding } from '@/app/keymap'
-import { isMac, isWindows, modifierLabel } from '@/lib/platform'
-import { describePermission } from '@/features/notifications/copy'
-import { useNotificationPermission } from '@/features/notifications/permission'
-import { playChime, type Chime } from '@/features/notifications/sound'
-import { useWorkstreamsSupported } from '@/features/workstreams/capabilities'
-import type {
-  Appearance,
-  Integration,
-  CodexIntegration,
-  Theme,
-  LayoutNode,
-  LayoutPreset,
-  PanelId,
-  Requirement,
-} from '@/types/beacon'
-import { LayoutThumb } from './LayoutThumb'
-import { formatShell, parseShell } from './shell'
+import { useBeacon } from '@/app/store'
+import { ClaudeSettings, CodexSettings, RequirementsSettings } from './AgentSettings'
+import { AppearanceSettings, LayoutSettings } from './LookSettings'
+import {
+  GeneralSettings,
+  KeyboardSettings,
+  NotificationSettings,
+  TerminalSettings,
+} from './PreferenceSettings'
 import styles from './SettingsScreen.module.css'
 
 type SectionId =
   | 'appearance'
-  | 'requirements'
   | 'layout'
-  | 'panels'
-  | 'workspace'
-  | 'keyboard'
-  | 'terminal'
   | 'claude'
   | 'codex'
+  | 'requirements'
+  | 'general'
+  | 'terminal'
+  | 'notifications'
+  | 'keyboard'
   | 'about'
 
-const SECTIONS: Array<{ id: SectionId; label: string }> = [
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'requirements', label: 'Requirements' },
-  { id: 'layout', label: 'Layout' },
-  { id: 'panels', label: 'Panels' },
-  { id: 'workspace', label: 'Workspace' },
-  { id: 'keyboard', label: 'Keyboard' },
-  { id: 'terminal', label: 'Terminal' },
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'about', label: 'About' },
-]
-
-const PRESET_LABELS: Record<LayoutPreset, string> = {
-  'claude-left': 'Claude left',
-  'claude-right': 'Claude right',
-  'claude-right-tall': 'Tall right',
-  'claude-left-tall': 'Tall left',
-  custom: 'Custom',
-}
-
 /**
- * Every panel that can be put away, derived rather than listed.
+ * The sections, in the groups they are found by.
  *
- * It used to be written out by hand, and adding the Codex panel did not update
- * it — so the one panel nobody knew about was also the one Settings did not
- * offer. A list that has to be remembered is a list that will be forgotten.
+ * Grouped by what a setting is about rather than by which panel happens to use
+ * it: what you judge by eye, the agents and what Beacon installs into them,
+ * how Beacon behaves for you, and Beacon itself.
  */
-const TOGGLEABLE: PanelId[] = (Object.keys(PANEL_LABELS) as PanelId[]).sort()
-
+const GROUPS: Array<{ label: string; sections: Array<{ id: SectionId; label: string }> }> = [
+  {
+    label: 'Look',
+    sections: [
+      { id: 'appearance', label: 'Appearance' },
+      { id: 'layout', label: 'Layout' },
+    ],
+  },
+  {
+    label: 'Agents',
+    sections: [
+      { id: 'claude', label: 'Claude Code' },
+      { id: 'codex', label: 'Codex' },
+      { id: 'requirements', label: 'Requirements' },
+    ],
+  },
+  {
+    label: 'Preferences',
+    sections: [
+      { id: 'general', label: 'General' },
+      { id: 'terminal', label: 'Terminal' },
+      { id: 'notifications', label: 'Notifications' },
+      { id: 'keyboard', label: 'Keyboard' },
+    ],
+  },
+  {
+    label: 'Beacon',
+    sections: [{ id: 'about', label: 'About' }],
+  },
+]
 
 /**
  * Beacon's settings, as a screen rather than a menu.
@@ -99,1014 +92,59 @@ export function SettingsScreen({ onClose }: { onClose: () => void }): React.Reac
         </header>
 
         <nav className={styles['nav']}>
-          {SECTIONS.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={styles['navItem']}
-              data-active={entry.id === section}
-              onClick={() => setSection(entry.id)}
-            >
-              {entry.label}
-            </button>
+          {GROUPS.map((group) => (
+            <div className={styles['navGroup']} key={group.label}>
+              <span className={styles['navHeading']}>{group.label}</span>
+              {group.sections.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className={styles['navItem']}
+                  data-active={entry.id === section}
+                  onClick={() => setSection(entry.id)}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
         <div className={styles['content']}>
-          {section === 'appearance' ? <AppearanceSection /> : null}
-          {section === 'requirements' ? <RequirementsSection /> : null}
-          {section === 'layout' ? <LayoutSection /> : null}
-          {section === 'panels' ? <PanelsSection /> : null}
-          {section === 'workspace' ? <WorkspaceSection /> : null}
-          {section === 'keyboard' ? <KeyboardSection /> : null}
-          {section === 'terminal' ? <TerminalSection /> : null}
-          {section === 'claude' ? <ClaudeSection /> : null}
-          {section === 'codex' ? <CodexSection /> : null}
-          {section === 'about' ? <AboutSection /> : null}
+          <Section id={section} />
         </div>
       </div>
     </div>
   )
 }
 
-const THEMES: Array<{ theme: Theme; label: string; swatch: [string, string] }> = [
-  { theme: 'system', label: 'System', swatch: ['#1c1c23', '#f2f2f5'] },
-  { theme: 'dark', label: 'Dark', swatch: ['#15151b', '#08080b'] },
-  { theme: 'light', label: 'Light', swatch: ['#ffffff', '#f6f6f8'] },
-]
-
-/**
- * The two things about the look that are taste rather than design.
- *
- * Applied as you drag rather than on release: how translucent a window should
- * be is not a number anyone knows in advance, it is something you find by
- * moving it and looking. Only the value you settle on is written to disk.
- */
-function AppearanceSection(): React.ReactElement {
-  const appearance = useBeacon((s) => s.snapshot?.appearance)
-  const setAppearance = useBeacon((s) => s.setAppearance)
-
-  // Local while dragging: a slider that waits for a round trip stutters.
-  const [draft, setDraft] = useState<Appearance | null>(null)
-  const current = draft ?? appearance ?? null
-
-  useEffect(() => setDraft(null), [appearance])
-
-  if (!current) return <section className={styles['section']}>Loading…</section>
-
-  const preview = (next: Appearance): void => {
-    setDraft(next)
-    applyAppearance(next)
+function Section({ id }: { id: SectionId }): React.ReactElement {
+  switch (id) {
+    case 'appearance':
+      return <AppearanceSettings />
+    case 'layout':
+      return <LayoutSettings />
+    case 'claude':
+      return <ClaudeSettings />
+    case 'codex':
+      return <CodexSettings />
+    case 'requirements':
+      return <RequirementsSettings />
+    case 'general':
+      return <GeneralSettings />
+    case 'terminal':
+      return <TerminalSettings />
+    case 'notifications':
+      return <NotificationSettings />
+    case 'keyboard':
+      return <KeyboardSettings />
+    case 'about':
+      return <AboutSection />
   }
-
-  const commit = (next: Appearance): void => {
-    void setAppearance(next)
-  }
-
-  return (
-    <>
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>Theme</h2>
-        <p className={styles['sectionNote']}>
-          Beacon is dark by default and follows the system unless you say otherwise. The workspace
-          accent works the same in either — it is the one colour a workspace declares, and
-          everything tinted is mixed from it.
-        </p>
-        <div className={styles['themes']}>
-          {THEMES.map(({ theme, label, swatch }) => (
-            <button
-              key={theme}
-              type="button"
-              className={styles['themeOption']}
-              data-selected={theme === current.theme}
-              onClick={() => commit({ ...current, theme })}
-            >
-              <span className={styles['themeSwatch']}>
-                <span style={{ background: swatch[0] }} />
-                <span style={{ background: swatch[1] }} />
-              </span>
-              {label}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>Material</h2>
-        <p className={styles['sectionNote']}>
-          How much of what is behind the window comes through, and whether it arrives sharp or
-          frosted. Drag to see it; it is saved when you let go. Opacity stops at half — below
-          that the desktop starts competing with the text.
-        </p>
-
-        <div className={styles['rows']}>
-          <div className={styles['slider']}>
-            <span className={styles['sliderLabel']}>Opacity</span>
-            <input
-              type="range"
-              className={styles['sliderInput']}
-              min={50}
-              max={100}
-              step={1}
-              value={Math.round(current.windowOpacity * 100)}
-              onChange={(event) =>
-                preview({ ...current, windowOpacity: Number(event.target.value) / 100 })
-              }
-              onPointerUp={() => commit(current)}
-              onKeyUp={() => commit(current)}
-            />
-            <span className={styles['sliderValue']}>
-              {Math.round(current.windowOpacity * 100)}%
-            </span>
-          </div>
-
-          {/* A switch rather than an amount. The window server picks the
-              radius, so every position between off and on would have looked
-              identical — which is what a blur slider here used to do. */}
-          <div className={styles['row']}>
-            <span className={styles['rowLabel']}>Frost what shows through</span>
-            <button
-              type="button"
-              className={styles['toggle']}
-              data-on={current.frosted}
-              role="switch"
-              aria-checked={current.frosted}
-              aria-label="Frost what shows through"
-              onClick={() => commit({ ...current, frosted: !current.frosted })}
-            />
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className={styles['resetAll']}
-          onClick={() => commit({ theme: current.theme, windowOpacity: 0.86, frosted: true })}
-        >
-          Back to the defaults
-        </button>
-      </section>
-    </>
-  )
-}
-
-/**
- * What Beacon needs from the machine, and how to get what is missing.
- *
- * Written for somebody who was handed this application and has not set anything
- * up. A check that only reports "missing" leaves them exactly as stuck, so each
- * one says what it costs, where it was looked for, and what to run.
- */
-function RequirementsSection(): React.ReactElement {
-  const [requirements, setRequirements] = useState<Requirement[] | null>(null)
-  const [daemon, setDaemon] = useState<boolean | null>(null)
-  const [copied, setCopied] = useState<string | null>(null)
-
-  const look = useCallback(() => {
-    setRequirements(null)
-    void Promise.all([ipc.checkRequirements(), ipc.daemonAvailable()]).then(
-      ([found, hasDaemon]) => {
-        setRequirements(found)
-        setDaemon(hasDaemon)
-      },
-    )
-  }, [])
-
-  useEffect(look, [look])
-
-  const copy = (command: string): void => {
-    void navigator.clipboard.writeText(command)
-    setCopied(command)
-    window.setTimeout(() => setCopied((current) => (current === command ? null : current)), 1200)
-  }
-
-  return (
-    <section className={styles['section']}>
-      <h2 className={styles['sectionTitle']}>What Beacon needs</h2>
-      <p className={styles['sectionNote']}>
-        Beacon runs the tools you already have rather than bundling its own. Each is looked for
-        {isWindows() ? ' on your PATH' : ' through your login shell'}, which is the same way a
-        session finds it — so what this says is what will actually happen.
-      </p>
-
-      {daemon === false ? (
-        <div className={styles['conflict']}>
-          The session daemon is missing from this build, so terminals and Claude cannot start. That
-          is a packaging fault rather than something you can install: it should sit beside the
-          application. Rebuild with <code>pnpm app:build</code>, or ask whoever gave you this.
-        </div>
-      ) : null}
-
-      {requirements === null ? (
-        <p className={styles['sectionNote']}>Looking…</p>
-      ) : (
-        requirements.map((requirement) => (
-          <div className={styles['requirement']} key={requirement.id}>
-            <div className={styles['requirementHead']}>
-              <span
-                className={styles['stateDot']}
-                data-state={requirement.path ? 'installed' : undefined}
-              />
-              <span className={styles['requirementName']}>{requirement.name}</span>
-              {!requirement.path ? (
-                <span className={styles['tag']} data-importance={requirement.importance}>
-                  {requirement.importance === 'required' ? 'Needed' : 'Optional'}
-                </span>
-              ) : null}
-              <span style={{ flex: 1 }} />
-              {requirement.version ? (
-                <span className={styles['found']}>{requirement.version}</span>
-              ) : null}
-            </div>
-
-            {requirement.path ? (
-              <div className={styles['found']} title={requirement.path}>
-                {requirement.path}
-              </div>
-            ) : (
-              <>
-                <p className={styles['sectionNote']} style={{ marginBottom: 4 }}>
-                  {requirement.whatBreaks}
-                </p>
-                {requirement.install.map((option) => (
-                  <div className={styles['installOption']} key={option.command}>
-                    <span className={styles['installLabel']}>{option.label}</span>
-                    <button
-                      type="button"
-                      className={styles['installCommand']}
-                      title="Copy"
-                      onClick={() => copy(option.command)}
-                    >
-                      {copied === option.command ? 'Copied' : option.command}
-                    </button>
-                  </div>
-                ))}
-                {requirement.note ? (
-                  <p className={styles['sectionNote']} style={{ marginTop: 10, marginBottom: 0 }}>
-                    {requirement.note}
-                  </p>
-                ) : null}
-              </>
-            )}
-          </div>
-        ))
-      )}
-
-      <button type="button" className={styles['resetAll']} onClick={look}>
-        Check again
-      </button>
-    </section>
-  )
-}
-
-function LayoutSection(): React.ReactElement {
-  const current = useBeacon((s) => s.snapshot?.preset)
-  const setPreset = useBeacon((s) => s.setPreset)
-  const [presets, setPresets] = useState<Array<{ preset: LayoutPreset; layout: LayoutNode }>>([])
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    ipc
-      .layoutPresets()
-      .then((options) => {
-        if (!cancelled) setPresets(options)
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(errorMessage(err))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return (
-    <section className={styles['section']}>
-      <h2 className={styles['sectionTitle']}>Arrangement</h2>
-      <p className={styles['sectionNote']}>
-        Each preview is drawn from the layout it would apply, so what you see is what you get.
-        Dragging a splitter keeps the preset; the sizes are yours from then on.
-      </p>
-
-      {error ? (
-        <p className={styles['sectionNote']}>{error}</p>
-      ) : (
-        <div className={styles['presets']}>
-          {presets.map(({ preset, layout }) => (
-            <button
-              key={preset}
-              type="button"
-              className={styles['preset']}
-              data-selected={preset === current}
-              onClick={() => void setPreset(preset)}
-            >
-              <LayoutThumb node={layout} />
-              {PRESET_LABELS[preset]}
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function PanelsSection(): React.ReactElement {
-  const hidden = useBeacon(selectHidden)
-  const togglePanel = useBeacon((s) => s.togglePanel)
-
-  return (
-    <section className={styles['section']}>
-      <h2 className={styles['sectionTitle']}>Visible panels</h2>
-      <p className={styles['sectionNote']}>
-        A hidden panel keeps its place in the layout, so showing it again puts it back where it
-        was. Claude cannot be hidden — it is what the window is for.
-      </p>
-
-      <div className={styles['rows']}>
-        {TOGGLEABLE.map((panel) => {
-          const visible = !hidden.includes(panel)
-          return (
-            <div className={styles['row']} key={panel}>
-              <span className={styles['rowLabel']}>{PANEL_LABELS[panel]}</span>
-              <button
-                type="button"
-                className={styles['toggle']}
-                data-on={visible}
-                role="switch"
-                aria-checked={visible}
-                aria-label={PANEL_LABELS[panel]}
-                onClick={() => void togglePanel(panel)}
-              />
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function WorkspaceSection(): React.ReactElement {
-  const workspace = useBeacon(selectActiveWorkspace)
-  const updateWorkspace = useBeacon((s) => s.updateWorkspace)
-  const projectsHome = useBeacon((s) => s.snapshot?.projectsHome)
-
-  if (!workspace) return <section className={styles['section']}>No workspace.</section>
-
-  return (
-    <>
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>Accent</h2>
-        <p className={styles['sectionNote']}>
-          The colour for {workspace.name}. It is how you recognise which workspace you are in
-          before reading anything, so it is deliberately subtle — a hairline and a faint bloom
-          around the window, not a border.
-        </p>
-        <div className={styles['swatches']}>
-          {ACCENT_PRESETS.map((preset) => (
-            <button
-              key={preset.value}
-              type="button"
-              title={preset.name}
-              className={styles['swatch']}
-              style={{ background: preset.value }}
-              data-selected={preset.value === workspace.accent}
-              onClick={() => void updateWorkspace(workspace.id, { accent: preset.value })}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>Projects</h2>
-        <p className={styles['sectionNote']}>
-          Projects under this folder are stored relative to it, so the same configuration works on
-          macOS, Linux and Windows. Projects elsewhere keep their absolute path.
-        </p>
-        <div className={styles['rows']}>
-          <div className={styles['row']}>
-            <span className={styles['rowLabel']}>Projects home</span>
-            <span className={styles['rowValue']} title={projectsHome}>
-              {projectsHome ?? '—'}
-            </span>
-          </div>
-          <div className={styles['row']}>
-            <span className={styles['rowLabel']}>Projects in {workspace.name}</span>
-            <span className={styles['rowValue']}>{workspace.projects.length}</span>
-          </div>
-        </div>
-      </section>
-    </>
-  )
-}
-
-function KeyboardSection(): React.ReactElement {
-  const bindings = useBeacon(selectBindings)
-  const setBinding = useBeacon((s) => s.setBinding)
-  const resetBindings = useBeacon((s) => s.resetBindings)
-
-  const [capturing, setCapturing] = useState<string | null>(null)
-  const [problem, setProblem] = useState<string | null>(null)
-
-  // While a row is capturing it owns the keyboard: the shortcut being pressed
-  // must not also fire the action it is being taken from.
-  useEffect(() => {
-    if (!capturing) return
-
-    const onKeyDown = (event: KeyboardEvent): void => {
-      event.preventDefault()
-      event.stopPropagation()
-
-      if (event.key === 'Escape') {
-        setCapturing(null)
-        return
-      }
-
-      const pressed = bindingOf(event)
-      if (!pressed) {
-        // Without the primary modifier it would fire while typing.
-        setProblem(`A shortcut has to include ${modifierLabel()}.`)
-        return
-      }
-
-      const action = capturing
-      setCapturing(null)
-      void setBinding(action, pressed).then(setProblem)
-    }
-
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [capturing, setBinding])
-
-  return (
-    <section className={styles['section']}>
-      <h2 className={styles['sectionTitle']}>Shortcuts</h2>
-      <p className={styles['sectionNote']}>
-        Every shortcut includes the primary modifier — {modifierLabel()} here — so one table is
-        correct on macOS, Linux and Windows, and nothing fires while you are typing. Click a
-        shortcut and press the new one; Escape cancels. Jumping to a numbered tab is fixed, since
-        the binding is the number.
-      </p>
-
-      <div className={styles['rows']}>
-        {bindings.map((entry) => {
-          const changed = entry.binding !== entry.defaultBinding
-          return (
-            <div className={styles['row']} key={entry.action}>
-              <span className={styles['rowLabel']}>
-                {ACTION_TITLES[entry.action] ?? entry.action}
-              </span>
-
-              {changed ? (
-                <button
-                  type="button"
-                  className={styles['revert']}
-                  title={`Back to ${describeBinding(entry.defaultBinding)}`}
-                  aria-label="Reset this shortcut"
-                  onClick={() => void setBinding(entry.action, null).then(setProblem)}
-                >
-                  ↺
-                </button>
-              ) : (
-                <span className={styles['revertSpacer']} />
-              )}
-
-              <button
-                type="button"
-                className={styles['binding']}
-                data-capturing={capturing === entry.action}
-                data-changed={changed}
-                onClick={() => {
-                  setProblem(null)
-                  setCapturing(entry.action)
-                }}
-              >
-                {capturing === entry.action ? 'Press a key…' : describeBinding(entry.binding)}
-              </button>
-            </div>
-          )
-        })}
-      </div>
-
-      {problem ? <p className={styles['conflict']}>{problem}</p> : null}
-
-      <button
-        type="button"
-        className={styles['resetAll']}
-        onClick={() => void resetBindings().then(() => setProblem(null))}
-      >
-        Reset all shortcuts
-      </button>
-    </section>
-  )
-}
-
-/**
- * What a terminal runs, and whether Beacon may interrupt you.
- *
- * The shell is a shell, not another terminal emulator: Beacon already is one,
- * and running kitty inside it would be an emulator inside an emulator. What
- * people want from that question is fish instead of zsh, which is this.
- */
-/**
- * What macOS itself will do, which is the half Beacon does not control.
- *
- * Shown as its own thing rather than folded into the switch above, because the
- * two fail differently: the switch is a preference, and this is a permission
- * that can be revoked from outside while Beacon is running. Conflating them
- * produces the worst version of this feature — a switch that is on, and
- * notifications that silently go nowhere.
- */
-function SystemPermission(): React.ReactElement {
-  const { permission, asking, request, openSettings, refresh } = useNotificationPermission()
-  const copy = describePermission(permission)
-  const [tested, setTested] = useState<string | null>(null)
-
-  const test = async (): Promise<void> => {
-    try {
-      await ipc.sendNotification('Beacon Split', 'This is what a notification looks like.')
-      setTested(
-        `Sent. If nothing appeared, ${isMac() ? 'macOS' : 'the system'} is holding it back.`,
-      )
-    } catch (error) {
-      setTested(String(error))
-    }
-    void refresh()
-  }
-
-  return (
-    <>
-      <div className={styles['rows']}>
-        <div className={styles['row']}>
-          <span className={styles['rowLabel']}>System permission</span>
-          <span className={styles['rowValue']}>{copy.label}</span>
-        </div>
-      </div>
-
-      {copy.hint ? <p className={styles['sectionNote']}>{copy.hint}</p> : null}
-
-      <div className={styles['buttons']}>
-        {copy.action === 'ask' ? (
-          <button
-            type="button"
-            className={styles['primary']}
-            disabled={asking}
-            onClick={() => void request()}
-          >
-            {asking ? 'Waiting for macOS…' : 'Ask macOS'}
-          </button>
-        ) : null}
-
-        {copy.action === 'openSettings' ? (
-          <button type="button" className={styles['primary']} onClick={() => void openSettings()}>
-            Open System Settings
-          </button>
-        ) : null}
-
-        <button type="button" className={styles['secondary']} onClick={() => void test()}>
-          Send a test notification
-        </button>
-
-        {tested ? <span className={styles['rowValue']}>{tested}</span> : null}
-      </div>
-    </>
-  )
-}
-
-function TerminalSection(): React.ReactElement {
-  const shell = useBeacon((s) => s.snapshot?.shell ?? null)
-  const notifications = useBeacon((s) => s.snapshot?.notifications ?? true)
-  const setShell = useBeacon((s) => s.setShell)
-  const setNotifications = useBeacon((s) => s.setNotifications)
-  const [draft, setDraft] = useState<string | null>(null)
-
-  const value = draft ?? (shell ? formatShell(shell) : '')
-
-  const commit = (): void => {
-    void setShell(parseShell(value))
-    setDraft(null)
-  }
-
-  return (
-    <>
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>Shell</h2>
-        {isWindows() ? (
-          <p className={styles['sectionNote']}>
-            Beacon is the terminal emulator, so this is a shell — PowerShell, Git Bash, cmd, nu —
-            and not another one. Leave it empty for PowerShell: version 7 when it is installed,
-            Windows PowerShell otherwise. Arguments go after the program; quote a path with spaces
-            in it.
-          </p>
-        ) : (
-          <p className={styles['sectionNote']}>
-            Beacon is the terminal emulator, so this is a shell — zsh, fish, nu — and not another
-            one. Leave it empty for your account's shell, started as a login shell, which is what
-            every terminal does. Arguments go after the program.
-          </p>
-        )}
-
-        <input
-          className={styles['command']}
-          style={{ width: '100%' }}
-          placeholder={isWindows() ? 'Default: PowerShell -NoLogo' : `Default: ${'$SHELL'} -l`}
-          spellCheck={false}
-          value={value}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') commit()
-            if (event.key === 'Escape') setDraft(null)
-          }}
-        />
-
-        <p className={styles['sectionNote']} style={{ marginTop: 10 }}>
-          Anything specific to another emulator — kitty's graphics or keyboard protocols — is not
-          available here, and will not be: those belong to the emulator, which is the part Beacon
-          replaces. Terminals already running keep the shell they started with.
-        </p>
-      </section>
-
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>Interruptions</h2>
-        <p className={styles['sectionNote']}>
-          With several projects open, the expensive thing is not switching tabs — it is a
-          permission prompt in one of them going unseen, or a long turn finishing while you are in
-          a browser. Beacon can say so, and only when you are not already looking at that project.
-        </p>
-
-        <div className={styles['rows']}>
-          <div className={styles['row']}>
-            <span className={styles['rowLabel']}>
-              Notify me when Claude is waiting, or has finished a long turn
-            </span>
-            <button
-              type="button"
-              className={styles['toggle']}
-              data-on={notifications}
-              role="switch"
-              aria-checked={notifications}
-              aria-label="Notify me when Claude is waiting, or has finished a long turn"
-              onClick={() => void setNotifications(!notifications)}
-            />
-          </div>
-          <SoundRow chime="waiting" label="Play a sound when Claude is waiting for you" />
-          <SoundRow chime="done" label="Play a sound when a long turn finishes" />
-        </div>
-
-        <SystemPermission />
-      </section>
-    </>
-  )
-}
-
-/**
- * One sound's switch, and a way to hear it before deciding.
- *
- * Separate from notifications on purpose: a banner is for someone at the
- * screen and a sound for someone who is not, and either can be wanted alone.
- */
-function SoundRow({ chime, label }: { chime: Chime; label: string }): React.ReactElement {
-  const sounds = useBeacon((s) => s.snapshot?.sounds ?? { waiting: false, done: false })
-  const setSounds = useBeacon((s) => s.setSounds)
-  const on = sounds[chime]
-
-  return (
-    <div className={styles['row']}>
-      <span className={styles['rowLabel']}>{label}</span>
-      <button
-        type="button"
-        className={styles['secondary']}
-        aria-label={`Play the sound: ${label.toLowerCase()}`}
-        onClick={() => playChime(chime)}
-      >
-        Play
-      </button>
-      <button
-        type="button"
-        className={styles['toggle']}
-        data-on={on}
-        role="switch"
-        aria-checked={on}
-        aria-label={label}
-        onClick={() => void setSounds({ ...sounds, [chime]: !on })}
-      />
-    </div>
-  )
-}
-
-/**
- * The Codex integration.
- *
- * A different shape from Claude Code's, because Codex is put together
- * differently: it loads hooks from plugins and plugins from marketplaces, so
- * Beacon generates one of each and asks Codex to install it.
- *
- * The part that cannot be automated is given its own paragraph rather than a
- * footnote. Codex keeps a hash of every hook it has been shown and runs none it
- * has not, so until somebody trusts Beacon's in Codex itself, installing has
- * achieved nothing visible — and a user who is not told that would reasonably
- * conclude the feature is broken.
- */
-function CodexSection(): React.ReactElement {
-  const [integration, setIntegration] = useState<CodexIntegration | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [working, setWorking] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    ipc
-      .codexIntegration()
-      .then((found) => {
-        if (!cancelled) setIntegration(found)
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(errorMessage(err))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const act = (run: () => Promise<CodexIntegration>): void => {
-    setWorking(true)
-    setError(null)
-    run()
-      .then(setIntegration)
-      .catch((err: unknown) => setError(errorMessage(err)))
-      .finally(() => setWorking(false))
-  }
-
-  const plugin = integration?.plugin ?? null
-  const label =
-    plugin === 'installed'
-      ? 'Installed'
-      : plugin === 'stale'
-        ? 'Installed, but out of date: another copy of Beacon, or an older set of events'
-        : 'Not installed'
-  // No version means no Codex. Everything here would fail, so it says why
-  // instead of offering a button that cannot work.
-  const missing = integration !== null && integration.capabilities.version === undefined
-
-  return (
-    <>
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>What Codex is doing</h2>
-        <p className={styles['sectionNote']}>
-          The same thing the Claude Code hooks do, for the other agent: a tab that can say whether
-          Codex is working, has finished, or has stopped and is waiting for an answer.
-        </p>
-
-        {missing ? (
-          <p className={styles['sectionNote']}>
-            Codex is not installed on this machine. Requirements has the commands for it; a Codex
-            panel works as a plain terminal until then.
-          </p>
-        ) : (
-          <>
-            <p className={styles['sectionNote']}>
-              Codex takes hooks from plugins rather than from a settings file, so Beacon writes a
-              small marketplace of its own and asks Codex to install one plugin from it. Nothing
-              else in your Codex configuration is touched, and the hook does nothing outside
-              Beacon — a Codex you start yourself has no socket to report to and exits
-              immediately.
-            </p>
-
-            <div className={styles['command']}>{integration?.marketplace ?? '…'}</div>
-
-            <div className={styles['buttons']}>
-              <span className={styles['state']}>
-                <span className={styles['stateDot']} data-state={plugin ?? 'notInstalled'} />
-                {plugin === null ? 'Checking…' : label}
-              </span>
-              <span style={{ flex: 1 }} />
-
-              {plugin === 'installed' ? (
-                <button
-                  type="button"
-                  className={styles['resetAll']}
-                  style={{ marginTop: 0 }}
-                  disabled={working}
-                  onClick={() => act(() => ipc.removeCodexPlugin())}
-                >
-                  Remove
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={styles['primary']}
-                  disabled={working}
-                  onClick={() => act(() => ipc.installCodexPlugin())}
-                >
-                  {working ? 'Installing…' : plugin === 'stale' ? 'Update' : 'Install'}
-                </button>
-              )}
-            </div>
-
-            {plugin === 'installed' ? (
-              <p className={styles['sectionNote']}>
-                One step left, and it is not Beacon's to take. Codex will not run a hook it has
-                not been shown, so open Codex and run <code>/hooks</code> once to trust Beacon's.
-                Until you do, a Codex panel runs perfectly well and simply reports nothing.
-              </p>
-            ) : null}
-          </>
-        )}
-
-        {error ? <p className={styles['conflict']}>{error}</p> : null}
-      </section>
-    </>
-  )
-}
-
-/**
- * The Claude Code integration.
- *
- * Two halves, installed separately because they cost different things. Hooks
- * are additive — Beacon adds entries and removes them again. The status line is
- * a single slot, so taking it means displacing whatever was there; Beacon runs
- * the previous one rather than replacing it, and says so.
- *
- * Both opt-in. These write into a file belonging to another application, and
- * doing that unprompted is not Beacon's to decide however useful the result.
- */
-function ClaudeSection(): React.ReactElement {
-  const [integration, setIntegration] = useState<Integration | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const agents = useBeacon((s) => s.snapshot?.claudeAgents ?? true)
-  const setClaudeAgents = useBeacon((s) => s.setClaudeAgents)
-  const agentsPossible = useWorkstreamsSupported()
-
-  useEffect(() => {
-    let cancelled = false
-    ipc
-      .claudeIntegration()
-      .then((found) => {
-        if (!cancelled) setIntegration(found)
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(errorMessage(err))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const act = (run: () => Promise<Integration>): void => {
-    run()
-      .then(setIntegration)
-      .catch((err: unknown) => setError(errorMessage(err)))
-  }
-
-  const hooks = integration?.hooks ?? null
-  const hooksLabel =
-    hooks === 'installed'
-      ? 'Installed'
-      : hooks === 'stale'
-        ? 'Installed, but out of date: another copy of Beacon, or an older set of events'
-        : 'Not installed'
-
-  return (
-    <>
-      {agentsPossible ? (
-        <section className={styles['section']}>
-          <h2 className={styles['sectionTitle']}>Delegating</h2>
-          <p className={styles['sectionNote']}>
-            Beacon offers three small agents to the sessions it starts — one that searches the
-            repository, one that runs tests, one that reviews a finished change. Each exists to
-            keep a large pile of text out of the conversation doing the work and hand back only
-            the part that changes what happens next.
-          </p>
-          <p className={styles['sectionNote']}>
-            They are passed to Claude Code for one session at a time. Nothing is written into your
-            projects, your <code>.claude/agents/</code> is untouched, and a Claude you start
-            yourself never sees them. The cost is that their descriptions sit in every session's
-            context whether they are used or not, which is why this is a switch.
-          </p>
-
-          <div className={styles['rows']}>
-            <div className={styles['row']}>
-              <span className={styles['rowLabel']}>Offer Beacon&rsquo;s agents to new sessions</span>
-              <button
-                type="button"
-                className={styles['toggle']}
-                data-on={agents}
-                role="switch"
-                aria-checked={agents}
-                aria-label="Offer Beacon's agents to new sessions"
-                onClick={() => void setClaudeAgents(!agents)}
-              />
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>What Claude is doing</h2>
-        <p className={styles['sectionNote']}>
-          Tabs can say whether Claude is working, has finished, or has stopped and is waiting for
-          you to answer it. That last one is the point: with several projects open, the expensive
-          thing is not switching tabs, it is not knowing which one needs you.
-        </p>
-        <p className={styles['sectionNote']}>
-          Beacon adds one hook per event to your <code>~/.claude/settings.json</code> and touches
-          nothing else. The hook does nothing outside Beacon — a Claude started anywhere else has
-          no socket to report to, so it exits immediately.
-        </p>
-
-        <div className={styles['command']}>{integration?.hookCommand ?? '…'}</div>
-
-        <div className={styles['buttons']}>
-          <span className={styles['state']}>
-            <span className={styles['stateDot']} data-state={hooks ?? 'notInstalled'} />
-            {hooks === null ? 'Checking…' : hooksLabel}
-          </span>
-          <span style={{ flex: 1 }} />
-
-          {hooks === 'installed' ? (
-            <button
-              type="button"
-              className={styles['resetAll']}
-              style={{ marginTop: 0 }}
-              onClick={() => act(() => ipc.removeClaudeHooks().then(() => ipc.claudeIntegration()))}
-            >
-              Remove
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles['primary']}
-              onClick={() => act(() => ipc.installClaudeHooks().then(() => ipc.claudeIntegration()))}
-            >
-              {hooks === 'stale' ? 'Update' : 'Install'}
-            </button>
-          )}
-        </div>
-      </section>
-
-      <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>What Claude is costing</h2>
-        <p className={styles['sectionNote']}>
-          Shows how much of the five-hour allowance is left in the title bar, and how full each
-          project's context is — enough to decide which project to spend the rest of it on, and
-          when a session is worth clearing.
-        </p>
-        <p className={styles['sectionNote']}>
-          Claude Code only reports these through its status line, and a status line is one slot
-          rather than a list. Beacon takes the slot and runs whatever was there, so what Claude
-          Code shows does not change. Removing this puts your own line back exactly.
-        </p>
-
-        <div className={styles['command']}>{integration?.statusLineCommand ?? '…'}</div>
-
-        <div className={styles['buttons']}>
-          <span className={styles['state']}>
-            <span
-              className={styles['stateDot']}
-              data-state={integration?.statusLine ? 'installed' : 'notInstalled'}
-            />
-            {integration === null
-              ? 'Checking…'
-              : integration.statusLine
-                ? 'Installed'
-                : 'Not installed'}
-          </span>
-          <span style={{ flex: 1 }} />
-
-          {integration?.statusLine ? (
-            <button
-              type="button"
-              className={styles['resetAll']}
-              style={{ marginTop: 0 }}
-              onClick={() => act(() => ipc.removeClaudeStatusLine())}
-            >
-              Remove
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles['primary']}
-              onClick={() => act(() => ipc.installClaudeStatusLine())}
-            >
-              Install
-            </button>
-          )}
-        </div>
-
-        {error ? <p className={styles['conflict']}>{error}</p> : null}
-
-        <p className={styles['sectionNote']} style={{ marginTop: 14 }}>
-          A Claude session already running will not pick either of these up — restart it once they
-          are installed. And if Claude Code signs you out mid-session, it stops reporting: Beacon
-          then stops claiming to know, rather than leaving the last numbers on screen as though
-          they were still true.
-        </p>
-      </section>
-    </>
-  )
 }
 
 function AboutSection(): React.ReactElement {
-  const projectsHome = useBeacon((s) => s.snapshot?.projectsHome)
-  const workspaces = useBeacon((s) => s.snapshot?.workspaces.length ?? 0)
+  const version = useBeacon((s) => s.snapshot?.version)
 
   return (
     <section className={styles['section']}>
@@ -1119,14 +157,8 @@ function AboutSection(): React.ReactElement {
 
       <div className={styles['rows']}>
         <div className={styles['row']}>
-          <span className={styles['rowLabel']}>Workspaces</span>
-          <span className={styles['rowValue']}>{workspaces}</span>
-        </div>
-        <div className={styles['row']}>
-          <span className={styles['rowLabel']}>Projects home</span>
-          <span className={styles['rowValue']} title={projectsHome}>
-            {projectsHome ?? '—'}
-          </span>
+          <span className={styles['rowLabel']}>Version</span>
+          <span className={styles['rowValue']}>{version ?? '—'}</span>
         </div>
       </div>
     </section>
