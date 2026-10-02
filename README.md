@@ -5,7 +5,8 @@
 **An agent-first development workspace.**
 
 Beacon is not another code editor. It is the surface you work *from* when your
-main collaborator is Claude Code and you have several projects open at once.
+main collaborator is Claude Code — with Codex beside it, if you want a second
+opinion — and you have several projects open at once.
 
 [Install](#install) · [What it does](#what-it-does) · [Building it](#building-it) · [Contributing](CONTRIBUTING.md) · [Architecture](docs/ARCHITECTURE.md)
 
@@ -16,7 +17,7 @@ main collaborator is Claude Code and you have several projects open at once.
 The unit of the application is not a file. It is:
 
 ```
-Workspace → Project → Claude session
+Workspace → Project → agent session
 ```
 
 Everything is pointed at one goal: **flow, speed, and as little context
@@ -30,6 +31,12 @@ is a bug.
 own PTY. Beacon does not reimplement Claude Code — colours, prompts,
 permissions, selection and scrolling are whatever the CLI does, because it *is*
 the CLI.
+
+**A second agent, if you want one.** Codex gets a panel of its own (`⌘⇧O`) and
+its own conversations, and can work in the same project at the same time as
+Claude Code. It starts hidden, and without it installed nothing else changes. A
+project can also give each agent a git worktree of its own, so two agents never
+save over each other's files — off unless you turn it on.
 
 **Sessions outlive the window.** A background daemon owns them. Close Beacon and
 your work keeps running; open it again and it reattaches, scrollback intact.
@@ -104,6 +111,7 @@ and in Settings → Requirements.
 | --- | --- | --- |
 | [Claude Code][claude] | The Claude panel — the point of the application | `curl -fsSL https://claude.ai/install.sh \| bash` |
 | Git | The Git panel, and Quick Open honouring your ignore rules | `xcode-select --install` |
+| [Codex][codex] *(optional)* | The Codex panel | `brew install --cask codex` or `npm install -g @openai/codex` |
 
 On Windows:
 
@@ -111,13 +119,15 @@ On Windows:
 | --- | --- | --- |
 | [Claude Code][claude] | The Claude panel | `irm https://claude.ai/install.ps1 \| iex` in PowerShell |
 | Git for Windows | The Git panel — and Git Bash, which Claude Code prefers for its commands | `winget install --id Git.Git -e --source winget` |
+| [Codex][codex] *(optional)* | The Codex panel | `npm install -g @openai/codex` |
 
-A Claude Code installed with npm works too: Beacon looks through npm's
-`claude.cmd` to the program it starts.
+An agent installed with npm works too: Beacon looks through npm's `.cmd` shims
+to the program they start.
 
 Claude Code needs a Pro, Max, Team or Enterprise account, and you sign in by
-running `claude` once in a terminal. Beacon does not handle signing in — it runs
-the CLI you already use.
+running `claude` once in a terminal. Codex needs a ChatGPT plan or an API key,
+and signs in the same way, with `codex`. Beacon does not handle signing in — it
+runs the CLIs you already use.
 
 ## Keyboard
 
@@ -130,12 +140,16 @@ Ctrl+Shift+V always copy and paste.
 | --- | --- |
 | `⌘K` | Command palette |
 | `⌘P` | Quick open |
+| `⌘,` | Settings |
 | `⌘1` … `⌘9` | Switch to project tab |
+| `⌘⇧[` / `⌘⇧]` | Previous / next project |
 | `⌘E` / `⌘G` / `⌘O` / `⌘J` | Toggle Files, Git, the editor, the terminal |
+| `⌘⇧O` | Toggle the Codex panel |
 | `⌥⌘←` / `⌥⌘→` | Move the keyboard between panels |
 | `⌘↩` | Fullscreen the focused panel |
 | `⌘⇧R` | Restart Claude |
-| `⌘S` / `⌘G` | Save / go to line, in the editor |
+| `⇧↩` | New line in a Claude or Codex prompt, instead of sending it |
+| `⌘S` / `⌘F` / `⌥⌘G` | Save / find / go to line, in the editor |
 
 ## Building it
 
@@ -235,6 +249,10 @@ one person would otherwise do.
 Claude and Claude Code are trademarks of Anthropic PBC. Beacon uses those names
 only to say what it runs.
 
+The same goes for Codex: Beacon is not affiliated with OpenAI, runs the `codex`
+you installed, and never touches how it signs you in. Codex and OpenAI are
+trademarks of OpenAI.
+
 ## Licence
 
 [AGPL-3.0](LICENSE).
@@ -250,4 +268,5 @@ right; see [CONTRIBUTING.md](CONTRIBUTING.md#licensing).
 
 [releases]: https://github.com/hxst1/Beacon-Split/releases
 [claude]: https://claude.com/claude-code
+[codex]: https://github.com/openai/codex
 [terms]: https://code.claude.com/docs/en/legal-and-compliance

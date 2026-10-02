@@ -25,7 +25,7 @@ Read these two before a substantial change:
 - [`docs/ARCHITECTURE.md`][arch] — how the pieces fit, and the constraints that
   put them there.
 - [`docs/DECISIONS.md`][decisions] — every choice worth recording, why it was
-  made, and what it cost. Nearly fifty of them.
+  made, and what it cost. Around eighty of them.
 
 **A change that contradicts a decision is welcome.** Several of those decisions
 will turn out to be wrong. What is asked is that you say which one, and why it
@@ -41,7 +41,9 @@ Two rules are load-bearing and worth knowing before you start:
 
 ## Getting set up
 
-You need Node 20+, pnpm 10+, Rust 1.85+, and the Xcode command line tools.
+You need Node 20+, pnpm 10+, Rust 1.85+, and the Xcode command line tools — or,
+on Windows, the Rust MSVC toolchain and Visual Studio's C++ build tools (the
+README's [Building it](README.md#building-it) has the details).
 
 ```sh
 pnpm install
@@ -54,8 +56,14 @@ Before opening a pull request:
 pnpm check    # typecheck, tests, rustfmt, clippy — the same thing CI runs
 ```
 
-Nothing merges with that failing. Clippy runs with `-D warnings`, so a warning
-is an error here.
+Nothing merges with that failing: CI runs it on macOS and on Windows, and both
+have to pass before a pull request can be merged. Clippy runs with
+`-D warnings`, so a warning is an error here.
+
+Beacon runs on both platforms, so a change to anything that starts processes,
+touches paths or reads the keyboard should say which of the two it was tried
+on. "Frontend only" is not the same as "the same on both": what a terminal
+sends still goes through a different pseudo-console on Windows.
 
 ### Build it before you trust it
 
@@ -111,8 +119,11 @@ The useful ones say what you did, what happened, and what you expected. Beyond
 that:
 
 - The version, from Settings → About or the bell at the bottom right.
+- Your platform — macOS or Windows, and which version.
 - Anything in the log. Run Beacon from a terminal to see it:
-  `"/Applications/Beacon Split.app/Contents/MacOS/beacon-split"`.
+  `"/Applications/Beacon Split.app/Contents/MacOS/beacon-split"` on macOS, or
+  `& "$env:LOCALAPPDATA\Beacon Split\beacon-split.exe"` in PowerShell on
+  Windows.
 - If the window is blank or a panel is empty, say so explicitly — that class of
   bug has had several distinct causes here and they look identical.
 

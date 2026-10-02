@@ -71,8 +71,11 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-The workflow builds for Apple Silicon and Intel, runs the full check, signs the
-artefacts, and opens a **draft** release. Look at it, then publish it. A draft
+The workflow builds for Apple Silicon and Intel Macs and for Windows x64 (an
+NSIS `-setup.exe` and an MSI), runs the full check, signs the artefacts, and
+opens a **draft** release. Before publishing, check that `latest.json` lists
+every platform and that its plain `windows-x86_64` entry is the `-setup.exe` —
+the installer whose hooks move a running daemon aside (ADR-080). Look at it, then publish it. A draft
 by default because a release is the one build nobody gets to try again.
 
 Publishing the release makes `latest.json` reachable, and every running Beacon
