@@ -371,8 +371,36 @@ fn prepare_agent(daemon: &Daemon, project: &ProjectId, agent: AgentKind, agents:
         return;
     };
 
+    let stream = learn_from_disk(daemon, stream);
     let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, project, &stream, start, agents);
+}
+
+/// Marks a Claude conversation resumable when its transcript is on disk, even
+/// though no hook ever said so.
+///
+/// The hooks are how Beacon usually learns a conversation exists, and they
+/// are optional. A user who never installed them used to get `Session ID … is
+/// already in use` on every start after the first, because the book still
+/// said the conversation had never been written and `--session-id` was asked
+/// for again. Claude Code's own transcript settles it either way.
+fn learn_from_disk(daemon: &Daemon, stream: Workstream) -> Workstream {
+    let written = stream.agent == AgentKind::Claude
+        && !stream.resumable
+        && stream
+            .resume_id()
+            .is_some_and(beacon_core::claude::conversation_written);
+    if !written {
+        return stream;
+    }
+
+    let mut book = daemon.workstreams.lock_or_recover();
+    book.mark_resumable(&stream.id);
+    let updated = book.get(&stream.id).cloned().unwrap_or(stream);
+    drop(book);
+    daemon.persist_workstreams();
+    tracing::info!(conversation = %updated.id, "found the conversation on disk; resuming it");
+    updated
 }
 
 /// Which flag the next start of a conversation uses.
@@ -559,6 +587,7 @@ fn resume_workstream(
         .ok_or_else(|| CoreError::invalid("that conversation is not one of this project's"))?;
     daemon.persist_workstreams();
 
+    let stream = learn_from_disk(daemon, stream);
     let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, &project, &stream, start, agents);
     into_agent(daemon, &project, stream, cwd, size, shell)

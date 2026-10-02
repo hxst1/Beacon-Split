@@ -288,9 +288,65 @@ pub fn is_running(session_id: &str) -> Option<bool> {
     )
 }
 
+/// Whether Claude Code has written a conversation to disk — whether it exists.
+///
+/// Claude Code refuses `--session-id` for a conversation that exists ("Session
+/// ID … is already in use") and `--resume` for one that does not, so Beacon has
+/// to know which. Its hooks say so as it happens, but only where they are
+/// installed, and installing them is the user's choice: without them every
+/// conversation stayed "never written" for good, and each start after the
+/// first — reopening the window, a restart — was refused.
+///
+/// The transcript is the fact the hooks only report. It lives at
+/// `<config>/projects/<the project's folder, mangled>/<id>.jsonl`, and every
+/// project folder is looked in rather than the mangling reproduced: the rule
+/// is Claude Code's to change, and the id alone is unique. `<config>` is
+/// `CLAUDE_CONFIG_DIR` when set, as for Claude Code itself.
+pub fn conversation_written(session_id: &str) -> bool {
+    let config = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| crate::paths::home_dir().join(".claude"));
+    conversation_written_in(&config.join("projects"), session_id)
+}
+
+fn conversation_written_in(projects: &std::path::Path, session_id: &str) -> bool {
+    // An id that could step out of the folder is not one Claude Code chose.
+    if session_id.is_empty() || session_id.contains(['/', '\\', '.']) {
+        return false;
+    }
+    let file = format!("{session_id}.jsonl");
+    std::fs::read_dir(projects)
+        .map(|folders| {
+            folders
+                .flatten()
+                .any(|folder| folder.path().join(&file).is_file())
+        })
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_conversation_is_written_once_its_transcript_is_on_disk() {
+        let projects = tempfile::tempdir().unwrap();
+        let id = "2e83a86b-33cb-451d-ac83-2a009c0b00dc";
+        assert!(!conversation_written_in(projects.path(), id));
+
+        let folder = projects.path().join("D--jllinares-Personal-bruto");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join(format!("{id}.jsonl")), "{}\n").unwrap();
+        assert!(conversation_written_in(projects.path(), id));
+        assert!(!conversation_written_in(projects.path(), "another-id"));
+    }
+
+    #[test]
+    fn an_id_that_names_a_path_is_never_looked_up() {
+        let projects = tempfile::tempdir().unwrap();
+        assert!(!conversation_written_in(projects.path(), "../secret"));
+        assert!(!conversation_written_in(projects.path(), ""));
+    }
 
     /// Trimmed from the real `claude --help` of 2.1.252.
     const HELP: &str = "\
