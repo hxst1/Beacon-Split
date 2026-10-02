@@ -71,29 +71,40 @@
   --surface-3: rgb(255 255 255 / 0.068);
 
   /* Hairlines. Nothing in Beacon uses a border heavier than 1px. */
-  --line-1: rgb(255 255 255 / 0.055);
-  --line-2: rgb(255 255 255 / 0.09);
+  --line-1: rgb(255 255 255 / 0.09);
+  --line-2: rgb(255 255 255 / 0.15);
 
-  /* Text, by descending importance */
+  /* Text, by descending importance.
+   *
+   * All four levels are text somewhere — --fg-4 carries the status bar and the
+   * panel headers — so all four clear 4.5:1, and they are spaced evenly so the
+   * hierarchy survives being brighter. The floor is measured against the worst
+   * ground in the app: --surface-3 with a white desktop behind the window at
+   * --window-alpha, which is the case that made this necessary. Sunlight on the
+   * screen adds light to everything and flattens whatever starts close
+   * together, so a level that only just passed on a dark desktop was not
+   * readable at a window. Lowering any of these is a contrast regression. */
   --fg-1: rgb(255 255 255 / 0.94);
-  --fg-2: rgb(255 255 255 / 0.6);
-  --fg-3: rgb(255 255 255 / 0.36);
-  --fg-4: rgb(255 255 255 / 0.2);
+  --fg-2: rgb(255 255 255 / 0.8);
+  --fg-3: rgb(255 255 255 / 0.66);
+  --fg-4: rgb(255 255 255 / 0.54);
 
   /* Opaque surfaces, for things you read rather than look past: a menu is
      small text, and whatever is behind it only makes that harder. */
   --solid-1: #15151b;
   --solid-2: #1c1c23;
 
-  --selection: rgb(255 255 255 / 0.14);
-  --scrollbar: rgb(255 255 255 / 0.09);
-  --scrollbar-hover: rgb(255 255 255 / 0.16);
+  --selection: rgb(255 255 255 / 0.18);
+  --scrollbar: rgb(255 255 255 / 0.14);
+  --scrollbar-hover: rgb(255 255 255 / 0.24);
 
+  /* Lifted just enough to clear 4.5:1 on the same worst ground as the text
+     levels above; the hues are unchanged. */
   --ok: #8fd18a;
   --warn: #e0a76a;
-  --danger: #ff6b6b;
+  --danger: #ff7d7d;
   --info: #69b7ff;
-  --purple: #a48cff;
+  --purple: #ad97ff;
 
   /* An inset field: darker than its surroundings in either palette. */
   --field: rgb(0 0 0 / 0.28);
@@ -102,7 +113,7 @@
   --shadow-float: 0 30px 70px -20px rgb(0 0 0 / 0.7);
   --shadow-screen: 0 40px 90px -25px rgb(0 0 0 / 0.75);
   /* The hairline of light along the top edge of a raised surface. */
-  --edge-light: rgb(255 255 255 / 0.06);
+  --edge-light: rgb(255 255 255 / 0.1);
   /* A selected swatch's ring, which has to read against any colour under it. */
   --ring: rgb(255 255 255 / 0.55);
 }
