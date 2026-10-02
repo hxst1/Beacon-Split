@@ -51,6 +51,13 @@ use crate::workstreams::{Workstream, WorkstreamId};
 /// running daemon and the sessions it holds. Paid once, knowingly: an older
 /// daemon would reject every one of them, leaving a window that can list
 /// conversations it cannot open.
+///
+/// `Event::Restarted` was added without a version, for the reason `Idle` was.
+/// A client that cannot read an event logs it and carries on, and the only
+/// client that could meet one it does not know is an older window on a newer
+/// daemon, which a window never starts. The other way round, a newer window on
+/// an older daemon simply never hears it. Neither leaves anything waiting, and
+/// replacing the daemon for it would end every running session on upgrade.
 pub const PROTOCOL_VERSION: u32 = 7;
 
 /// Newline-delimited JSON, one message per line.
@@ -606,6 +613,18 @@ pub enum Event {
     /// only layer that knows what actually went wrong.
     #[serde(rename_all = "camelCase")]
     Degraded { project: ProjectId, summary: String },
+    /// The daemon started a session again by itself, so any view of it is
+    /// showing a process that has gone.
+    ///
+    /// Carries where the session lives rather than its new id: a window asks
+    /// for a project's session by place, and asking again is how it finds the
+    /// new one. See `crate::sign_in` for the one thing that does this.
+    #[serde(rename_all = "camelCase")]
+    Restarted {
+        project: ProjectId,
+        kind: SessionKind,
+        slot: u32,
+    },
 }
 
 /// One line from the daemon: either a reply, or something that just happened.
@@ -838,11 +857,17 @@ mod tests {
                 project: ProjectId("pj_x".into()),
                 summary: "The clip drawer is unavailable.".into(),
             },
+            Event::Restarted {
+                project: ProjectId("pj_x".into()),
+                kind: SessionKind::Claude,
+                slot: 0,
+            },
         ];
 
+        // `Restarted` was added without a version; see PROTOCOL_VERSION.
         assert_eq!(
             events.len(),
-            8,
+            9,
             "the set of events changed: PROTOCOL_VERSION must change with it"
         );
 

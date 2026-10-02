@@ -252,6 +252,40 @@ fn ask_shell(name: &str, args: &[&str]) -> Option<PathBuf> {
 /// that waits for exit while the pipe is full waits forever on a child that is
 /// waiting to be read.
 pub fn capture_briefly(command: &mut std::process::Command, limit: Duration) -> Option<String> {
+    let (succeeded, output) = run_briefly(command, limit, false)?;
+    succeeded.then_some(output)
+}
+
+/// [`capture_briefly`] for a program whose answer is worth reading whatever it
+/// exits with.
+///
+/// A status command is the case: saying "you are signed out" is a perfectly
+/// good answer, and a program is entitled to exit non-zero while giving it.
+pub fn capture_briefly_any_exit(
+    command: &mut std::process::Command,
+    limit: Duration,
+) -> Option<String> {
+    run_briefly(command, limit, true).map(|(_, output)| output)
+}
+
+/// How long to wait for the output of a program that has already exited.
+///
+/// The pipe normally closes the moment it does. It stays open only while
+/// something the program started is still holding it — an npm shim's `node`,
+/// say — and that is not worth waiting on past the deadline.
+const AFTER_EXIT: Duration = Duration::from_millis(250);
+
+/// Runs a program to completion or to the limit, whichever is first, and says
+/// whether it succeeded alongside what it printed.
+///
+/// A failure's output is only read when asked for. Either way the wait for it
+/// is bounded: a program that exits while something it started still holds
+/// the pipe would otherwise leave this reading forever.
+fn run_briefly(
+    command: &mut std::process::Command,
+    limit: Duration,
+    read_failure: bool,
+) -> Option<(bool, String)> {
     hide_console_window(command);
     let mut child = command
         .stdin(Stdio::null())
@@ -261,12 +295,13 @@ pub fn capture_briefly(command: &mut std::process::Command, limit: Duration) -> 
         .ok()?;
 
     let stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
+    let (sender, output) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
         let mut buffer = String::new();
         use std::io::Read;
         let mut stdout = stdout;
         let _ = stdout.read_to_string(&mut buffer);
-        buffer
+        let _ = sender.send(buffer);
     });
 
     let deadline = Instant::now() + limit;
@@ -288,7 +323,16 @@ pub fn capture_briefly(command: &mut std::process::Command, limit: Duration) -> 
         std::thread::sleep(Duration::from_millis(10));
     };
 
-    status.success().then(|| reader.join().ok())?
+    if !status.success() && !read_failure {
+        return Some((false, String::new()));
+    }
+    // Abandoned rather than waited on if it does not arrive, for the reason
+    // the timeout above abandons it.
+    let wait = deadline
+        .saturating_duration_since(Instant::now())
+        .max(AFTER_EXIT);
+    let output = output.recv_timeout(wait).ok()?;
+    Some((status.success(), output))
 }
 
 /// Waits for a probe, then stops waiting.
@@ -622,6 +666,53 @@ pub fn session_path(program: &Path) -> std::ffi::OsString {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A shell running one line, on either platform.
+    fn script(line: &str) -> std::process::Command {
+        if cfg!(windows) {
+            let mut command = std::process::Command::new("cmd");
+            command.args(["/C", line]);
+            command
+        } else {
+            let mut command = std::process::Command::new("sh");
+            command.args(["-c", line]);
+            command
+        }
+    }
+
+    #[test]
+    fn a_failure_has_no_answer_unless_its_output_was_asked_for() {
+        let line = if cfg!(windows) {
+            "echo signed out& exit /B 3"
+        } else {
+            "echo signed out; exit 3"
+        };
+        let limit = Duration::from_secs(10);
+
+        assert_eq!(capture_briefly(&mut script(line), limit), None);
+        let output = capture_briefly_any_exit(&mut script(line), limit).unwrap();
+        assert_eq!(output.trim(), "signed out");
+    }
+
+    #[test]
+    fn a_program_that_leaves_something_holding_its_output_is_not_waited_on() {
+        // Exits at once, leaving a child alive with the pipe still open.
+        let line = if cfg!(windows) {
+            "start /B ping -n 8 127.0.0.1& exit /B 3"
+        } else {
+            "sleep 8 & exit 3"
+        };
+        let limit = Duration::from_secs(2);
+
+        let started = Instant::now();
+        assert_eq!(capture_briefly_any_exit(&mut script(line), limit), None);
+        assert_eq!(capture_briefly(&mut script(line), limit), None);
+        assert!(
+            started.elapsed() < Duration::from_secs(6),
+            "waited {:?} on a pipe held open by a child",
+            started.elapsed()
+        );
+    }
 
     #[cfg(unix)]
     #[test]

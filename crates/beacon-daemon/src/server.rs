@@ -14,6 +14,7 @@ use beacon_core::session::{
     AgentLaunch, ConversationStart, SessionEvents, SessionId, SessionKind, SessionManager,
 };
 use beacon_core::settings::ShellSpec;
+use beacon_core::sign_in::{self, Next, SignInWatch};
 use beacon_core::transport::{LocalListener, LocalStream};
 use beacon_core::workstreams::{Workstream, WorkstreamBook, WorkstreamId, WorkstreamStore};
 
@@ -160,6 +161,9 @@ struct Daemon {
     /// per assistant message into a write per assistant message.
     workstreams_saved_at: Mutex<Instant>,
     sessions: Arc<SessionManager>,
+    /// Claude sessions that started before anyone signed in. See
+    /// `beacon_core::sign_in`.
+    sign_in: Mutex<SignInWatch>,
     clients: Clients,
     attached: AtomicUsize,
     stopping: Arc<AtomicBool>,
@@ -189,6 +193,7 @@ pub fn serve(listener: LocalListener, socket: std::path::PathBuf) {
         workstream_store,
         workstreams_saved_at: Mutex::new(Instant::now()),
         sessions,
+        sign_in: Mutex::new(SignInWatch::new()),
         clients,
         attached: AtomicUsize::new(0),
         stopping: Arc::new(AtomicBool::new(false)),
@@ -306,6 +311,7 @@ fn handle(daemon: Arc<Daemon>, stream: LocalStream) {
 
         let shutting_down = matches!(envelope.request, Request::Shutdown {});
         let outcome = dispatch(&daemon, envelope.request);
+        watch_sign_in(&daemon, &outcome);
         reply(
             &writer,
             Response {
@@ -336,6 +342,147 @@ fn handle(daemon: Arc<Daemon>, stream: LocalStream) {
         sessions = daemon.sessions.count(),
         "client detached"
     );
+}
+
+/// Starts watching for a sign-in when a reply hands out a Claude session that
+/// may be sitting on Claude Code's sign-in screen. See `beacon_core::sign_in`.
+///
+/// Read off the reply because every way of opening a Claude session ends in one
+/// carrying it — ensure, restart, and the three workstream requests — so no new
+/// way of opening one can be added and forget this. A session reattached to has
+/// the same id, which the watch already knows and ignores.
+fn watch_sign_in(daemon: &Arc<Daemon>, outcome: &Outcome) {
+    let session = match outcome {
+        Outcome::Ok(Reply::Session(session)) => session,
+        Outcome::Ok(Reply::Workstream { session, .. }) => session,
+        _ => return,
+    };
+    if session.kind != SessionKind::Claude || !session.running {
+        return;
+    }
+
+    let start = daemon
+        .sign_in
+        .lock_or_recover()
+        .observe(session.id.clone(), Instant::now());
+    if start {
+        spawn_sign_in_watch(Arc::clone(daemon));
+    }
+}
+
+/// Asks Claude Code whether anyone is signed in, for as long as some session
+/// is known or suspected to be waiting for it, then gets out of the way.
+///
+/// A thread that exists only while there is something to watch: on a machine
+/// that is signed in, which is nearly always, it asks once and ends.
+fn spawn_sign_in_watch(daemon: Arc<Daemon>) {
+    let watcher = Arc::clone(&daemon);
+    let spawned = std::thread::Builder::new()
+        .name("sign-in-watch".into())
+        .spawn(move || {
+            let daemon = watcher;
+            let mut wait = sign_in::FIRST_LOOK;
+            loop {
+                std::thread::sleep(wait);
+                if daemon.stopping.load(Ordering::SeqCst) {
+                    return;
+                }
+
+                let asked_at = Instant::now();
+                // Found already: the session being watched was started with it.
+                let answer = daemon
+                    .sessions
+                    .known_program(AgentKind::Claude)
+                    .and_then(|claude| beacon_core::claude::signed_in(&claude));
+
+                let next = daemon.sign_in.lock_or_recover().answer(
+                    answer,
+                    asked_at,
+                    Instant::now(),
+                    |id| daemon.sessions.is_alive(id),
+                    |id| daemon.sessions.last_return(id),
+                );
+                match next {
+                    Next::AskAgainIn(after) => wait = after,
+                    Next::Stop => return,
+                    Next::Restart(waiting) => {
+                        restart_signed_in(&daemon, &waiting);
+                        return;
+                    }
+                }
+            }
+        });
+
+    if let Err(err) = spawned {
+        // Not fatal: the panels behave exactly as they did before this
+        // existed, and the next Claude session to start tries again.
+        tracing::warn!(error = %err, "could not start watching for a sign-in");
+        daemon.sign_in.lock_or_recover().abandon();
+    }
+}
+
+/// Starts again the Claude sessions left on the sign-in screen, now that
+/// someone has signed in, so each finds the credential Claude Code stored.
+///
+/// Exactly what the Resume button does — the same preparation, so the
+/// conversation is resumed if anything was said in it — and then the window is
+/// told, because the process it is showing has just gone.
+fn restart_signed_in(daemon: &Arc<Daemon>, waiting: &[SessionId]) {
+    for id in waiting {
+        // Closed, or restarted by hand, while the answer was on its way.
+        let (Ok(info), Some(cwd)) = (daemon.sessions.info(id), daemon.sessions.cwd(id)) else {
+            continue;
+        };
+        let agents = daemon
+            .sessions
+            .agent_launch(&info.project, AgentKind::Claude)
+            .is_none_or(|launch| launch.agents);
+
+        prepare_agent(daemon, &info.project, AgentKind::Claude, agents);
+        // `restart_for` replaces whatever is in the panel's place, so check that
+        // it is still this session as late as possible: Resume pressed, or a
+        // workstream switched, in the meantime has put a signed-in one there,
+        // and that must not be the one thrown away.
+        if daemon
+            .sessions
+            .current(&info.project, info.kind, info.slot)
+            .as_ref()
+            != Some(id)
+        {
+            continue;
+        }
+        match daemon.sessions.restart_for(
+            &info.project,
+            info.kind,
+            info.slot,
+            &cwd,
+            (info.cols, info.rows),
+            None,
+        ) {
+            Ok(restarted) => {
+                tracing::info!(
+                    project = info.project.as_str(),
+                    "signed in; started a waiting session again"
+                );
+                daemon
+                    .sign_in
+                    .lock_or_recover()
+                    .signed_in_already(restarted);
+                daemon.broadcast(&Event::Restarted {
+                    project: info.project,
+                    kind: info.kind,
+                    slot: info.slot,
+                });
+            }
+            Err(err) => {
+                tracing::warn!(
+                    project = info.project.as_str(),
+                    error = %err,
+                    "could not start a waiting session again"
+                );
+            }
+        }
+    }
 }
 
 /// Digs the correlation id out of a request the daemon could not otherwise

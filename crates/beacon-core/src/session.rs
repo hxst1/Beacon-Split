@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
@@ -571,6 +572,8 @@ struct Session {
     scrollback: Arc<Mutex<Scrollback>>,
     /// The last size the process was told about.
     size: (u16, u16),
+    /// When someone last pressed Return in it. See [`SessionManager::last_return`].
+    last_return: Option<Instant>,
 }
 
 /// Owns every live PTY.
@@ -1034,6 +1037,7 @@ impl SessionManager {
                 child,
                 scrollback,
                 size: (cols, rows),
+                last_return: None,
             },
         );
 
@@ -1049,6 +1053,9 @@ impl SessionManager {
         let session = sessions
             .get_mut(id)
             .ok_or_else(|| CoreError::SessionNotFound(id.to_string()))?;
+        if bytes.contains(&b'\r') {
+            session.last_return = Some(Instant::now());
+        }
         let mut writer = session.writer.lock_or_recover();
         writer
             .write_all(bytes)
@@ -1142,6 +1149,48 @@ impl SessionManager {
             cols: session.size.0,
             rows: session.size.1,
         })
+    }
+
+    /// When someone last pressed Return in a session, if they ever have.
+    ///
+    /// Return rather than any input, because not everything written to a
+    /// session is typed: the terminal answers the program's own queries, and
+    /// reports focus moving in and out of the panel, through the same pipe.
+    /// Neither carries a carriage return. Every step of signing in to Claude
+    /// Code does, which is what this is for — telling the panel somebody signed
+    /// in from apart from the ones left waiting. See [`crate::sign_in`].
+    pub fn last_return(&self, id: &SessionId) -> Option<Instant> {
+        self.sessions.lock_or_recover().get(id)?.last_return
+    }
+
+    /// Whether a session is still running.
+    pub fn is_alive(&self, id: &SessionId) -> bool {
+        self.sessions
+            .lock_or_recover()
+            .get_mut(id)
+            .is_some_and(|session| session.child.try_wait().ok().flatten().is_none())
+    }
+
+    /// Where a session runs, so it can be started again there without asking
+    /// the window — which may not be open.
+    pub fn cwd(&self, id: &SessionId) -> Option<PathBuf> {
+        Some(self.sessions.lock_or_recover().get(id)?.cwd.clone())
+    }
+
+    /// Which session a project has in this place now, if any.
+    pub fn current(&self, project: &ProjectId, kind: SessionKind, slot: u32) -> Option<SessionId> {
+        self.by_project
+            .lock_or_recover()
+            .get(&(project.clone(), kind, slot))
+            .cloned()
+    }
+
+    /// Where an agent's program lives, if it has been found already.
+    ///
+    /// Never looks for it: anything asking has a session of that agent, which
+    /// means it was found on the way to starting it.
+    pub fn known_program(&self, agent: AgentKind) -> Option<PathBuf> {
+        self.program_paths.lock_or_recover().get(&agent).cloned()
     }
 
     /// Stops a session's process and forgets it.

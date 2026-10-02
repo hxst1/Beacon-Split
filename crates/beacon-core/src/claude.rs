@@ -23,7 +23,9 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::tools::{capture_briefly, resolve_program, strip_terminal_identity};
+use crate::tools::{
+    capture_briefly, capture_briefly_any_exit, resolve_program, strip_terminal_identity,
+};
 
 /// How long Claude Code gets to describe itself before Beacon stops waiting.
 ///
@@ -200,6 +202,41 @@ fn ask(path: &std::path::Path, args: &[&str]) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+/// Whether Claude Code is signed in on this machine, in its own words.
+///
+/// `claude auth status --json`, and only its `loggedIn`. Beacon never touches a
+/// credential (ADR-052), and this does not either: it asks the program that
+/// holds them a yes-or-no question, the same one the user could type. Nothing
+/// else the answer carries — which account, which organisation — is read.
+///
+/// `None` means there is no answer: a Claude Code too old to have `auth`, one
+/// that would not finish, or output that is not what this expects. Callers
+/// treat that as "do nothing", so a change on Claude Code's side switches the
+/// feature off rather than leaving sessions restarting.
+///
+/// Read whatever the exit status, because "signed out" is an answer a status
+/// command is entitled to exit non-zero with.
+pub fn signed_in(claude: &std::path::Path) -> Option<bool> {
+    let mut command = std::process::Command::new(claude);
+    command.args(["auth", "status", "--json"]);
+    strip_terminal_identity(&mut command);
+    // The session's PATH, because an npm-installed Claude Code is a script that
+    // needs the `node` beside it, and Beacon launched from the Dock has none.
+    command.env("PATH", crate::tools::session_path(claude));
+
+    parse_auth_status(&capture_briefly_any_exit(&mut command, PROBE_TIMEOUT)?)
+}
+
+/// Reads `loggedIn` out of what `claude auth status --json` prints.
+///
+/// Pure, for the same reason [`interpret`] is.
+pub fn parse_auth_status(json: &str) -> Option<bool> {
+    serde_json::from_str::<serde_json::Value>(json.trim())
+        .ok()?
+        .get("loggedIn")?
+        .as_bool()
+}
+
 /// A Claude session that is running right now, as Claude Code lists it.
 ///
 /// The shape `claude agents --json` prints. Every field but the id is optional
@@ -339,6 +376,30 @@ mod tests {
         std::fs::write(folder.join(format!("{id}.jsonl")), "{}\n").unwrap();
         assert!(conversation_written_in(projects.path(), id));
         assert!(!conversation_written_in(projects.path(), "another-id"));
+    }
+
+    #[test]
+    fn auth_status_is_read_for_loggedin_and_nothing_else() {
+        // The shape of 2.1.287, with the account fields Beacon never reads.
+        let signed_in = r#"{
+  "loggedIn": true,
+  "authMethod": "claude.ai",
+  "apiProvider": "firstParty",
+  "email": "someone@example.com"
+}"#;
+        assert_eq!(parse_auth_status(signed_in), Some(true));
+        assert_eq!(parse_auth_status(r#"{"loggedIn": false}"#), Some(false));
+        assert_eq!(parse_auth_status("\n{\"loggedIn\":false}\n"), Some(false));
+    }
+
+    #[test]
+    fn an_auth_status_that_does_not_say_is_no_answer() {
+        // An older Claude Code prints its help, or an error, instead.
+        assert_eq!(parse_auth_status("Usage: claude [options]"), None);
+        assert_eq!(parse_auth_status(""), None);
+        assert_eq!(parse_auth_status(r#"{"authMethod": "none"}"#), None);
+        assert_eq!(parse_auth_status(r#"{"loggedIn": "yes"}"#), None);
+        assert_eq!(parse_auth_status("[true]"), None);
     }
 
     #[test]
