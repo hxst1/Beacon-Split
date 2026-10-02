@@ -1,5 +1,4 @@
 User-agent: *
 Allow: /
 
-
-Sitemap: https://beacon-split.vercel.app/sitemap.xml
+Sitemap: https://beacon-split.com/sitemap.xml

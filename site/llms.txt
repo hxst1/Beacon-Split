@@ -6,8 +6,10 @@
 > for you.
 
 Free and open source under AGPL-3.0. macOS, on Apple Silicon and Intel, and
-Windows 10 and 11 on x64. No account, no telemetry, no server, nothing to buy
-later.
+Windows 10 and 11 on x64. No account, no telemetry in the app, no server,
+nothing to buy later.
+
+Website: https://beacon-split.com/
 
 ## What it is
 
@@ -61,6 +63,7 @@ runs.
 
 ## Links
 
+- Website and downloads: https://beacon-split.com/
 - Source and releases: https://github.com/hxst1/Beacon-Split
 - Latest release: https://github.com/hxst1/Beacon-Split/releases/latest
 - Architecture: https://github.com/hxst1/Beacon-Split/blob/main/docs/ARCHITECTURE.md

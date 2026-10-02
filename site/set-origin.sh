@@ -40,10 +40,14 @@ cd "$here"
 <meta property=\"og:url\" content=\"$origin/\">\\
 <link rel=\"icon\"|" \
   -e "s|content=\"[^\"]*/og\.png\"|content=\"$origin/og.png\"|g" \
+  -e "s|^  \"url\": \"[^\"]*\",\$|  \"url\": \"$origin/\",|" \
+  -e "s|^  \"image\": \"[^\"]*/og\.png\",\$|  \"image\": \"$origin/og.png\",|" \
   index.html
 
 # ── robots.txt ──────────────────────────────────────────────────────────────
 /usr/bin/sed -i '' '/^Sitemap:/d' robots.txt
+# Trailing blank lines go too, or every run would leave one more behind.
+/usr/bin/perl -0pi -e 's/\n+\z/\n/' robots.txt
 printf '\nSitemap: %s/sitemap.xml\n' "$origin" >> robots.txt
 
 # ── sitemap.xml ─────────────────────────────────────────────────────────────
@@ -60,6 +64,6 @@ cat > sitemap.xml <<XML
 XML
 
 echo "origin set to $origin"
-echo "  index.html   canonical, og:url, absolute og:image and twitter:image"
+echo "  index.html   canonical, og:url, og:image, twitter:image and the JSON-LD url and image"
 echo "  robots.txt   Sitemap line"
 echo "  sitemap.xml  written"

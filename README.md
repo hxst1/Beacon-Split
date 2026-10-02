@@ -8,7 +8,7 @@ Beacon is not another code editor. It is the surface you work *from* when your
 main collaborator is Claude Code — with Codex beside it, if you want a second
 opinion — and you have several projects open at once.
 
-[Install](#install) · [What it does](#what-it-does) · [Building it](#building-it) · [Contributing](CONTRIBUTING.md) · [Architecture](docs/ARCHITECTURE.md)
+[Website](https://beacon-split.com) · [Install](#install) · [What it does](#what-it-does) · [Building it](#building-it) · [Contributing](CONTRIBUTING.md) · [Architecture](docs/ARCHITECTURE.md)
 
 </div>
 
