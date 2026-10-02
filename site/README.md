@@ -61,12 +61,15 @@ cd site && python3 -m http.server 4321
 
 ## Deploying
 
-Vercel, from this directory:
+The site lives at **https://beacon-split.com**, on Vercel. `www.beacon-split.com`
+and the old `beacon-split.vercel.app` redirect to it permanently (308), set as
+redirect domains on the Vercel project rather than in `vercel.json`, so there
+is one copy of the page for a crawler to index.
 
 ```sh
 vercel login          # once
 cd site
-./set-origin.sh https://your-domain
+./set-origin.sh https://beacon-split.com
 vercel deploy --prod
 ```
 
@@ -74,18 +77,20 @@ vercel deploy --prod
 caching. There is no build command and no output directory to configure — the
 files are served as they are.
 
-### `set-origin.sh` is not optional
+### The origin is written in, and `set-origin.sh` keeps it right
 
-Four things need an absolute URL and cannot be committed with one, because
-until the site is deployed there is no domain to write: the canonical link,
-`og:url`, the absolute `og:image`, and `sitemap.xml`. Pointing any of them at a
-domain that does not serve this page is worse than leaving it out — it tells a
-crawler the real copy is somewhere it cannot fetch.
+Several things need an absolute URL: the canonical link, `og:url`, `og:image`
+and `twitter:image`, the `url` and `image` of the application's JSON-LD, the
+`Sitemap:` line in `robots.txt`, and `sitemap.xml`. Now that the domain is
+settled they are committed with it, and `set-origin.sh` is what writes them —
+run it before every deploy, which is what keeps `sitemap.xml`'s `lastmod`
+true, and run it with a different domain if the site ever moves. It replaces
+what it wrote rather than stacking. `sitemap.xml` stays git-ignored: its date
+is the deploy's, not a source file's.
 
-So they arrive with the deploy. The script writes all four plus the `Sitemap:`
-line in `robots.txt`, and running it again with a different domain replaces
-what it wrote rather than stacking. `sitemap.xml` is git-ignored for the same
-reason: it is a deploy artefact, not a source file.
+A URL here that points at a domain not serving this page is worse than none —
+it tells a crawler the real copy is somewhere it cannot fetch — so change the
+domain with the script, never by hand in one place.
 
 ## Found by machines
 
