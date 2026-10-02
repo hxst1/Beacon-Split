@@ -30,6 +30,7 @@ pub mod requirements;
 pub mod scrollback;
 pub mod session;
 pub mod settings;
+pub mod sign_in;
 pub mod state;
 pub mod store;
 pub mod tools;

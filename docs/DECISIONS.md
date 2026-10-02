@@ -1761,3 +1761,45 @@ start one silenced until the page has seen a gesture.
 **Consequence.** Until the first key or click after the window opens, a chime
 asked for may not play. That window is short, and the alternative — a sound
 that needs no gesture — is not something either webview allows.
+
+## ADR-083: One sign-in reaches every open project
+
+**Context.** Open several projects before signing in to Claude Code and every
+Claude panel sits on its own sign-in screen. Signing in from one stores the
+credential where every `claude` on the machine reads it, but each reads it only
+when it starts — so the rest go on waiting, and signing in means a trip to the
+browser and back once per project. Beacon cannot share the sign-in itself:
+ADR-052 rules out reading, storing or forwarding a credential, and rightly.
+
+**Decision.** Beacon asks Claude Code, not the credential store. Whenever the
+daemon hands out a Claude session it has not seen, a watcher asks
+`claude auth status --json` and reads one field, `loggedIn`. Sessions that
+started while the answer was no are waiting; the watcher asks again every few
+seconds, and once the answer is yes the daemon starts each waiting session
+again — the way the Resume button does, so a conversation carries on — and
+tells the window, which rebuilds the panel. The panel somebody signed in from
+is left alone: it is the one where Return was pressed last, because every step
+of signing in ends with Return, and nothing the terminal writes on its own —
+replies to the program's queries, focus moving in and out — contains one.
+
+**Why.** It keeps ADR-052 whole. Whether someone is signed in is asked of the
+program that holds the credential, in the same words the user could type, and
+each restarted `claude` finds the credential by itself; Beacon never sees it.
+Reading the sign-in screen out of the terminal was the alternative and was
+rejected for the reason ADR-081 gives: what Claude Code draws is a guess that
+breaks with every change to how it draws it, and its own answer is a fact.
+
+**Consequence.** On a machine that is signed in — nearly always — it costs one
+short `claude auth status` when sessions start, and nothing after. A Claude
+Code with no `auth` command, or one that will not answer, switches it off: the
+panels behave exactly as they did. Signing in outside every waiting panel — in
+a terminal, say — restarts all of them, unless Return was pressed in one, which
+is then taken for the panel the sign-in came from and left on its sign-in
+screen for the user to restart. The reverse can happen too: Return pressed in
+another waiting panel in the few seconds between signing in and the next
+question makes that one the panel taken for the sign-in, and the one signed in
+from is started again — which costs a moment, since its conversation is
+resumed. The watcher stops asking after half an hour,
+and leaves anything still waiting as it is. Signing out, or a sign-in that
+expires while sessions are running, is not covered. Codex signs in on its own
+terms and is not covered either.

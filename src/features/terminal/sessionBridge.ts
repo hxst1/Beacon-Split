@@ -7,6 +7,7 @@ import type {
   SessionDegraded,
   SessionExit,
   SessionOutput,
+  SessionRestarted,
   UsageReport,
 } from '@/types/beacon'
 
@@ -65,6 +66,8 @@ export interface ActivityWatcher {
    * nothing.
    */
   onDegraded?: (report: SessionDegraded) => void
+  /** The daemon replaced a session on its own; whoever shows it attaches again. */
+  onRestarted?: (report: SessionRestarted) => void
 }
 
 const watchers = new Set<ActivityWatcher>()
@@ -146,6 +149,9 @@ function ensureListening(): Promise<void> {
     }),
     listen<SessionDegraded>('session:degraded', ({ payload }) => {
       for (const watcher of watchers) watcher.onDegraded?.(payload)
+    }),
+    listen<SessionRestarted>('session:restarted', ({ payload }) => {
+      for (const watcher of watchers) watcher.onRestarted?.(payload)
     }),
   ]).then(() => undefined)
 

@@ -426,6 +426,15 @@ export function startConnectionTracking(): () => void {
     // so there is nothing to fail — only something the user should know is not
     // there. The status bar is where a dismissible, non-blocking thing goes.
     onDegraded: ({ summary }) => useBeacon.setState({ notice: summary }),
+    // Somebody signed in to Claude Code in one panel, and the daemon started
+    // the ones left on the sign-in screen again so they pick it up. The process
+    // each view was showing has gone; rebuilding attaches to its replacement.
+    onRestarted: ({ project, kind, slot }) => {
+      useBeacon.getState().rebuildSession(project, kind, slot)
+      useBeacon.setState({
+        notice: 'Signed in to Claude Code. The other open projects picked it up.',
+      })
+    },
     onReattached: () => {
       // The daemon on the other end may not be the one that issued the session
       // ids these terminals hold, so none of them can be trusted.

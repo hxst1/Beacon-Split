@@ -222,6 +222,17 @@ export interface SessionDegraded {
 }
 
 /**
+ * The daemon started a session again by itself — after somebody signed in to
+ * Claude Code, for the panels left on its sign-in screen. Any view of it is
+ * showing a process that has gone, and asks for the session afresh.
+ */
+export interface SessionRestarted {
+  project: string
+  kind: SessionKind
+  slot: number
+}
+
+/**
  * What a clip is, so the drawer can label it and pick a typeface.
  *
  * `command` and `variable` are shown monospaced and never wrapped: a line break

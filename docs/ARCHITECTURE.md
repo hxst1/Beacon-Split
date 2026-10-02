@@ -103,6 +103,23 @@ in every turn.
 
 The tool only writes. See ADR-053 to ADR-056.
 
+## Signing in once
+
+A Claude session started before anyone signed in sits on Claude Code's sign-in
+screen, and only reads the credential when it starts. The daemon notices the
+moment there is one by asking `claude auth status`, never the credential store,
+and starts the waiting sessions again; the window rebuilds those panels.
+
+```
+reply hands out a Claude session ──▶ sign-in watch (beacon-core/sign_in.rs)
+                                          │  claude auth status, every few seconds
+                                          ▼  while something waits
+                   restart_for + Restarted event ──▶ window rebuilds the panel
+```
+
+The bookkeeping is pure and tested in `sign_in.rs`; the daemon owns the thread,
+which exists only while something is waiting. See ADR-083.
+
 ## Where the platforms differ
 
 Kept to a few places, so the rest of the code reads the same everywhere:

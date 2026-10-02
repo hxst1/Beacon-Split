@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use beacon_core::client::{DaemonClient, DaemonEvents, daemon_binary_path};
 use beacon_core::domain::ProjectId;
 use beacon_core::protocol::Event;
-use beacon_core::session::SessionId;
+use beacon_core::session::{SessionId, SessionKind};
 use beacon_core::{Beacon, CoreError};
 use tauri::{AppHandle, Emitter};
 
@@ -97,6 +97,14 @@ struct DegradedPayload {
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct RestartedPayload {
+    project: ProjectId,
+    kind: SessionKind,
+    slot: u32,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AgentPayload {
     project: ProjectId,
     agent: String,
@@ -127,6 +135,10 @@ pub const EVENT_CLIPS: &str = "clips:replaced";
 /// A session started without something it was meant to have. Not a failure:
 /// the session is running, and this is what keeps the gap from being silent.
 pub const EVENT_DEGRADED: &str = "session:degraded";
+/// The daemon started a session again by itself — after a sign-in, so the
+/// panels left on Claude Code's sign-in screen pick it up. Any view of that
+/// session is showing a process that has gone and has to attach afresh.
+pub const EVENT_RESTARTED: &str = "session:restarted";
 /// Raised when the connection drops. Sessions keep running; this window is no
 /// longer watching them.
 pub const EVENT_DETACHED: &str = "session:detached";
@@ -200,6 +212,18 @@ impl DaemonEvents for WebviewEvents {
             Event::Degraded { project, summary } => self
                 .app
                 .emit(EVENT_DEGRADED, DegradedPayload { project, summary }),
+            Event::Restarted {
+                project,
+                kind,
+                slot,
+            } => self.app.emit(
+                EVENT_RESTARTED,
+                RestartedPayload {
+                    project,
+                    kind,
+                    slot,
+                },
+            ),
         };
 
         if let Err(err) = delivered {
