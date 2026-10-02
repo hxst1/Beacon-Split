@@ -1,6 +1,9 @@
 import type { SessionKind } from '@/types/beacon'
 
-type KeyPress = Pick<KeyboardEvent, 'type' | 'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>
+type KeyPress = Pick<
+  KeyboardEvent,
+  'type' | 'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey' | 'isComposing' | 'keyCode'
+>
 
 /**
  * What Shift+Enter should put into a session, or `null` to leave the key alone.
@@ -24,6 +27,11 @@ type KeyPress = Pick<KeyboardEvent, 'type' | 'key' | 'ctrlKey' | 'shiftKey' | 'a
  * terminal already does.
  */
 export function newlineKey(event: KeyPress, kind: SessionKind): string | null {
+  // Mid-composition the key belongs to the input method — Japanese or Chinese,
+  // say — which uses Enter to commit what is being composed. WebKit, which is
+  // the webview on macOS, reports the keydown that commits it with
+  // `isComposing` already false but `keyCode` 229, so both are asked.
+  if (event.isComposing || event.keyCode === 229) return null
   if (event.type !== 'keydown' || event.key !== 'Enter') return null
   // Shift and nothing else: Ctrl+Enter and friends belong to whoever bound them.
   if (!event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return null

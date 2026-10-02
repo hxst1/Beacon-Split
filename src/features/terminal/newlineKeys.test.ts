@@ -11,6 +11,8 @@ function press(over: Partial<KeyboardEvent> = {}): KeyboardEvent {
     shiftKey: true,
     altKey: false,
     metaKey: false,
+    isComposing: false,
+    keyCode: 13,
     ...over,
   } as KeyboardEvent
 }
@@ -46,5 +48,18 @@ describe('Shift+Enter', () => {
   it('is only Enter', () => {
     expect(newlineKey(press({ key: 'Tab' }), 'claude')).toBeNull()
     expect(newlineKey(press({ key: 'j' }), 'claude')).toBeNull()
+  })
+
+  it('leaves the key to an input method that is composing', () => {
+    // Japanese or Chinese input uses Enter to commit what is being composed.
+    for (const kind of ['claude', 'codex'] as const) {
+      expect(newlineKey(press({ isComposing: true }), kind)).toBeNull()
+    }
+  })
+
+  it('leaves the key that commits a composition alone on WebKit too', () => {
+    // macOS's webview reports that keydown with isComposing already false and
+    // keyCode 229.
+    expect(newlineKey(press({ keyCode: 229 }), 'claude')).toBeNull()
   })
 })
