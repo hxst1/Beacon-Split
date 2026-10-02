@@ -1,5 +1,5 @@
 import { FitAddon } from '@xterm/addon-fit'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type ITheme } from '@xterm/xterm'
 
 import { cssValue } from '@/lib/appearance'
 import { windowsPty } from '@/lib/platform'
@@ -8,6 +8,7 @@ import type { SessionKind } from '@/types/beacon'
 import { clipboardKey } from './clipboardKeys'
 import { newlineKey } from './newlineKeys'
 import { attach, replayed } from './sessionBridge'
+import { MINIMUM_CONTRAST, terminalTheme } from './terminalTheme'
 
 export interface HostedTerminal {
   term: Terminal
@@ -30,21 +31,14 @@ export interface HostedTerminal {
  */
 const hosted = new Map<string, HostedTerminal>()
 
-/**
- * xterm draws to a canvas and cannot read CSS, so its theme is built from the
- * same variables everything else uses and rebuilt when they change.
- */
-function terminalTheme(): Record<string, string> {
+/** The terminal's theme for whichever palette and accent are showing now. */
+function currentTheme(): ITheme {
   const light = document.documentElement.dataset['theme'] === 'light'
-  return {
-    // Transparent, so the panel's surface shows through instead of a flat
-    // rectangle in the wrong colour for the palette.
-    background: 'rgba(0, 0, 0, 0)',
-    foreground: light ? 'rgba(20, 20, 26, 0.92)' : 'rgba(255, 255, 255, 0.88)',
-    cursor: cssValue('--accent', '#6b7cff'),
-    cursorAccent: light ? '#ffffff' : '#08080b',
-    selectionBackground: light ? 'rgba(0, 0, 0, 0.14)' : 'rgba(255, 255, 255, 0.16)',
-  }
+  return terminalTheme({
+    light,
+    window: cssValue('--window', light ? '246 246 248' : '8 8 11'),
+    accent: cssValue('--accent', '#6b7cff'),
+  })
 }
 
 function create(
@@ -70,7 +64,8 @@ function create(
     // Transparent, so the panel's blurred surface shows through instead of a
     // flat black rectangle.
     allowTransparency: true,
-    theme: terminalTheme(),
+    theme: currentTheme(),
+    minimumContrastRatio: MINIMUM_CONTRAST,
     fontFamily: "'SF Mono', 'JetBrains Mono', Menlo, 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace",
     fontSize: 12,
     lineHeight: 1.35,
@@ -217,7 +212,7 @@ export function disposeAll(): void {
 
 /** Repaints every terminal after the palette or the accent changes. */
 export function refreshAccent(): void {
-  const theme = terminalTheme()
+  const theme = currentTheme()
   for (const { term } of hosted.values()) {
     term.options.theme = theme
   }
