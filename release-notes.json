@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.6.1",
+    "date": "2026-10-02",
+    "summary": "Shift+Enter breaks the line, @ and # can be typed on any keyboard, and updating on Windows no longer leaves the old daemon behind.",
+    "changes": [
+      "Shift+Enter starts a new line in the Claude and Codex panels instead of sending a prompt you had not finished. A terminal cannot tell it from Enter, so Beacon now sends each agent the newline it actually reads. A shell is left alone, where Enter running the command is the point — and so is an input method in the middle of composing.",
+      "@, #, brackets and braces can be typed again on Spanish and most other non-US Mac keyboards. They live on the Option key there, and the terminal was treating Option as Meta, so each one arrived as an escape sequence and nothing appeared. Option with an arrow, Backspace or Enter still does what it did.",
+      "Updating on Windows no longer leaves the old session daemon in place. A running program cannot be overwritten there, and the daemon nearly always is running, so the 0.6.0 update could leave a 0.5 daemon beside a 0.6 window and end in \"could not reach the session daemon\". The installer now moves it aside so the new one can take its place; and if an old daemon is ever found again, Beacon says so and what fixes it. Contributed by jimy-k4.",
+      "Without Beacon's hooks installed, reopening a conversation works. Beacon only learned that Claude Code had saved a conversation from the hooks, so without them every start after the first asked for it as new and Claude Code refused with \"Session ID … is already in use\". Beacon now looks for the conversation on disk. Contributed by jimy-k4.",
+      "The dimmer text in the dark theme can be read in daylight. The quietest two levels — panel headers, the status bar, placeholders — were well below what body text needs once the screen catches some sun; all four levels are now brighter and evenly spaced, so the order between them stays. Contributed by jimy-k4."
+    ]
+  },
+  {
     "version": "0.6.0",
     "date": "2026-10-01",
     "summary": "Beacon runs on Windows, and Codex runs beside Claude Code — in its own panel, its own conversation, and if you want it, its own checkout.",
