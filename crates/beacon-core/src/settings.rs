@@ -109,27 +109,18 @@ impl Settings {
     }
 }
 
-/// The moments that make a sound. Both on until switched off, as notifications
-/// are, and for the same reason: a project waiting unnoticed is the thing Beacon
-/// exists to prevent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// The moments that make a sound. Both off until switched on, unlike
+/// notifications: a banner waits quietly on a screen, but a sound reaches the
+/// whole room, and nobody updating Beacon should start hearing it unasked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Sounds {
     /// Claude stopped and is waiting for an answer.
-    #[serde(default = "yes")]
+    #[serde(default)]
     pub waiting: bool,
     /// A turn long enough to have walked away from has finished.
-    #[serde(default = "yes")]
+    #[serde(default)]
     pub done: bool,
-}
-
-impl Default for Sounds {
-    fn default() -> Self {
-        Self {
-            waiting: true,
-            done: true,
-        }
-    }
 }
 
 impl Default for Settings {
@@ -179,13 +170,13 @@ mod tests {
     }
 
     #[test]
-    fn a_settings_file_from_before_sounds_has_both_on() {
+    fn a_settings_file_from_before_sounds_has_both_off() {
         let old: Settings = serde_json::from_str(r#"{ "schemaVersion": 1 }"#).unwrap();
         assert_eq!(
             old.sounds,
             Sounds {
-                waiting: true,
-                done: true
+                waiting: false,
+                done: false
             }
         );
     }

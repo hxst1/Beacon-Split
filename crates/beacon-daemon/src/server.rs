@@ -282,7 +282,9 @@ fn handle(daemon: Arc<Daemon>, stream: LocalStream) {
         if line.trim().is_empty() {
             continue;
         }
-        tracing::debug!(line = %line, "request");
+        // The length, not the line: a done report carries what Claude wrote,
+        // and what a session says stays out of the logs.
+        tracing::debug!(bytes = line.len(), "request");
 
         let envelope: Envelope = match serde_json::from_str(&line) {
             Ok(envelope) => envelope,

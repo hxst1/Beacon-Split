@@ -1,18 +1,24 @@
 /*
- * The last reply: a strip in the accent's wash with an accent edge, so it reads
- * as Beacon pointing at something rather than as more terminal output.
+ * The last reply: a note floating over the top of the terminal, on the same
+ * surface and blur as Beacon's other floating panels. The accent is only a
+ * hairline, and the text is a step quieter than the terminal's, so it reads as
+ * a note beside the work rather than competing with it.
  */
 .reply {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  left: 8px;
+  z-index: 1;
   display: flex;
-  flex: none;
   gap: 10px;
   align-items: flex-start;
-  margin: 6px 8px 0;
   padding: 8px 8px 8px 12px;
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius-xs);
-  background: var(--accent-wash);
-  color: var(--fg-1);
+  border: 1px solid color-mix(in oklab, var(--accent) 24%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  backdrop-filter: var(--blur-float);
+  color: var(--fg-2);
   font-size: var(--text-sm);
   line-height: 1.45;
 }
@@ -29,7 +35,7 @@
   user-select: text;
 }
 
-/* Open, it scrolls inside a third of the panel rather than taking all of it. */
+/* Open, it scrolls inside a third of the panel rather than covering all of it. */
 .reply[data-open='true'] .text {
   display: block;
   max-height: 33vh;

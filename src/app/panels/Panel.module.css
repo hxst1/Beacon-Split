@@ -104,13 +104,15 @@
 }
 
 /* An agent's body: the last reply, when there is one, over the terminal. */
+/*
+ * The terminal takes all of it; the last reply floats over its top rather than
+ * taking rows, so showing or opening it never resizes the PTY.
+ */
 .agentBody {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   height: 100%;
 }
 
 .agentTerminal {
-  flex: 1;
-  min-height: 0;
+  height: 100%;
 }

@@ -765,7 +765,7 @@ function TerminalSection(): React.ReactElement {
  * screen and a sound for someone who is not, and either can be wanted alone.
  */
 function SoundRow({ chime, label }: { chime: Chime; label: string }): React.ReactElement {
-  const sounds = useBeacon((s) => s.snapshot?.sounds ?? { waiting: true, done: true })
+  const sounds = useBeacon((s) => s.snapshot?.sounds ?? { waiting: false, done: false })
   const setSounds = useBeacon((s) => s.setSounds)
   const on = sounds[chime]
 

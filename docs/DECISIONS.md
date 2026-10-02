@@ -1724,8 +1724,10 @@ anchored to one points at nothing a moment later.
 **Decision.** Claude Code's Stop hook carries the turn's final reply as
 `last_assistant_message`. The hook passes it along in its `Report`, cut at four
 thousand characters, the daemon relays it with the `done` activity, and the
-Claude panel shows it in a strip above the terminal — folded to three lines,
-with more, copy and dismiss. It goes when the next turn starts working, or the
+Claude panel shows it in a strip floating over the top of the terminal —
+folded to three lines, with more, copy and dismiss. It floats rather than
+taking rows: every change to the terminal's height resizes the PTY and makes
+Claude Code redraw the whole screen. It goes when the next turn starts working, or the
 session is cleared or ends; a permission prompt leaves it.
 
 **Why.** It is Claude Code telling Beacon what it said, which is a fact; the
@@ -1745,8 +1747,10 @@ sound is the system's, the same as every other application's.
 
 **Decision.** Two chimes, for the same moments a notification is for: Claude
 waiting for you, and a turn long enough to announce finishing. Each has a
-switch of its own in Settings, beside the notification one, with a button to
-hear it; both are on by default and saved with the other settings. They follow
+switch of its own in Settings → Terminal, beside the notification one, with a
+button to hear it; both are off by default — a sound reaches the whole room,
+and nobody updating should start hearing one unasked — and saved with the
+other settings. They follow
 the notification rule — never for the project you are looking at — but not the
 notification switch or the system's permission for it. They are a few sine
 notes through one shared audio context, rising for waiting and falling for

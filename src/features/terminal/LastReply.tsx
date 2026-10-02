@@ -12,8 +12,9 @@ const COPIED_FOR_MS = 1500
  *
  * The point is to find the answer after a long turn without scrolling for it:
  * the reply is what you came back for, and the tool output it ended under is
- * usually not. Folded to a few lines so it never pushes the terminal away;
- * open it to read the rest.
+ * usually not. It floats over the terminal's top rows instead of taking them,
+ * since every change to the terminal's height resizes the PTY and makes Claude
+ * Code redraw. Folded to a few lines; open it to read the rest.
  */
 export function LastReply({ projectId }: { projectId: string }): React.ReactElement | null {
   const reply = useReplies((s) => s.replies[projectId])
