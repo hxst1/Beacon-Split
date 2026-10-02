@@ -167,20 +167,20 @@
 </head>
 <body>
 
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#main" data-superveil="click:landing:skip-content">Skip to content</a>
 
 <header class="nav" id="nav">
   <div class="nav__in">
-    <a class="brand" href="/" aria-label="Beacon Split, home">
+    <a class="brand" href="/" aria-label="Beacon Split, home" data-superveil="click:nav:home">
       <span class="beam" aria-hidden="true"></span>
       <span class="brand__name">Beacon <span class="brand__dim">Split</span></span>
     </a>
     <nav class="nav__links" aria-label="Primary">
-      <a href="#what">What it does</a>
-      <a href="#platforms">Platforms</a>
-      <a href="#faq">Questions</a>
-      <a href="#open">Open source</a>
-      <a class="nav__gh" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">
+      <a href="#what" data-superveil="click:nav:what-it-does">What it does</a>
+      <a href="#platforms" data-superveil="click:nav:platforms">Platforms</a>
+      <a href="#faq" data-superveil="click:nav:questions">Questions</a>
+      <a href="#open" data-superveil="click:nav:open-source">Open source</a>
+      <a class="nav__gh" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener" data-superveil="click:nav:github">
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33C3.81 14.36 3.34 13 3.34 13c-.36-.93-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.23 1.88.87 2.34.67.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
         <span>GitHub</span>
       </a>
@@ -206,7 +206,7 @@
           <svg viewBox="0 0 14 15" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
           Download Beacon
         </a>
-        <a class="btn btn--ghost btn--lg" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">View the source</a>
+        <a class="btn btn--ghost btn--lg" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener" data-superveil="click:landing:view-source">View the source</a>
       </div>
       <p class="cta__meta">
         v<span data-dl-version>0.5.1</span> · macOS &amp; Windows · <strong>Free</strong>, AGPL-3.0 · No account, no server
@@ -240,7 +240,7 @@
 
       <div class="tbar">
         <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
-        <button class="ws" type="button" tabindex="-1">
+        <button class="ws" type="button" tabindex="-1" data-superveil="click:product:workspace-selector">
           <span class="ws__dot"></span><span class="ws__icon">◆</span>Personal<span class="ws__chev">▾</span>
         </button>
         <span class="tbar__div" aria-hidden="true"></span>
@@ -525,7 +525,7 @@
           <p class="plat__help">
             <strong>This is the single most useful thing to help with.</strong> If you run Linux and
             want Beacon on it, that contribution is worth more than any other right now.
-            <a href="https://github.com/hxst1/Beacon-Split/issues" target="_blank" rel="noopener">Open an issue →</a>
+            <a href="https://github.com/hxst1/Beacon-Split/issues" target="_blank" rel="noopener" data-superveil="click:platforms:open-issue">Open an issue →</a>
           </p>
         </div>
       </li>
@@ -572,7 +572,7 @@
 
     <p class="body body--fine dl__ver">
       Version <b data-dl-version>0.5.1</b> ·
-      <a href="https://github.com/hxst1/Beacon-Split/releases" target="_blank" rel="noopener">every release, with what changed in each</a>
+      <a href="https://github.com/hxst1/Beacon-Split/releases" target="_blank" rel="noopener" data-superveil="click:install:view-releases">every release, with what changed in each</a>
     </p>
 
     <div class="gate">
@@ -603,7 +603,7 @@
     </div>
 
     <p class="body body--fine">
-      Beacon needs <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a>
+      Beacon needs <a href="https://claude.com/claude-code" target="_blank" rel="noopener" data-superveil="click:install:claude-code">Claude Code</a>
       and <code>git</code> on your <code>PATH</code>. Install <code>codex</code> to add its panel and
       conversations. Beacon checks what a session needs the same way a session finds it — through
       your login shell, or on Windows the <code>PATH</code> itself.
@@ -624,40 +624,40 @@
     <h2 class="h2">Questions worth answering before you download.</h2>
 
     <dl class="faq">
-      <dt class="faq__q">What is Beacon Split?</dt>
+      <dt class="faq__q" data-superveil="click:faq:what-is-beacon-split">What is Beacon Split?</dt>
       <dd class="faq__a">
         A desktop workspace for working with Claude Code and Codex across several projects. Each
         project gets real agent sessions, terminals, a file tree with an editor, and git — and its
         tab tells you what is running, finished, or waiting for you.
       </dd>
 
-      <dt class="faq__q">Does Beacon Split cost anything?</dt>
+      <dt class="faq__q" data-superveil="click:faq:pricing">Does Beacon Split cost anything?</dt>
       <dd class="faq__a">
         No. It is free and open source under AGPL-3.0. There is no account, no telemetry, no server
         and nothing to buy later.
       </dd>
 
-      <dt class="faq__q">Do I need my own Claude subscription?</dt>
+      <dt class="faq__q" data-superveil="click:faq:claude-subscription">Do I need my own Claude subscription?</dt>
       <dd class="faq__a">
         Yes. Beacon runs Claude Code as Anthropic publishes it and never asks for, handles, stores
         or forwards a Claude credential. You sign in yourself and your usage is billed to you under
         your own agreement with Anthropic. Beacon is not affiliated with or endorsed by Anthropic.
       </dd>
 
-      <dt class="faq__q">Does Beacon Split work with Codex?</dt>
+      <dt class="faq__q" data-superveil="click:faq:codex">Does Beacon Split work with Codex?</dt>
       <dd class="faq__a">
         Yes. Codex is a second agent in Beacon, with its own panel and conversations. It can run
         beside Claude Code in the same project, and each agent can have a git worktree of its own
         when you turn that on.
       </dd>
 
-      <dt class="faq__q">Which platforms does Beacon Split run on?</dt>
+      <dt class="faq__q" data-superveil="click:faq:platforms">Which platforms does Beacon Split run on?</dt>
       <dd class="faq__a">
         macOS, on both Apple Silicon and Intel, and Windows 10 and 11 on x64. A Linux build is
         being worked on and has never been run, so nothing is claimed about it.
       </dd>
 
-      <dt class="faq__q">Why does macOS say the app is damaged?</dt>
+      <dt class="faq__q" data-superveil="click:faq:macos-gatekeeper">Why does macOS say the app is damaged?</dt>
       <dd class="faq__a">
         The build is not signed with an Apple Developer ID, so Gatekeeper refuses it the first time.
         After dragging Beacon to Applications, clear the quarantine flag once with:
@@ -665,28 +665,28 @@
         notarisation need an Apple Developer membership and are on the roadmap.
       </dd>
 
-      <dt class="faq__q">Why does Windows warn about the installer?</dt>
+      <dt class="faq__q" data-superveil="click:faq:windows-smartscreen">Why does Windows warn about the installer?</dt>
       <dd class="faq__a">
         The installer is not code-signed yet, so SmartScreen does not recognise it and says
         "Windows protected your PC" the first time. Choose More info, then Run anyway. It installs
         for your user only and needs no administrator.
       </dd>
 
-      <dt class="faq__q">Does Beacon Split send my code anywhere?</dt>
+      <dt class="faq__q" data-superveil="click:faq:privacy">Does Beacon Split send my code anywhere?</dt>
       <dd class="faq__a">
         No. Beacon has no server and collects no telemetry. Everything it does happens on your
         machine. The only thing that leaves it is whatever you send to Claude Code yourself, under
         your own Anthropic account.
       </dd>
 
-      <dt class="faq__q">What happens to a session when I close the window?</dt>
+      <dt class="faq__q" data-superveil="click:faq:session-lifecycle">What happens to a session when I close the window?</dt>
       <dd class="faq__a">
         It keeps running. Sessions live in a background daemon rather than in the window, with
         their output buffered, so closing Beacon and reopening it puts you back where you were
         instead of starting again.
       </dd>
 
-      <dt class="faq__q">How is this different from a terminal with tmux, or from an editor?</dt>
+      <dt class="faq__q" data-superveil="click:faq:vs-terminal-editor">How is this different from a terminal with tmux, or from an editor?</dt>
       <dd class="faq__a">
         Beacon does not reimplement Claude Code, Codex, a shell or an editor: it runs the real
         ones. What it adds is knowing what each project's agents are doing across every project at
@@ -703,7 +703,7 @@
     <h2 class="h2">Built for one way of working. Yours to change.</h2>
     <p class="body">
       Beacon was built for how one person works, and released for anyone who works the same way.
-      It's <a href="https://github.com/hxst1/Beacon-Split/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0</a>:
+      It's <a href="https://github.com/hxst1/Beacon-Split/blob/main/LICENSE" target="_blank" rel="noopener" data-superveil="click:open-source:license">AGPL-3.0</a>:
       use it, change it, run it however you like. Distribute a modified version, including running
       one as a service, and you publish your changes under the same licence, so work put into
       Beacon stays available to everyone using it.
@@ -722,7 +722,7 @@
       </p>
       <ol class="contributors__list" aria-label="Contributors by commits to the default branch">
         <li class="contributors__fallback">
-          <a href="https://github.com/hxst1/Beacon-Split/graphs/contributors" target="_blank" rel="noopener">See everyone who has contributed on GitHub</a>
+          <a href="https://github.com/hxst1/Beacon-Split/graphs/contributors" target="_blank" rel="noopener" data-superveil="click:open-source:contributors">See everyone who has contributed on GitHub</a>
         </li>
       </ol>
       <p class="contributors__note">
@@ -739,12 +739,12 @@
         <li><b>A dev-server state</b> read honestly from the process tree, rather than guessed from output.</li>
       </ol>
       <div class="help__cta">
-        <a class="btn" href="https://github.com/hxst1/Beacon-Split/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">How to contribute</a>
-        <a class="btn btn--ghost" href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Read the roadmap</a>
+        <a class="btn" href="https://github.com/hxst1/Beacon-Split/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" data-superveil="click:open-source:contributing">How to contribute</a>
+        <a class="btn btn--ghost" href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener" data-superveil="click:open-source:roadmap">Read the roadmap</a>
       </div>
     </div>
 
-    <a class="ask" href="https://github.com/hxst1/Beacon-Split/issues/1" target="_blank" rel="noopener">
+    <a class="ask" href="https://github.com/hxst1/Beacon-Split/issues/1" target="_blank" rel="noopener" data-superveil="click:open-source:design-thread">
       <span class="ask__mark" aria-hidden="true"><span class="beam"></span></span>
       <span class="ask__b">
         <b class="ask__t">You don't have to write Rust to help.</b>
@@ -764,16 +764,16 @@
 <footer class="foot">
   <div class="wrap">
     <div class="foot__top">
-      <a class="brand" href="/">
+      <a class="brand" href="/" data-superveil="click:footer:home">
         <span class="beam" aria-hidden="true"></span>
         <span class="brand__name">Beacon <span class="brand__dim">Split</span></span>
       </a>
       <nav class="foot__nav" aria-label="Footer">
-        <a href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://github.com/hxst1/Beacon-Split/releases" target="_blank" rel="noopener">Releases</a>
-        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">Architecture</a>
-        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/DECISIONS.md" target="_blank" rel="noopener">Decisions</a>
-        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Roadmap</a>
+        <a href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener" data-superveil="click:footer:github">GitHub</a>
+        <a href="https://github.com/hxst1/Beacon-Split/releases" target="_blank" rel="noopener" data-superveil="click:footer:releases">Releases</a>
+        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener" data-superveil="click:footer:architecture">Architecture</a>
+        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/DECISIONS.md" target="_blank" rel="noopener" data-superveil="click:footer:decisions">Decisions</a>
+        <a href="https://github.com/hxst1/Beacon-Split/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener" data-superveil="click:footer:roadmap">Roadmap</a>
       </nav>
     </div>
 
@@ -786,7 +786,7 @@
       Claude and Claude Code are trademarks of Anthropic PBC, used here only to say what Beacon runs.
     </p>
     <p class="foot__legal foot__legal--end">
-      AGPL-3.0 · Made by <a href="https://github.com/hxst1" target="_blank" rel="noopener">hxst1</a>
+      AGPL-3.0 · Made by <a href="https://github.com/hxst1" target="_blank" rel="noopener" data-superveil="click:footer:author">hxst1</a>
     </p>
   </div>
 </footer>
