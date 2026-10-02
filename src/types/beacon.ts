@@ -97,6 +97,8 @@ export interface Snapshot {
   shell: ShellSpec | null
   /** Whether Beacon may raise a system notification when a project waits. */
   notifications: boolean
+  /** Which moments make a sound. */
+  sounds: Sounds
   /** What this build is. */
   version: string
   /** Releases the user has not been shown, newest first. */
@@ -198,6 +200,13 @@ export interface SessionActivity {
   activity: ClaudeActivity
   /** The tool it just started, when there is one worth naming. */
   detail: string | null
+  /** The turn's final reply, when this is `done` and Claude Code said it. */
+  reply?: string | null
+}
+
+export interface Sounds {
+  waiting: boolean
+  done: boolean
 }
 
 /**

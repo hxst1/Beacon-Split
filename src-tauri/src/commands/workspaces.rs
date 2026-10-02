@@ -153,6 +153,17 @@ pub fn set_notifications(state: State<'_, AppState>, enabled: bool) -> CommandRe
     Ok(beacon.snapshot())
 }
 
+/// Which moments make a sound.
+#[tauri::command]
+pub fn set_sounds(
+    state: State<'_, AppState>,
+    sounds: beacon_core::settings::Sounds,
+) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_sounds(sounds)?;
+    Ok(beacon.snapshot())
+}
+
 /// Binds an action to a shortcut, or clears it back to the default.
 #[tauri::command]
 pub fn set_binding(

@@ -8,6 +8,8 @@ import { startClipTracking } from '@/features/clips/clips'
 import { startActivityTracking } from '@/features/terminal/activity'
 import { checkForUpdate } from '@/features/releases/updates'
 import { startNotifications } from '@/features/terminal/notify'
+import { startReplyTracking } from '@/features/terminal/replies'
+import { unlockSoundOnFirstGesture } from '@/features/notifications/sound'
 import { startUsageTracking } from '@/features/usage/usage'
 import { startAgentTracking } from '@/features/workstreams/agents'
 
@@ -28,6 +30,8 @@ export function App(): React.ReactElement {
       startClipTracking(),
       startSystemThemeTracking(),
       startNotifications(),
+      startReplyTracking(),
+      unlockSoundOnFirstGesture(),
     ]
     void load()
     // Once, on start. Nothing here nags: an update that is not urgent should

@@ -102,3 +102,17 @@
   background: var(--surface-3);
   color: var(--fg-1);
 }
+
+/* An agent's body: the last reply, when there is one, over the terminal. */
+/*
+ * The terminal takes all of it; the last reply floats over its top rather than
+ * taking rows, so showing or opening it never resizes the PTY.
+ */
+.agentBody {
+  position: relative;
+  height: 100%;
+}
+
+.agentTerminal {
+  height: 100%;
+}

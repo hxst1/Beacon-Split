@@ -1711,3 +1711,53 @@ falls back on Windows Installer's own handling of files in use, which asks to
 close programs or to restart. The `-setup.exe` is what the site offers, an
 installation made with it updates itself with the `-setup.exe` again, and the
 updater's fallback for Windows now points at it rather than at the MSI.
+
+## ADR-081: The last reply comes from the Stop hook, not from the terminal
+
+**Context.** After a long turn the answer you came back for sits under a screen
+of tool output, and finding it means scrolling for it. The obvious fix is to
+mark where the reply starts in xterm's buffer and decorate it. Claude Code
+draws full-screen on the terminal's alternate screen, so its replies never
+reach xterm's scrollback: there is no line in the buffer to mark, and anything
+anchored to one points at nothing a moment later.
+
+**Decision.** Claude Code's Stop hook carries the turn's final reply as
+`last_assistant_message`. The hook passes it along in its `Report`, cut at four
+thousand characters, the daemon relays it with the `done` activity, and the
+Claude panel shows it in a strip floating over the top of the terminal —
+folded to three lines, with more, copy and dismiss. It floats rather than
+taking rows: every change to the terminal's height resizes the PTY and makes
+Claude Code redraw the whole screen. It goes when the next turn starts working, or the
+session is cleared or ends; a permission prompt leaves it.
+
+**Why.** It is Claude Code telling Beacon what it said, which is a fact; the
+alternative was reading it back out of what was drawn, which is a guess and
+breaks with every change to how Claude Code draws.
+
+**Consequence.** It needs the hooks installed, as every other report does, and
+there is nothing for Codex until something reports for it. The reply is held
+in the daemon's broadcast and the window's memory only — never written to disk
+— and a window opened after the turn ended does not see it.
+
+## ADR-082: Sounds are their own setting, and synthesised
+
+**Context.** A notification is for someone at the screen. Somebody across the
+room, or in another application full-screen, misses it — and the notification
+sound is the system's, the same as every other application's.
+
+**Decision.** Two chimes, for the same moments a notification is for: Claude
+waiting for you, and a turn long enough to announce finishing. Each has a
+switch of its own in Settings → Terminal, beside the notification one, with a
+button to hear it; both are off by default — a sound reaches the whole room,
+and nobody updating should start hearing one unasked — and saved with the
+other settings. They follow
+the notification rule — never for the project you are looking at — but not the
+notification switch or the system's permission for it. They are a few sine
+notes through one shared audio context, rising for waiting and falling for
+done, so they are told apart by ear and nothing has to be bundled. The context
+is resumed on the window's first key or click, because WebView2 and WebKit both
+start one silenced until the page has seen a gesture.
+
+**Consequence.** Until the first key or click after the window opens, a chime
+asked for may not play. That window is short, and the alternative — a sound
+that needs no gesture — is not something either webview allows.

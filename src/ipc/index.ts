@@ -38,6 +38,7 @@ import type {
   SessionInfo,
   SessionKind,
   Snapshot,
+  Sounds,
 } from '@/types/beacon'
 
 export const ipc = {
@@ -102,6 +103,8 @@ export const ipc = {
   setShell: (shell: ShellSpec | null) => invoke<Snapshot>('set_shell', { shell }),
 
   setNotifications: (enabled: boolean) => invoke<Snapshot>('set_notifications', { enabled }),
+
+  setSounds: (sounds: Sounds) => invoke<Snapshot>('set_sounds', { sounds }),
 
   /** Records that the user has been shown what is new in this version. */
   markReleasesSeen: () => invoke<Snapshot>('mark_releases_seen'),
