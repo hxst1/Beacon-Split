@@ -790,3 +790,69 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
     // reader thread to be torn down first.
     drop(stand_in);
 }
+
+/// The replacement is from the old version too: the binary on disk was never
+/// updated, because Windows will not overwrite a program that is running.
+///
+/// Before this the window carried on talking the new protocol to the old
+/// daemon, and what the user saw was a connection aborted halfway through a
+/// request. It must instead stop that daemon and say what to do.
+#[test]
+fn a_replacement_daemon_from_the_old_version_is_reported_not_used() {
+    use beacon_core::transport::LocalListener;
+    use std::io::{BufRead, BufReader, Write};
+
+    let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
+    let socket = private_socket(dir.path());
+    let listener = LocalListener::bind(&socket).expect("the stand-in should bind");
+
+    let old = beacon_core::protocol::PROTOCOL_VERSION - 1;
+    let (asked_to_stop, stopped) = std::sync::mpsc::channel();
+    let stand_in = std::thread::spawn(move || {
+        // The daemon found running, then the one started in its place — from
+        // the same old file.
+        for _ in 0..2 {
+            let Some(Ok(stream)) = listener.incoming().next() else {
+                return;
+            };
+            let mut writer = stream.try_clone().expect("a writable half");
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else {
+                    continue;
+                };
+                if message["method"] == "shutdown" {
+                    let _ = asked_to_stop.send(());
+                    break;
+                }
+                let reply = serde_json::json!({
+                    "id": message["id"].as_u64().unwrap_or_default(),
+                    "ok": { "result": "greeting", "version": old, "pid": 1, "sessions": 0 },
+                });
+                let _ = writeln!(writer, "{reply}");
+                let _ = writer.flush();
+            }
+        }
+    });
+
+    let recorder = Arc::new(Recorder::default());
+    let refused = DaemonClient::connect_at(
+        &daemon_binary(),
+        &socket,
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    )
+    .err()
+    .expect("a window must not attach to a daemon from another version");
+
+    let said = refused.to_string();
+    assert!(said.contains("another version"), "said: {said}");
+    assert!(said.contains("install it again"), "said: {said}");
+
+    // Both the one found and the one started in its place were told to stop.
+    for which in ["found", "started"] {
+        stopped
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|_| panic!("the {which} daemon was never asked to stop"));
+    }
+    stand_in.join().unwrap();
+}

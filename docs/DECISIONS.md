@@ -1676,3 +1676,38 @@ Turning it off leaves the checkouts where they are, because they may hold work
 nobody has merged. A project that is not a git repository has no worktrees and
 keeps working. The file, git and editor panels still show the user's checkout;
 following the focused agent instead is a later decision and not this one.
+
+## ADR-080: A Windows update moves the running daemon aside
+
+**Context.** The daemon outlives its window, and every Claude session starts the
+same file again as its MCP server, so when an update arrives
+`beacon-daemon.exe` is usually running — often several times over. The NSIS
+installer closes the window and nothing else, and Windows will not overwrite a
+program that is running. The first update to 0.6.0 left a 0.5 daemon on disk
+beside a 0.6 window. The window found a daemon speaking protocol 6, asked it to
+stop, started the file beside it — the same old daemon — and carried on talking
+protocol 7 to it. What the user saw was `could not reach the session daemon:
+… (os error 10053)`, and no sessions.
+
+**Decision.** An installer hook (`src-tauri/windows/hooks.nsh`) renames the old
+binary before the new one is copied, which Windows allows for a running
+program: the old daemon carries on from its new name, the new file takes the
+old name, and the new window replaces the daemon over the protocol exactly as
+it does on macOS. Whatever earlier updates moved aside is deleted once nothing
+runs from it. The uninstaller does the same, so it can remove the rest.
+
+And the client no longer trusts that a replacement is current. If the daemon
+started in place of an old one answers in an old protocol too, it is stopped,
+and the window says that the daemon on disk is from another version and that
+installing Beacon again fixes it.
+
+**Why.** Stopping the daemon from the installer would have worked too, and
+would have ended every session on every update, including one that kept the
+protocol — which macOS never does. Renaming changes nothing about what happens
+to sessions; it only stops a file from being in the way.
+
+**Consequence.** The MSI is built by WiX, which these hooks do not reach; it
+falls back on Windows Installer's own handling of files in use, which asks to
+close programs or to restart. The `-setup.exe` is what the site offers, an
+installation made with it updates itself with the `-setup.exe` again, and the
+updater's fallback for Windows now points at it rather than at the MSI.

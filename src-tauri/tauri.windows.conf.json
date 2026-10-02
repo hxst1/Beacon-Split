@@ -15,5 +15,12 @@
         "shadow": true
       }
     ]
+  },
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    }
   }
 }
