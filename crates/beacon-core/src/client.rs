@@ -133,7 +133,33 @@ impl DaemonClient {
             "replacing a daemon speaking a different protocol"
         );
         client.shared.replace()?;
-        client.hello()?;
+
+        // The daemon that took its place was started from the binary beside
+        // this one, and is normally this version. When it is not, that binary
+        // is itself left over: on Windows an installer cannot overwrite a
+        // program that is running, and the daemon — or a Claude session's MCP
+        // server, which is the same file — usually is. Carrying on would talk
+        // this protocol to a daemon that does not speak it, and replacing it
+        // again would only start the same file again. So it is stopped, and the
+        // window is told what happened and what fixes it.
+        let replacement = client.hello()?;
+        if replacement.version != PROTOCOL_VERSION {
+            tracing::error!(
+                theirs = replacement.version,
+                ours = PROTOCOL_VERSION,
+                binary = %client.shared.binary.display(),
+                "the daemon on disk is from another version"
+            );
+            let _ = client.request(Request::Shutdown {});
+            return Err(CoreError::invalid(format!(
+                "the session daemon at {} is from another version of Beacon (protocol {}, this \
+                 window speaks {}), so it was not replaced when Beacon was updated. Close \
+                 Beacon and install it again.",
+                client.shared.binary.display(),
+                replacement.version,
+                PROTOCOL_VERSION
+            )));
+        }
         Ok(client)
     }
 

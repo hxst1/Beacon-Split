@@ -115,3 +115,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
+          # The plain `windows-x86_64` entry is what an installation that does
+          # not say how it was installed falls back on. The NSIS installer is
+          # the one whose hooks move a running daemon aside (ADR-080).
+          updaterJsonPreferNsis: true
