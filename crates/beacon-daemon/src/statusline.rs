@@ -107,6 +107,17 @@ pub fn interpret(event: &serde_json::Value, project: ProjectId) -> UsageReport {
         spend_limit_used_percentage: window_used("spend_limit"),
         spend_limit_resets_at: window_reset("spend_limit"),
         worktree: text(["worktree", "name"]),
+        // Read as a float on purpose: a millisecond count is an integer in
+        // every payload seen so far, but nothing promises it, and a total that
+        // failed to parse would date every repeat as new.
+        api_duration_ms: event
+            .get("cost")
+            .and_then(|cost| cost.get("total_api_duration_ms"))
+            .and_then(serde_json::Value::as_f64)
+            .map(|ms| ms as u64),
+        // The daemon's to set, on arrival.
+        reported_at: None,
+        limits_seen_at: None,
     }
 }
 
@@ -216,6 +227,13 @@ mod tests {
             "workspace": { "current_dir": "/Users/x/projects/app" },
             "effort": { "level": "high" },
             "thinking": { "enabled": true },
+            "cost": {
+                "total_cost_usd": 0.01234,
+                "total_duration_ms": 45_000,
+                "total_api_duration_ms": 2_300,
+                "total_lines_added": 156,
+                "total_lines_removed": 23
+            },
             "context_window": {
                 "used_percentage": 37.4,
                 "remaining_percentage": 62.6,
@@ -252,6 +270,23 @@ mod tests {
         assert_eq!(usage.five_hour_used_percentage, Some(62.5));
         assert_eq!(usage.five_hour_resets_at, Some(1_800_000_000));
         assert_eq!(usage.seven_day_used_percentage, Some(18.0));
+    }
+
+    #[test]
+    fn reads_the_api_time_and_leaves_the_dating_to_the_daemon() {
+        // The API time is what tells a new allowance from one said again; the
+        // times are the daemon's, since this process cannot know what came
+        // before it.
+        let usage = interpret(&payload(), ProjectId("pj_x".into()));
+        assert_eq!(usage.api_duration_ms, Some(2_300));
+        assert_eq!(usage.reported_at, None);
+        assert_eq!(usage.limits_seen_at, None);
+
+        let without = interpret(
+            &serde_json::json!({ "model": { "display_name": "Opus 5" } }),
+            ProjectId("pj_x".into()),
+        );
+        assert_eq!(without.api_duration_ms, None);
     }
 
     #[test]

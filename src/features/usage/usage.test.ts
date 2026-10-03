@@ -6,9 +6,14 @@ import {
   adviceFor,
   cacheIsCold,
   contextHealth,
+  hasReset,
   healthLabel,
+  isStale,
+  leftInWindow,
   levelOf,
+  newerLimits,
   percent,
+  reported,
   untilReset,
 } from './usage'
 
@@ -161,5 +166,60 @@ describe('the numbers a gauge is drawn from', () => {
     expect(untilReset(NOW / 1000 + 3600 * 2 + 60 * 40, NOW)).toBe('2h 40m')
     expect(untilReset(NOW / 1000 - 5, NOW)).toBe('now')
     expect(untilReset(undefined, NOW)).toBeNull()
+  })
+
+  it('shows what is left of a window, and nothing once it has come round', () => {
+    expect(leftInWindow(67, NOW / 1000 + 600, NOW)).toBe(33)
+    expect(leftInWindow(67, undefined, NOW)).toBe(33)
+    // The old window's 67% says nothing about the new one.
+    expect(leftInWindow(67, NOW / 1000 - 1, NOW)).toBeNull()
+    expect(hasReset(NOW / 1000 - 1, NOW)).toBe(true)
+    expect(leftInWindow(undefined, NOW / 1000 + 600, NOW)).toBeNull()
+  })
+})
+
+describe('how old the numbers are', () => {
+  const HOUR = 3_600_000
+
+  it('dates a report by when the daemon heard it, not by when the window did', () => {
+    // What the daemon held since the morning, replayed to a window opened now.
+    const replayed = reported(report({ reportedAt: NOW - 3 * HOUR, limitsSeenAt: NOW - 3 * HOUR }), NOW)
+    expect(replayed.at).toBe(NOW - 3 * HOUR)
+    expect(isStale(replayed.limitsAt, NOW)).toBe(true)
+  })
+
+  it('keeps the limits as old as the response that brought them', () => {
+    const repeated = reported(report({ reportedAt: NOW, limitsSeenAt: NOW - 2 * HOUR }), NOW)
+    expect(isStale(repeated.at, NOW)).toBe(false)
+    expect(isStale(repeated.limitsAt, NOW)).toBe(true)
+  })
+
+  it('falls back to the window’s own clock for an older daemon', () => {
+    const old = reported(report(), NOW)
+    expect(old.at).toBe(NOW)
+    expect(old.limitsAt).toBe(NOW)
+  })
+
+  it('takes the allowance from the newest response, not from whoever spoke last', () => {
+    // Two sessions in the same project: the idle one repeats after the
+    // working one, and becomes the project's last report.
+    const working = reported(
+      report({ sessionId: 's1', fiveHourUsedPercentage: 92, reportedAt: NOW - 60_000, limitsSeenAt: NOW - 60_000 }),
+      NOW,
+    )
+    const idle = reported(
+      report({ sessionId: 's2', fiveHourUsedPercentage: 67, reportedAt: NOW, limitsSeenAt: NOW - 3 * HOUR }),
+      NOW,
+    )
+    expect(newerLimits(newerLimits(null, working), idle)?.report.fiveHourUsedPercentage).toBe(92)
+    expect(newerLimits(newerLimits(null, idle), working)?.report.fiveHourUsedPercentage).toBe(92)
+  })
+
+  it('never lets a report with no allowance in it take the place of one', () => {
+    const none = reported(report({ reportedAt: NOW, limitsSeenAt: NOW }), NOW)
+    expect(newerLimits(null, none)).toBeNull()
+
+    const some = reported(report({ fiveHourUsedPercentage: 40, limitsSeenAt: NOW - HOUR }), NOW)
+    expect(newerLimits(some, none)).toBe(some)
   })
 })

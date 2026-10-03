@@ -8,7 +8,8 @@ use beacon_core::clips::{Clip, ClipBook, ClipStore, now_seconds};
 use beacon_core::domain::ProjectId;
 use beacon_core::error::{CoreError, Result};
 use beacon_core::protocol::{
-    ClaudeActivity, Envelope, Event, Greeting, Outcome, PROTOCOL_VERSION, Reply, Request, Response,
+    ClaudeActivity, Envelope, Event, Greeting, LimitsSeen, Outcome, PROTOCOL_VERSION, Reply,
+    Request, Response, UsageReport,
 };
 use beacon_core::session::{
     AgentLaunch, ConversationStart, SessionEvents, SessionId, SessionKind, SessionManager,
@@ -145,6 +146,16 @@ struct Daemon {
     /// Retained, unlike activity: a window that has just attached should see
     /// what a session costs immediately rather than waiting for its next turn.
     usage: Mutex<std::collections::BTreeMap<ProjectId, beacon_core::protocol::UsageReport>>,
+    /// What each conversation's last report said about its API time, so rate
+    /// limits it only repeats keep the time they were new. See
+    /// `UsageReport::stamp`. One entry per conversation the daemon has heard
+    /// from, kept for as long as it runs: a few dozen bytes each, which is not
+    /// worth tying to when a conversation ends.
+    limits_seen: Mutex<std::collections::HashMap<String, LimitsSeen>>,
+    /// The report with the newest rate limits, from whichever project. Kept
+    /// apart from `usage` because the limits are the account's, and a
+    /// project's last report can be an idle session repeating old ones.
+    account_limits: Mutex<Option<UsageReport>>,
     /// Things Claude produced for the user to paste elsewhere.
     ///
     /// Held here rather than in the window for the same reason sessions are:
@@ -187,6 +198,8 @@ pub fn serve(listener: LocalListener, socket: std::path::PathBuf) {
     let daemon = Arc::new(Daemon {
         socket: socket.clone(),
         usage: Mutex::new(std::collections::BTreeMap::new()),
+        limits_seen: Mutex::new(std::collections::HashMap::new()),
+        account_limits: Mutex::new(None),
         clips: Mutex::new(clip_store.load()),
         clip_store,
         workstreams: Mutex::new(workstream_store.load()),
@@ -742,6 +755,24 @@ fn resume_workstream(
     into_agent(daemon, &project, stream, cwd, size, shell)
 }
 
+/// Dates a usage report on arrival, keeping the time its rate limits were new.
+fn stamp_usage(daemon: &Daemon, usage: &mut UsageReport) {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_millis() as i64)
+        .unwrap_or_default();
+
+    let Some(session) = usage.session_id.clone() else {
+        usage.stamp(None, now_ms);
+        return;
+    };
+    let mut seen = daemon.limits_seen.lock_or_recover();
+    match usage.stamp(seen.get(&session).copied(), now_ms) {
+        Some(kept) => seen.insert(session, kept),
+        None => seen.remove(&session),
+    };
+}
+
 fn request_id(line: &str) -> Option<u64> {
     serde_json::from_str::<serde_json::Value>(line)
         .ok()?
@@ -910,13 +941,24 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             Ok(Reply::Done)
         }
 
-        Request::ReportUsage { usage } => {
+        Request::ReportUsage { mut usage } => {
+            // Dated here rather than by the window, which may hear it hours
+            // later: every report the daemon holds is replayed to a window that
+            // attaches, and would otherwise arrive looking new.
+            stamp_usage(daemon, &mut usage);
+
             // Folded into the conversation it names, matched on the session id
             // rather than on whichever one the project happens to be in — a
             // Claude somebody started in their own terminal reports through the
             // same status line.
             if daemon.workstreams.lock_or_recover().observe(&usage) {
                 daemon.persist_workstreams_soon();
+            }
+            {
+                let mut account = daemon.account_limits.lock_or_recover();
+                if usage.has_newer_limits_than(account.as_ref()) {
+                    *account = Some((*usage).clone());
+                }
             }
             daemon
                 .usage
@@ -926,8 +968,17 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             Ok(Reply::Done)
         }
 
+        // The account's limits first, so a window that keeps the last report
+        // per project still ends on each project's own; it keeps the limits
+        // apart, by how new they are, whatever the order.
         Request::Usage {} => Ok(Reply::Usage {
-            reports: daemon.usage.lock_or_recover().values().cloned().collect(),
+            reports: daemon
+                .account_limits
+                .lock_or_recover()
+                .clone()
+                .into_iter()
+                .chain(daemon.usage.lock_or_recover().values().cloned())
+                .collect(),
         }),
 
         Request::Clip {

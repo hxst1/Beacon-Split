@@ -15,17 +15,19 @@ import type { PromptCache, UsageReport } from '@/types/beacon'
  */
 export const STALE_AFTER_MS = 15 * 60 * 1000
 
-interface Reported {
+export interface Reported {
   report: UsageReport
-  /** When this window heard it. */
+  /** When the daemon heard it. */
   at: number
+  /** When its rate limits were last new, which a repeat leaves behind `at`. */
+  limitsAt: number
 }
 
 interface UsageState {
   /** The last report from each project. */
   byProject: Record<string, Reported>
-  /** Which project reported most recently, for the account-wide numbers. */
-  latest: string | null
+  /** The report with the newest rate limits, from whichever project. */
+  limits: Reported | null
 }
 
 /**
@@ -35,24 +37,40 @@ interface UsageState {
  * knows how much of the five-hour allowance is gone, and it either says so or
  * it does not.
  */
-export const useUsage = create<UsageState>(() => ({ byProject: {}, latest: null }))
+export const useUsage = create<UsageState>(() => ({ byProject: {}, limits: null }))
+
+/**
+ * Dates a report by when the daemon heard it, not by when this window did.
+ *
+ * The daemon outlives the window and replays what it holds to one that
+ * attaches, so "when this window heard it" made a number from the morning look
+ * new every time Beacon was opened. Only a daemon from before the times were
+ * sent leaves the window to guess, and then it guesses as it always did.
+ */
+export function reported(report: UsageReport, heardAt: number): Reported {
+  const at = report.reportedAt ?? heardAt
+  return { report, at, limitsAt: report.limitsSeenAt ?? at }
+}
 
 function accept(report: UsageReport): void {
+  const entry = reported(report, Date.now())
   useUsage.setState((state) => ({
-    byProject: { ...state.byProject, [report.project]: { report, at: Date.now() } },
-    latest: report.project,
+    byProject: { ...state.byProject, [report.project]: entry },
+    limits: newerLimits(state.limits, entry),
   }))
 }
 
-/** Drops what a project reported, e.g. when its sessions are stopped. */
+/**
+ * Drops what a project reported, e.g. when its sessions are stopped.
+ *
+ * The account's limits stay: they are still the newest word on the allowance,
+ * dated, whichever project brought them.
+ */
 export function forgetUsage(project: string): void {
   useUsage.setState((state) => {
     const byProject = { ...state.byProject }
     delete byProject[project]
-    return {
-      byProject,
-      latest: state.latest === project ? null : state.latest,
-    }
+    return { byProject }
   })
 }
 
@@ -85,30 +103,52 @@ export function startUsageTracking(): () => void {
 /**
  * The rate limits, which belong to the account rather than to a project.
  *
- * Taken from whichever session reported most recently: they all see the same
- * allowance, and the newest report is the least stale.
+ * Every session sees the same allowance, so the one to believe is whichever
+ * heard about it last — by when its limits were new, not by which session
+ * spoke last. An idle session repeating its old numbers speaks often, and in a
+ * project with two sessions it is that project's last report as often as not;
+ * so the limits are kept apart, and only newer ones replace them.
  */
-export function useAccountUsage(): Reported | null {
-  return useUsage((state) => {
-    const latest = state.latest ? state.byProject[state.latest] : undefined
-    if (latest?.report.fiveHourUsedPercentage !== undefined) return latest
+export function newerLimits(current: Reported | null, incoming: Reported): Reported | null {
+  if (incoming.report.fiveHourUsedPercentage === undefined) return current
+  if (current === null || incoming.limitsAt >= current.limitsAt) return incoming
+  return current
+}
 
-    // The most recent one may be from a session that never saw a rate limit.
-    return (
-      Object.values(state.byProject).find(
-        (entry) => entry.report.fiveHourUsedPercentage !== undefined,
-      ) ?? null
-    )
-  })
+export function useAccountUsage(): Reported | null {
+  return useUsage((state) => state.limits)
 }
 
 export function useProjectUsage(project: string): Reported | null {
   return useUsage((state) => state.byProject[project] ?? null)
 }
 
-/** Whether a report is old enough that it should not be read as current. */
-export function isStale(reported: Reported | null, now: number): boolean {
-  return reported === null || now - reported.at > STALE_AFTER_MS
+/** Whether something said at `at` is old enough not to be read as current. */
+export function isStale(at: number | undefined, now: number): boolean {
+  return at === undefined || now - at > STALE_AFTER_MS
+}
+
+/**
+ * How much of a rate-limit window is left, or nothing once it has come round.
+ *
+ * Past `resetsAt` the percentage describes a window that is over: the new one
+ * started empty, and Claude Code says how much of it is gone only with its
+ * next response. Showing the old number there is the same mistake as showing
+ * an old number as new — so it is not shown at all.
+ */
+export function leftInWindow(
+  used: number | undefined,
+  resetsAt: number | undefined,
+  now: number,
+): number | null {
+  if (hasReset(resetsAt, now)) return null
+  const clamped = percent(used)
+  return clamped === null ? null : 100 - clamped
+}
+
+/** Whether a window's reset time, in Unix seconds, has passed. */
+export function hasReset(resetsAt: number | undefined, now: number): boolean {
+  return resetsAt !== undefined && resetsAt * 1000 <= now
 }
 
 /** `4 minutes ago`, for saying how old a number is rather than hiding it. */
