@@ -531,6 +531,15 @@ export interface UsageReport {
   spendLimitResetsAt?: number
   /** The worktree the session is working in, when it is in one. */
   worktree?: string
+  /** Time spent waiting on the API, in ms. Grows only when a response arrives. */
+  apiDurationMs?: number
+  /** Unix ms when the daemon heard this. Absent from an older daemon. */
+  reportedAt?: number
+  /**
+   * Unix ms when the rate limits here were last new. Older than `reportedAt`
+   * when the report only repeats an earlier one's.
+   */
+  limitsSeenAt?: number
 }
 
 /**

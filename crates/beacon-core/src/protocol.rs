@@ -163,6 +163,28 @@ pub struct UsageReport {
     /// The worktree the session is working in, when it is in one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
+    /// How long the conversation has spent waiting on the API, in ms.
+    ///
+    /// Carried for one reason: it only grows when a response arrives, and a
+    /// response is the only thing that brings Claude Code new rate limits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_duration_ms: Option<u64>,
+    /// Unix ms when the daemon heard this report. Set by the daemon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reported_at: Option<i64>,
+    /// Unix ms when the rate limits in this report were last new. Set by the
+    /// daemon, and older than `reported_at` whenever the report only repeats
+    /// what an earlier one said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits_seen_at: Option<i64>,
+}
+
+/// What the daemon keeps of a conversation's last report, to tell new rate
+/// limits from old ones said again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LimitsSeen {
+    pub api_duration_ms: u64,
+    pub at: i64,
 }
 
 impl UsageReport {
@@ -192,6 +214,57 @@ impl UsageReport {
             spend_limit_used_percentage: None,
             spend_limit_resets_at: None,
             worktree: None,
+            api_duration_ms: None,
+            reported_at: None,
+            limits_seen_at: None,
+        }
+    }
+
+    /// Dates a report the daemon has just heard, given what it kept of the
+    /// same conversation's last one, and returns what to keep of this one.
+    ///
+    /// Claude Code runs the status line again for things that bring no news
+    /// about the allowance — a session resumed, the permission mode changed, a
+    /// warm cache expiring in a session nobody is using — and every time it
+    /// repeats the rate limits from its last response. Dated on arrival, those
+    /// would pass for current and outrank a session whose numbers really are:
+    /// the allowance from hours ago shown over the one that is true. So the
+    /// limits keep the time they were first seen until the API time moves,
+    /// which only a response can do.
+    ///
+    /// The first report heard from a conversation has nothing to compare with
+    /// and is dated on arrival. That is right for a new conversation, whose
+    /// limits only appear with its first response, and wrong only for one the
+    /// daemon has not heard since it started that repeats limits from before.
+    pub fn stamp(&mut self, previous: Option<LimitsSeen>, now_ms: i64) -> Option<LimitsSeen> {
+        self.reported_at = Some(now_ms);
+        let seen = match (previous, self.api_duration_ms) {
+            (Some(previous), Some(duration)) if previous.api_duration_ms == duration => previous.at,
+            _ => now_ms,
+        };
+        self.limits_seen_at = Some(seen);
+        self.api_duration_ms.map(|api_duration_ms| LimitsSeen {
+            api_duration_ms,
+            at: seen,
+        })
+    }
+
+    /// Whether this report's rate limits are newer than `other`'s, or `other`
+    /// has none.
+    ///
+    /// The limits belong to the account, not to the project or the session
+    /// that reported them, so they are kept apart from the per-project reports:
+    /// two sessions in one project take turns as its last report, and the one
+    /// repeating old limits would otherwise replace the one with new ones.
+    pub fn has_newer_limits_than(&self, other: Option<&UsageReport>) -> bool {
+        if self.five_hour_used_percentage.is_none() {
+            return false;
+        }
+        match other {
+            Some(other) if other.five_hour_used_percentage.is_some() => {
+                self.limits_seen_at.unwrap_or_default() >= other.limits_seen_at.unwrap_or_default()
+            }
+            _ => true,
         }
     }
 }
@@ -1051,6 +1124,108 @@ mod tests {
         let back: UsageReport = serde_json::from_str(&line).unwrap();
         assert_eq!(back.seven_day_used_percentage, None);
         assert_eq!(back.five_hour_used_percentage, Some(12.0));
+    }
+
+    fn in_session(session: &str, api_duration_ms: Option<u64>) -> UsageReport {
+        UsageReport {
+            session_id: Some(session.into()),
+            api_duration_ms,
+            ..sample_usage()
+        }
+    }
+
+    #[test]
+    fn rate_limits_said_again_keep_the_time_they_were_new() {
+        let mut first = in_session("s1", Some(2_300));
+        let kept = first.stamp(None, 1_000);
+        assert_eq!(first.reported_at, Some(1_000));
+        assert_eq!(first.limits_seen_at, Some(1_000));
+
+        // Hours later the cache expires in that idle session, and Claude Code
+        // runs the status line again with the numbers from its last response.
+        let mut repeated = in_session("s1", Some(2_300));
+        let kept = repeated.stamp(kept, 9_000_000);
+        assert_eq!(repeated.reported_at, Some(9_000_000));
+        assert_eq!(repeated.limits_seen_at, Some(1_000));
+
+        // A response moves the API time, and only then are the limits new.
+        let mut answered = in_session("s1", Some(4_100));
+        answered.stamp(kept, 9_500_000);
+        assert_eq!(answered.limits_seen_at, Some(9_500_000));
+    }
+
+    #[test]
+    fn the_account_keeps_the_newest_limits_whichever_session_spoke_last() {
+        // Two sessions in one project: one working, one idle and repeating.
+        let mut working = in_session("s1", Some(9_000));
+        working.five_hour_used_percentage = Some(92.0);
+        working.stamp(None, 9_000_000);
+
+        let mut idle = in_session("s2", Some(2_300));
+        idle.five_hour_used_percentage = Some(67.0);
+        idle.stamp(
+            Some(LimitsSeen {
+                api_duration_ms: 2_300,
+                at: 1_000,
+            }),
+            9_100_000,
+        );
+
+        // The idle one spoke last, and is the project's last report — but not
+        // the account's limits.
+        assert!(working.has_newer_limits_than(None));
+        assert!(!idle.has_newer_limits_than(Some(&working)));
+        assert!(working.has_newer_limits_than(Some(&idle)));
+
+        // A report without limits never takes their place.
+        let mut quiet = in_session("s3", Some(1));
+        quiet.five_hour_used_percentage = None;
+        quiet.stamp(None, 9_200_000);
+        assert!(!quiet.has_newer_limits_than(Some(&working)));
+    }
+
+    #[test]
+    fn a_new_api_time_is_new_whichever_way_it_moved() {
+        // Resumed, the total can start again from somewhere else; it is the
+        // change that means a response, not the direction.
+        let mut resumed = in_session("s1", Some(100));
+        resumed.stamp(
+            Some(LimitsSeen {
+                api_duration_ms: 2_300,
+                at: 1_000,
+            }),
+            5_000,
+        );
+        assert_eq!(resumed.limits_seen_at, Some(5_000));
+    }
+
+    #[test]
+    fn without_the_api_time_a_report_is_taken_as_new() {
+        // An older Claude Code that does not send it: dated on arrival, which
+        // is what every report was before.
+        let mut report = in_session("s1", None);
+        let kept = report.stamp(
+            Some(LimitsSeen {
+                api_duration_ms: 2_300,
+                at: 1_000,
+            }),
+            5_000,
+        );
+        assert_eq!(report.limits_seen_at, Some(5_000));
+        assert_eq!(kept, None);
+    }
+
+    #[test]
+    fn the_times_survive_the_trip_to_the_window_and_an_older_daemon_sends_none() {
+        let mut report = in_session("s1", Some(2_300));
+        report.stamp(None, 1_000);
+        let line = serde_json::to_string(&report).unwrap();
+        assert!(line.contains(r#""reportedAt":1000"#), "got {line}");
+        assert!(line.contains(r#""limitsSeenAt":1000"#), "got {line}");
+
+        let old: UsageReport = serde_json::from_str(r#"{ "project": "pj_x" }"#).unwrap();
+        assert_eq!(old.reported_at, None);
+        assert_eq!(old.limits_seen_at, None);
     }
 
     #[test]
