@@ -13,8 +13,54 @@
   border-bottom: 1px solid var(--line-1);
 }
 
-.spacer {
+/* The search field takes the room the toolbar has spare. */
+.search {
+  position: relative;
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.searchInput {
+  width: 100%;
+  height: 20px;
+  padding: 0 20px 0 7px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-xs);
+  background: var(--field);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--text-xs);
+  outline: none;
+  user-select: text;
+  transition: border-color var(--dur-1) var(--ease);
+}
+
+.searchInput::placeholder {
+  color: var(--fg-4);
+}
+
+.searchInput:focus {
+  border-color: var(--accent-line);
+}
+
+.searchClear {
+  position: absolute;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-4);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.searchClear:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
 }
 
 .tool {
@@ -147,4 +193,29 @@
 .row:hover .icon,
 .row[data-selected='true'] .icon {
   color: var(--fg-3);
+}
+
+/* A match: the name, then the folder it is in, dimmer and cut first. */
+.hitRow {
+  padding-left: 10px;
+}
+
+.hitDir {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-4);
+}
+
+.hit {
+  background: none;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.hitRow .name {
+  flex: none;
+  max-width: 70%;
 }

@@ -5,9 +5,12 @@ import { useBeacon } from '@/app/store'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 import { useEditor } from '@/features/editor/openFiles'
 import { watchActivity } from '@/features/terminal/sessionBridge'
+import { errorMessage, ipc } from '@/ipc'
 import type { DirEntry } from '@/types/beacon'
 import { FileMenu, type MenuPrompt } from './FileMenu'
 import { FileIcon } from './FileIcon'
+import { SearchResults } from './SearchResults'
+import { searchFiles } from './fileSearch'
 import { liveTree } from './liveTree'
 import { parentOf, useTree, visibleRows, type TreeRow } from './treeStore'
 import styles from './FileTree.module.css'
@@ -53,6 +56,7 @@ export function FileTree({
   const select = useTree((s) => s.select)
   const toggle = useTree((s) => s.toggle)
   const setExpanded = useTree((s) => s.setExpanded)
+  const reveal = useTree((s) => s.reveal)
   const error = useTree((s) => s.error)
 
   const openFile = useEditor((s) => s.open)
@@ -60,6 +64,21 @@ export function FileTree({
 
   const [menu, setMenu] = useState<MenuTarget | null>(null)
   const rows = useRef<Map<string, HTMLButtonElement>>(new Map())
+
+  const [query, setQuery] = useState('')
+  const [hitIndex, setHitIndex] = useState(0)
+  const searching = query.trim() !== ''
+  const projectFiles = useProjectFiles(workspaceId, projectId, searching)
+  const hits = useMemo(
+    () => (projectFiles.files ? searchFiles(projectFiles.files, query, { showHidden }) : []),
+    [projectFiles.files, query, showHidden],
+  )
+  const activeHit = Math.min(hitIndex, Math.max(hits.length - 1, 0))
+
+  // A search belongs to the project it was typed in.
+  useEffect(() => {
+    setQuery('')
+  }, [projectId])
 
   useEffect(() => {
     void load(workspaceId, projectId, '')
@@ -120,6 +139,38 @@ export function FileTree({
     // empty pane never takes up room.
     void openFile(workspaceId, projectId, entry.path)
     void showPanel('editor')
+  }
+
+  /** Opens a match, and leaves the tree showing where it is. */
+  const chooseHit = (path: string): void => {
+    setQuery('')
+    void reveal(workspaceId, projectId, path)
+    void openFile(workspaceId, projectId, path)
+    void showPanel('editor')
+  }
+
+  const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    switch (event.key) {
+      case 'ArrowDown':
+        setHitIndex(Math.min(activeHit + 1, hits.length - 1))
+        break
+      case 'ArrowUp':
+        setHitIndex(Math.max(activeHit - 1, 0))
+        break
+      case 'Enter': {
+        const hit = hits[activeHit]
+        if (hit) chooseHit(hit.path)
+        break
+      }
+      case 'Escape':
+        // The first Escape clears the search, the second leaves the field.
+        if (query) setQuery('')
+        else event.currentTarget.blur()
+        break
+      default:
+        return
+    }
+    event.preventDefault()
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -194,7 +245,37 @@ export function FileTree({
   return (
     <div className={styles['root']}>
       <div className={styles['toolbar']}>
-        <span className={styles['spacer']} />
+        <div className={styles['search']}>
+          <input
+            type="text"
+            className={styles['searchInput']}
+            placeholder="Search files"
+            aria-label="Search files"
+            role="combobox"
+            aria-expanded={searching}
+            aria-controls="file-search-results"
+            aria-activedescendant={searching && hits.length > 0 ? `file-search-${activeHit}` : undefined}
+            spellCheck={false}
+            autoComplete="off"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setHitIndex(0)
+            }}
+            onKeyDown={onSearchKeyDown}
+          />
+          {query ? (
+            <button
+              type="button"
+              className={styles['searchClear']}
+              title="Clear search"
+              aria-label="Clear search"
+              onClick={() => setQuery('')}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
         <button
           type="button"
           className={styles['tool']}
@@ -223,55 +304,69 @@ export function FileTree({
         </button>
       </div>
 
-      <div
-        className={styles['list']}
-        onKeyDown={onKeyDown}
-        onContextMenu={(event) => {
-          // A right-click on empty space acts on the project root.
-          if (event.target !== event.currentTarget) return
-          event.preventDefault()
-          setMenu({ entry: null, anchor: rectAt(event.clientX, event.clientY) })
-        }}
-      >
-        {error ? (
-          <div className={`${styles['status']} ${styles['error']}`} role="alert">
-            {error}
-          </div>
-        ) : null}
-
-        {/* The rows are their own element so that everything a tree owns is a
-            row, and the message above it is not read as one. */}
-        <div role="tree" aria-label="Files">
-          {visible.map((row) =>
-            row.type === 'note' ? (
-              <div
-                key={row.id}
-                role="none"
-                className={styles['note']}
-                style={{ paddingLeft: `${20 + row.depth * 12}px` }}
-              >
-                {NOTES[row.note]}
-              </div>
-            ) : (
-              <Row
-                key={row.id}
-                row={row}
-                active={row.entry.path === active}
-                selected={row.entry.path === selected}
-                onRef={(node) => {
-                  if (node) rows.current.set(row.entry.path, node)
-                  else rows.current.delete(row.entry.path)
-                }}
-                onActivate={activate}
-                onMenu={(entry, anchor) => {
-                  select(projectId, entry.path)
-                  setMenu({ entry, anchor })
-                }}
-              />
-            ),
-          )}
+      {searching ? (
+        <div className={styles['list']}>
+          <SearchResults
+            hits={hits}
+            active={activeHit}
+            status={
+              projectFiles.error ?? (projectFiles.files === null ? 'Reading the project…' : 'No matches')
+            }
+            onHover={setHitIndex}
+            onChoose={chooseHit}
+          />
         </div>
-      </div>
+      ) : (
+        <div
+          className={styles['list']}
+          onKeyDown={onKeyDown}
+          onContextMenu={(event) => {
+            // A right-click on empty space acts on the project root.
+            if (event.target !== event.currentTarget) return
+            event.preventDefault()
+            setMenu({ entry: null, anchor: rectAt(event.clientX, event.clientY) })
+          }}
+        >
+          {error ? (
+            <div className={`${styles['status']} ${styles['error']}`} role="alert">
+              {error}
+            </div>
+          ) : null}
+
+          {/* The rows are their own element so that everything a tree owns is a
+              row, and the message above it is not read as one. */}
+          <div role="tree" aria-label="Files">
+            {visible.map((row) =>
+              row.type === 'note' ? (
+                <div
+                  key={row.id}
+                  role="none"
+                  className={styles['note']}
+                  style={{ paddingLeft: `${20 + row.depth * 12}px` }}
+                >
+                  {NOTES[row.note]}
+                </div>
+              ) : (
+                <Row
+                  key={row.id}
+                  row={row}
+                  active={row.entry.path === active}
+                  selected={row.entry.path === selected}
+                  onRef={(node) => {
+                    if (node) rows.current.set(row.entry.path, node)
+                    else rows.current.delete(row.entry.path)
+                  }}
+                  onActivate={activate}
+                  onMenu={(entry, anchor) => {
+                    select(projectId, entry.path)
+                    setMenu({ entry, anchor })
+                  }}
+                />
+              ),
+            )}
+          </div>
+        </div>
+      )}
 
       {menu ? (
         <Popover anchor={menu.anchor} onClose={() => setMenu(null)}>
@@ -346,6 +441,45 @@ function Row({
       </span>
     </button>
   )
+}
+
+/**
+ * Every file in the project, read when a search starts.
+ *
+ * Read again for each search rather than kept: files come and go while the
+ * panel is open, and a search that cannot find the file Claude just wrote is
+ * worse than the moment it takes to list them.
+ */
+function useProjectFiles(
+  workspaceId: string,
+  projectId: string,
+  wanted: boolean,
+): { files: string[] | null; error: string | null } {
+  const [state, setState] = useState<{ files: string[] | null; error: string | null }>({
+    files: null,
+    error: null,
+  })
+
+  useEffect(() => {
+    setState({ files: null, error: null })
+    if (!wanted) return
+    let cancelled = false
+
+    ipc
+      .listProjectFiles(workspaceId, projectId)
+      .then((files) => {
+        if (!cancelled) setState({ files, error: null })
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setState({ files: null, error: errorMessage(err) })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceId, projectId, wanted])
+
+  return state
 }
 
 /** A zero-size rect at the pointer, so a menu can anchor to a click. */
