@@ -36,6 +36,17 @@ describe('the welcome guide', () => {
     expect(Object.keys(PANEL_STEPS).sort()).toEqual(Object.keys(PANEL_LABELS).sort())
   })
 
+  it('has something to say about each of them', () => {
+    // The shared step takes the first line of each panel it names, so a panel
+    // described with nothing would quietly drop out of a step it is in the
+    // heading of.
+    for (const [panel, step] of Object.entries(PANEL_STEPS)) {
+      expect(step.title, panel).not.toBe('')
+      expect(step.paragraphs.length, panel).toBeGreaterThan(0)
+      expect(step.paragraphs[0], panel).not.toBe('')
+    }
+  })
+
   it('gives every panel somewhere to be introduced', () => {
     // Having words for a panel is not the same as showing them to anybody: a
     // panel in neither list is described and never reached. Nothing may be in

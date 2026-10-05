@@ -51,7 +51,7 @@ export const PANEL_STEPS: Record<PanelId, { title: string; paragraphs: string[] 
   files: {
     title: 'Files',
     paragraphs: [
-      'Files is the project’s tree, marked with what git says has changed. Click one to open it in the editor.',
+      'Files is the project’s tree, marked with what git says has changed. Click one and the editor opens with it.',
     ],
   },
   editor: {
