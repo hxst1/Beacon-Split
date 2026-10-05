@@ -42,6 +42,7 @@ cd "$here"
   -e "s|content=\"[^\"]*/og\.png\"|content=\"$origin/og.png\"|g" \
   -e "s|^  \"url\": \"[^\"]*\",\$|  \"url\": \"$origin/\",|" \
   -e "s|^  \"image\": \"[^\"]*/og\.png\",\$|  \"image\": \"$origin/og.png\",|" \
+  -e "s|^  \"@id\": \"[^\"]*#software\",\$|  \"@id\": \"$origin/#software\",|" \
   index.html
 
 # ── robots.txt ──────────────────────────────────────────────────────────────
@@ -64,6 +65,6 @@ cat > sitemap.xml <<XML
 XML
 
 echo "origin set to $origin"
-echo "  index.html   canonical, og:url, og:image, twitter:image and the JSON-LD url and image"
+echo "  index.html   canonical, og:url, og:image, twitter:image and the JSON-LD @id, url and image"
 echo "  robots.txt   Sitemap line"
 echo "  sitemap.xml  written"

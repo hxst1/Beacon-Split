@@ -1,3 +1,33 @@
+# Everything here is public. The crawlers that fetch a page to answer a
+# question with a citation are named one by one, because a crawler that finds
+# its own name stops reading the group for everyone else — so being listed is
+# the only way to be told, rather than left to inherit.
+#
+# The crawlers that collect training data are named as well, and allowed. They
+# would be allowed anyway by the group for everyone, so this changes nothing a
+# crawler does: it is here to say that the permission is meant, and not a
+# default nobody looked at.
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
 User-agent: *
 Allow: /
 
