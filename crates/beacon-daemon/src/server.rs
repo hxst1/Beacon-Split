@@ -547,22 +547,33 @@ fn prepare_agent(daemon: &Daemon, project: &ProjectId, agent: AgentKind, agents:
 /// said the conversation had never been written and `--session-id` was asked
 /// for again. Claude Code's own transcript settles it either way.
 fn learn_from_disk(daemon: &Daemon, stream: Workstream) -> Workstream {
-    let written = stream.agent == AgentKind::Claude
-        && !stream.resumable
-        && stream
-            .resume_id()
-            .is_some_and(beacon_core::claude::conversation_written);
-    if !written {
+    let mut book = daemon.workstreams.lock_or_recover();
+    if !learn_from(
+        &mut book,
+        &stream,
+        beacon_core::claude::conversation_written,
+    ) {
         return stream;
     }
-
-    let mut book = daemon.workstreams.lock_or_recover();
-    book.mark_resumable(&stream.id);
     let updated = book.get(&stream.id).cloned().unwrap_or(stream);
     drop(book);
     daemon.persist_workstreams();
     tracing::info!(conversation = %updated.id, "found the conversation on disk; resuming it");
     updated
+}
+
+/// The decision `learn_from_disk` makes, with how to ask the disk passed in,
+/// so it can be tested without a Claude Code configuration folder. Returns
+/// whether the book changed.
+fn learn_from(
+    book: &mut WorkstreamBook,
+    stream: &Workstream,
+    written: impl Fn(&str) -> bool,
+) -> bool {
+    let found = stream.agent == AgentKind::Claude
+        && !stream.resumable
+        && stream.resume_id().is_some_and(&written);
+    found && book.mark_resumable(&stream.id)
 }
 
 /// Which flag the next start of a conversation uses.
@@ -1200,6 +1211,39 @@ mod tests {
         }
         let stream = book.get(&stream.id).cloned().expect("just started");
         (book, stream)
+    }
+
+    #[test]
+    fn a_transcript_on_disk_turns_the_next_start_into_a_resume() {
+        // No hook ever said this conversation was written; Claude Code's own
+        // transcript does, and the next start has to ask for `--resume`, not
+        // the `--session-id` that Claude Code refuses once it exists.
+        let (mut book, stream) = book_with(AgentKind::Claude, false);
+        let id = stream
+            .resume_id()
+            .expect("Beacon names Claude's")
+            .to_string();
+        assert_eq!(start_for(&book, &stream), ConversationStart::New);
+
+        assert!(learn_from(&mut book, &stream, |asked| asked == id));
+        let stream = book.get(&stream.id).cloned().unwrap();
+        assert_eq!(start_for(&book, &stream), ConversationStart::Resume { id });
+    }
+
+    #[test]
+    fn no_transcript_or_not_claude_leaves_the_book_alone() {
+        let (mut book, stream) = book_with(AgentKind::Claude, false);
+        assert!(!learn_from(&mut book, &stream, |_| false));
+        assert_eq!(start_for(&book, &stream), ConversationStart::New);
+
+        // Codex keeps no transcript Beacon reads: whatever the disk says, it
+        // is left to what Codex reports.
+        let (mut book, stream) = book_with(AgentKind::Codex, false);
+        assert!(!learn_from(&mut book, &stream, |_| true));
+
+        // Already known: nothing to learn, nothing to write.
+        let (mut book, stream) = book_with(AgentKind::Claude, true);
+        assert!(!learn_from(&mut book, &stream, |_| true));
     }
 
     #[test]
