@@ -13,6 +13,13 @@ import type { Extension } from '@codemirror/state'
  */
 const light = (): boolean => document.documentElement.dataset['theme'] === 'light'
 
+/** CodeMirror's two kinds of panel: find and replace, and a dialog. */
+const PANELS = ['.cm-panel.cm-search', '.cm-panel.cm-dialog']
+
+/** Each of `parts` inside either panel, as one selector list. */
+const inPanels = (...parts: string[]): string =>
+  PANELS.flatMap((panel) => parts.map((part) => `${panel}${part}`)).join(', ')
+
 const editorTheme = (): Extension => EditorView.theme(
   {
     '&': {
@@ -61,17 +68,18 @@ const editorTheme = (): Extension => EditorView.theme(
       borderTop: light() ? '1px solid rgb(0 0 0 / 0.1)' : '1px solid rgb(255 255 255 / 0.09)',
       fontSize: '11px',
     },
-    // Selectors as specific as CodeMirror's own light and dark button rules,
-    // or its grey gradient and #888 border win and the panel looks like a
-    // form from another application.
+    // Both of CodeMirror's panels: find and replace, and the dialogs — go to
+    // line is one. Selectors as specific as CodeMirror's own light and dark
+    // button rules, or its grey gradient and #888 border win and the panel
+    // looks like a form from another application.
     // In flow rather than a flex row: CodeMirror starts the replace line with
     // a <br>, which a flex container ignores.
-    '.cm-panel.cm-search': { padding: '3px 30px 3px 8px' },
-    '.cm-panel.cm-search input, .cm-panel.cm-search button, .cm-panel.cm-search label': {
+    [inPanels('')]: { padding: '3px 30px 3px 8px' },
+    [inPanels(' input', ' button', ' label')]: {
       margin: '3px 6px 3px 0',
       verticalAlign: 'middle',
     },
-    '.cm-panel.cm-search .cm-textfield': {
+    [inPanels(' .cm-textfield')]: {
       width: '180px',
       height: '22px',
       padding: '0 7px',
@@ -83,8 +91,8 @@ const editorTheme = (): Extension => EditorView.theme(
       fontSize: '11.5px',
       outline: 'none',
     },
-    '.cm-panel.cm-search .cm-textfield:focus': { borderColor: 'var(--accent-line)' },
-    '.cm-panel.cm-search .cm-button, .cm-panel.cm-search .cm-button:active': {
+    [inPanels(' .cm-textfield:focus')]: { borderColor: 'var(--accent-line)' },
+    [inPanels(' .cm-button', ' .cm-button:active')]: {
       height: '22px',
       padding: '0 9px',
       backgroundColor: 'var(--surface-1)',
@@ -96,12 +104,12 @@ const editorTheme = (): Extension => EditorView.theme(
       fontSize: '11px',
       cursor: 'pointer',
     },
-    '.cm-panel.cm-search .cm-button:hover': {
+    [inPanels(' .cm-button:hover')]: {
       backgroundColor: 'var(--surface-2)',
       color: 'var(--fg-1)',
     },
-    '.cm-panel.cm-search .cm-button:active': { backgroundColor: 'var(--surface-3)' },
-    '.cm-panel.cm-search label': {
+    [inPanels(' .cm-button:active')]: { backgroundColor: 'var(--surface-3)' },
+    [inPanels(' label')]: {
       display: 'inline-flex',
       alignItems: 'center',
       gap: '4px',
@@ -109,29 +117,33 @@ const editorTheme = (): Extension => EditorView.theme(
       fontSize: '11px',
       cursor: 'pointer',
     },
-    '.cm-panel.cm-search input[type=checkbox]': {
+    [inPanels(' input[type=checkbox]')]: {
       width: '12px',
       height: '12px',
       margin: '0 1px 0 0',
       accentColor: 'var(--accent)',
       cursor: 'pointer',
     },
-    '.cm-panel.cm-search [name=close]': {
+    // The find panel names its close button; a dialog gives it a class.
+    [inPanels(' [name=close]', ' .cm-dialog-close')]: {
+      position: 'absolute',
       top: '6px',
       right: '6px',
       margin: 0,
+      padding: 0,
       display: 'grid',
       placeItems: 'center',
       width: '18px',
       height: '18px',
       backgroundColor: 'transparent',
       color: 'var(--fg-4)',
+      border: 'none',
       borderRadius: 'var(--radius-xs)',
       fontSize: '14px',
       lineHeight: 1,
       cursor: 'pointer',
     },
-    '.cm-panel.cm-search [name=close]:hover': {
+    [inPanels(' [name=close]:hover', ' .cm-dialog-close:hover')]: {
       backgroundColor: 'var(--surface-2)',
       color: 'var(--fg-1)',
     },
