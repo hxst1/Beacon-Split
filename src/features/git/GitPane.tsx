@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { MissingTool } from '@/features/settings/MissingTool'
-import { useBeacon } from '@/app/store'
+import { usePanelFocus } from '@/app/panelFocus'
+import { selectHidden, useBeacon } from '@/app/store'
 import { useClips } from '@/features/clips/clips'
 import { errorMessage, ipc } from '@/ipc'
+import { AGENT_PANELS } from '@/lib/layout'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 import type { AgentKind, Checkout, FileState, GitEntry, GitStatus } from '@/types/beacon'
 import { noNotices, reduceNotices, type Notices } from './notices'
@@ -56,6 +58,22 @@ export function nextCheckout(current: AgentKind | undefined): AgentKind | undefi
   return order[(at + 1) % order.length]
 }
 
+/**
+ * The agent the user is working in.
+ *
+ * The one the keyboard was in last, as long as it is still on screen; failing
+ * that the only one that is, which is the common case — Codex starts put away,
+ * so most windows have exactly one agent in them and never have to choose.
+ */
+function useAgentInFront(): AgentKind {
+  const lastAgent = usePanelFocus((s) => s.lastAgent)
+  const hidden = useBeacon(selectHidden)
+
+  const shown = AGENT_PANELS.filter((panel) => !hidden.includes(panel)) as AgentKind[]
+  if (lastAgent !== null && shown.includes(lastAgent)) return lastAgent
+  return shown[0] ?? 'claude'
+}
+
 export function GitPane({
   workspaceId,
   projectId,
@@ -66,11 +84,22 @@ export function GitPane({
   projectId: string
   separateCheckouts: boolean
 }): React.ReactElement {
-  // Which checkout this panel is reading. The project's own unless somebody
-  // asks, and never remembered across a restart: coming back to a window that
-  // is quietly showing an agent's branch instead of your own is exactly the
-  // confusion this feature could cause.
-  const [agent, setAgent] = useState<AgentKind | undefined>(undefined)
+  // Which checkout this panel is reading. It follows the agent you are working
+  // in: looking at Codex while reading Claude's diff is how somebody commits
+  // the wrong thing, and with a checkout each there is no sign in the files
+  // themselves that you are in the other one.
+  //
+  // A click looks somewhere else until you go back to an agent panel, which
+  // puts it in step again. Nothing is remembered across a restart, and a pin
+  // does not outlive the agent it was made against — coming back to a window
+  // quietly showing a branch that is not the one you are working on is exactly
+  // the confusion this feature could cause.
+  const inFront = useAgentInFront()
+  const [pinned, setPinned] = useState<AgentKind | undefined | null>(null)
+  const agent = pinned === null ? inFront : pinned
+  useEffect(() => {
+    setPinned(null)
+  }, [inFront])
   const at = useMemo<Checkout>(
     () => ({ workspaceId, projectId, agent: separateCheckouts ? agent : undefined }),
     [workspaceId, projectId, agent, separateCheckouts],
@@ -348,8 +377,12 @@ export function GitPane({
           <button
             type="button"
             className={styles['checkout']}
-            title="Which checkout this panel is reading"
-            onClick={() => setAgent(nextCheckout(agent))}
+            title={
+              pinned === null
+                ? 'The checkout of the agent you are working in. Press to read another.'
+                : 'Press to read another checkout, or go back to an agent to follow it again.'
+            }
+            onClick={() => setPinned(nextCheckout(agent))}
           >
             {agent ? `${agent}'s copy` : 'Your copy'}
           </button>

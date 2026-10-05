@@ -316,19 +316,34 @@
 .hunk { color: var(--fg-4); background: var(--surface-1); }
 .meta { color: var(--fg-4); }
 
-/* Which checkout the panel is reading. Quiet until it is not the user's own,
-   because "your copy" is the answer nobody needs to be told twice. */
+/* Which checkout the panel is reading, and the control for changing it.
+
+   Drawn as a button rather than as a quiet word: it is the one thing in this
+   header that can be pressed, and a label that acts like a control without
+   looking like one is a control nobody finds.
+
+   `flex: none` and `nowrap` because the panel is often narrow and the branch
+   beside it is the part that may be cut short — "codex's copy" broken across
+   two lines made the whole header twice as tall. */
 .checkout {
-  padding: 2px 7px;
-  border: none;
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid var(--line-1);
   border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--fg) 8%, transparent);
-  color: var(--fg-muted);
+  background: var(--surface-2);
+  color: var(--fg-3);
   font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
 }
 
 .checkout:hover {
-  background: color-mix(in oklab, var(--fg) 14%, transparent);
-  color: var(--fg);
+  background: var(--surface-3);
+  border-color: var(--line-2);
+  color: var(--fg-1);
 }
