@@ -152,7 +152,11 @@ export function FileTree({
   const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
     switch (event.key) {
       case 'ArrowDown':
-        setHitIndex(Math.min(activeHit + 1, hits.length - 1))
+        // Never past the bottom, and never below the top: with no results yet
+        // `hits.length - 1` is -1, and an index of -1 survives into the list
+        // that arrives a moment later, so Return would do nothing on a search
+        // the user can already read.
+        setHitIndex(Math.max(Math.min(activeHit + 1, hits.length - 1), 0))
         break
       case 'ArrowUp':
         setHitIndex(Math.max(activeHit - 1, 0))
