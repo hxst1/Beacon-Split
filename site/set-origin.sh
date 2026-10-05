@@ -1,6 +1,6 @@
 #!/bin/sh
-# Stamps the site's public origin into the four places that need an absolute
-# URL, and writes the sitemap.
+# Stamps the site's public origin into the places that need an absolute URL,
+# writes the sitemap, and stamps the version Beacon is at.
 #
 # These are left out of the committed files on purpose. A canonical link, an
 # og:url or a sitemap pointing at a domain that does not serve this page is
@@ -45,6 +45,18 @@ cd "$here"
   -e "s|^  \"@id\": \"[^\"]*#software\",\$|  \"@id\": \"$origin/#software\",|" \
   index.html
 
+# ── the version ─────────────────────────────────────────────────────────────
+# Taken from package.json, which is the same version this deploy's release was
+# cut from, so nobody has to remember to update the page. `main.js` replaces it
+# with whatever GitHub says is latest; this is what a reader without
+# JavaScript, and every crawler, is told.
+version=$(/usr/bin/sed -n 's/^  "version": "\(.*\)",$/\1/p' ../package.json | head -1)
+if [ -n "$version" ]; then
+  /usr/bin/sed -i '' -e "s|\(data-dl-version[^>]*>\)[^<]*<|\1$version<|g" index.html
+else
+  echo "warning: could not read the version from ../package.json" >&2
+fi
+
 # ── robots.txt ──────────────────────────────────────────────────────────────
 /usr/bin/sed -i '' '/^Sitemap:/d' robots.txt
 # Trailing blank lines go too, or every run would leave one more behind.
@@ -66,5 +78,6 @@ XML
 
 echo "origin set to $origin"
 echo "  index.html   canonical, og:url, og:image, twitter:image and the JSON-LD @id, url and image"
+echo "  index.html   the version, from package.json"
 echo "  robots.txt   Sitemap line"
 echo "  sitemap.xml  written"

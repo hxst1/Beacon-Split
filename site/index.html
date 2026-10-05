@@ -553,15 +553,23 @@
       see `main.js`. If these ever have to be edited by hand, the fetch is
       broken — fix that instead.
     -->
+    <!-- Every link here goes to the releases page, and `main.js` turns it into
+         a direct download once it has asked GitHub which release is latest.
+         No version is written into this file: one that was pinned to v0.5.1
+         outlived three releases and was still handing people September's
+         build whenever that request did not happen — with JavaScript off, or
+         when GitHub's unauthenticated API ran out of its sixty requests an
+         hour for everybody behind one address. A link that costs a click is
+         better than one that silently gives you the wrong program. -->
     <div class="dl" data-dl-repo="hxst1/Beacon-Split">
-      <a class="dlc" data-superveil="download:mac-arm" data-dl-suffix="_aarch64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_aarch64.dmg">
+      <a class="dlc" data-superveil="download:mac-arm" data-dl-suffix="_aarch64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/latest">
         <span class="dlc__t">Apple Silicon</span>
-        <span class="dlc__s">M1 and newer · .dmg<span data-dl-size> · 6.5 MB</span></span>
+        <span class="dlc__s">M1 and newer · .dmg<span data-dl-size></span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
-      <a class="dlc" data-superveil="download:mac-intel" data-dl-suffix="_x64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/download/v0.5.1/Beacon.Split_0.5.1_x64.dmg">
+      <a class="dlc" data-superveil="download:mac-intel" data-dl-suffix="_x64.dmg" href="https://github.com/hxst1/Beacon-Split/releases/latest">
         <span class="dlc__t">Intel</span>
-        <span class="dlc__s">x86-64 · .dmg<span data-dl-size> · 4.8 MB</span></span>
+        <span class="dlc__s">x86-64 · .dmg<span data-dl-size></span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
       <!-- No release carried a Windows build when this was written, so the floor

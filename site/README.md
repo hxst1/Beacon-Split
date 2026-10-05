@@ -81,7 +81,16 @@ files are served as they are.
 
 Several things need an absolute URL: the canonical link, `og:url`, `og:image`
 and `twitter:image`, the `@id`, `url` and `image` of the application's JSON-LD,
-the `Sitemap:` line in `robots.txt`, and `sitemap.xml`. Now that the domain is
+the `Sitemap:` line in `robots.txt`, and `sitemap.xml`. The script also stamps
+the version, from `package.json`.
+
+No version and no release asset is written into `index.html` by hand. One that
+was — the macOS download links, pinned to v0.5.1 — outlived three releases and
+went on handing people September's build whenever `main.js` could not reach
+GitHub, which is any visit with JavaScript off and every visit once the
+unauthenticated API has spent its sixty requests an hour for everybody sharing
+an address. The links point at the releases page and are upgraded to a direct
+download when that request succeeds. Now that the domain is
 settled they are committed with it, and `set-origin.sh` is what writes them —
 run it before every deploy, which is what keeps `sitemap.xml`'s `lastmod`
 true, and run it with a different domain if the site ever moves. It replaces
