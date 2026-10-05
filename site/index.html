@@ -16,7 +16,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="The Beacon Split window: three project tabs, one of them amber because its Claude session is waiting for an answer.">
 <meta property="og:site_name" content="Beacon Split">
-<meta property="og:locale" content="en">
+<meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Beacon Split — keep your agents moving">
 <meta name="twitter:description" content="An agent-first development workspace for running Claude Code and Codex side by side. Free, open source, macOS and Windows.">
@@ -44,7 +44,8 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
+  "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+  "@id": "https://beacon-split.com/#software",
   "name": "Beacon Split",
   "url": "https://beacon-split.com/",
   "image": "https://beacon-split.com/og.png",
@@ -56,6 +57,7 @@
   "description": "An agent-first development workspace. Run Claude Code and Codex side by side, each with real terminals, files and git, and know the moment an agent needs you. Sessions run in a background daemon, so they outlive the window.",
   "license": "https://github.com/hxst1/Beacon-Split/blob/main/LICENSE",
   "codeRepository": "https://github.com/hxst1/Beacon-Split",
+  "programmingLanguage": ["Rust", "TypeScript"],
   "downloadUrl": "https://github.com/hxst1/Beacon-Split/releases/latest",
   "isAccessibleForFree": true,
   "offers": {
@@ -198,7 +200,7 @@
   <div class="hero__glow" aria-hidden="true"></div>
   <div class="wrap hero__grid">
     <div class="hero__copy">
-      <h1 class="h1">Keep your agents <span class="h1__em">moving together</span>.</h1>
+      <h1 class="h1">Beacon Split keeps your agents <span class="h1__em">moving together</span>.</h1>
       <p class="lede">
         Run Claude Code and Codex side by side across your projects. Real terminals,
         real sessions, real git, and a tab that tells you the moment an agent needs an answer.
@@ -211,7 +213,7 @@
         <a class="btn btn--ghost btn--lg" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener" data-superveil="click:hero:view-source">View the source</a>
       </div>
       <p class="cta__meta">
-        v<span data-dl-version>0.5.1</span> · macOS &amp; Windows · <strong>Free</strong>, AGPL-3.0 · No account, no server
+        v<span data-dl-version>0.6.1</span> · macOS &amp; Windows · <strong>Free</strong>, AGPL-3.0 · No account, no server
       </p>
     </div>
 
@@ -573,7 +575,7 @@
     </div>
 
     <p class="body body--fine dl__ver">
-      Version <b data-dl-version>0.5.1</b> ·
+      Version <b data-dl-version>0.6.1</b> ·
       <a href="https://github.com/hxst1/Beacon-Split/releases" target="_blank" rel="noopener" data-superveil="click:install:view-releases">every release, with what changed in each</a>
     </p>
 
