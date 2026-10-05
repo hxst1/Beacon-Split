@@ -186,6 +186,14 @@ pub struct UsageReport {
     /// what an earlier one said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limits_seen_at: Option<i64>,
+    /// Set when `limits_seen_at` is only when the daemon first heard these
+    /// limits, not when they were new: the first report from a conversation
+    /// the daemon had not heard before, and its repeats. Right after the
+    /// daemon starts, that is every conversation, and their limits can be
+    /// hours older than the date says. The meter says so instead of calling
+    /// them current.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub limits_age_unknown: bool,
 }
 
 /// How far apart two reset times can be and still be the same five-hour
@@ -199,6 +207,9 @@ const SAME_WINDOW_SECS: i64 = 60;
 pub struct LimitsSeen {
     pub api_duration_ms: u64,
     pub at: i64,
+    /// Whether `at` is only when the daemon first heard them. See
+    /// `UsageReport::limits_age_unknown`.
+    pub age_unknown: bool,
 }
 
 impl UsageReport {
@@ -232,6 +243,7 @@ impl UsageReport {
             api_duration_ms: None,
             reported_at: None,
             limits_seen_at: None,
+            limits_age_unknown: false,
         }
     }
 
@@ -258,16 +270,30 @@ impl UsageReport {
     /// limits only appear with its first response, and wrong for one the
     /// daemon has not heard since it started that repeats limits from before —
     /// which is why the date is the last thing the comparison looks at.
+    ///
+    /// Such a report is marked `limits_age_unknown`, and so are its repeats,
+    /// until the API time moves and the limits are known to be new.
     pub fn stamp(&mut self, previous: Option<LimitsSeen>, now_ms: i64) -> Option<LimitsSeen> {
         self.reported_at = Some(now_ms);
-        let seen = match (previous, self.api_duration_ms) {
-            (Some(previous), Some(duration)) if previous.api_duration_ms == duration => previous.at,
-            _ => now_ms,
+        let (seen, age_unknown) = match (previous, self.api_duration_ms) {
+            // Said again: as old as before, and as uncertain.
+            (Some(previous), Some(duration)) if previous.api_duration_ms == duration => {
+                (previous.at, previous.age_unknown)
+            }
+            // The API time moved: a response, and new limits with it.
+            (Some(_), Some(_)) => (now_ms, false),
+            // Never heard from before: when they were new is not known.
+            (None, Some(_)) => (now_ms, true),
+            // An older Claude Code without the API time: dated on arrival,
+            // which is what every report was before.
+            (_, None) => (now_ms, false),
         };
         self.limits_seen_at = Some(seen);
+        self.limits_age_unknown = age_unknown;
         self.api_duration_ms.map(|api_duration_ms| LimitsSeen {
             api_duration_ms,
             at: seen,
+            age_unknown,
         })
     }
 
@@ -1208,6 +1234,7 @@ mod tests {
             Some(LimitsSeen {
                 api_duration_ms: 2_300,
                 at: 1_000,
+                age_unknown: false,
             }),
             9_100_000,
         );
@@ -1290,6 +1317,76 @@ mod tests {
         assert!(later.has_newer_limits_than(Some(&earlier)));
     }
 
+    /// One side of a case in `fixtures/newer_limits.json`.
+    fn fixture_report(side: &serde_json::Value) -> UsageReport {
+        UsageReport {
+            five_hour_used_percentage: side["used"].as_f64().map(|used| used as f32),
+            five_hour_resets_at: side["resetsAt"].as_i64(),
+            limits_seen_at: side["seenAt"].as_i64(),
+            ..UsageReport::unknown(ProjectId("pj_x".into()))
+        }
+    }
+
+    #[test]
+    fn the_newer_limits_cases_shared_with_the_window() {
+        // The same file usage.test.ts reads: the daemon and the window decide
+        // which limits are newer in two languages, and only this keeps them
+        // deciding the same way.
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../fixtures/newer_limits.json")).unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        assert!(!cases.is_empty());
+
+        for case in cases {
+            let incoming = fixture_report(&case["incoming"]);
+            let current = (!case["current"].is_null()).then(|| fixture_report(&case["current"]));
+            assert_eq!(
+                incoming.has_newer_limits_than(current.as_ref()),
+                case["incomingWins"].as_bool().unwrap(),
+                "{}",
+                case["name"]
+            );
+        }
+    }
+
+    #[test]
+    fn limits_first_heard_from_a_conversation_have_no_known_age() {
+        // Right after the daemon starts it knows no conversation: when these
+        // limits were new is not known, only when they were heard.
+        let mut first = in_session("s1", Some(2_300));
+        let kept = first.stamp(None, 9_000_000);
+        assert!(first.limits_age_unknown);
+
+        // Said again, the uncertainty stays with them.
+        let mut repeated = in_session("s1", Some(2_300));
+        let kept = repeated.stamp(kept, 9_100_000);
+        assert!(repeated.limits_age_unknown);
+        assert_eq!(repeated.limits_seen_at, Some(9_000_000));
+
+        // A response brings limits that are new now.
+        let mut answered = in_session("s1", Some(4_100));
+        answered.stamp(kept, 9_200_000);
+        assert!(!answered.limits_age_unknown);
+
+        // Without the API time there is nothing to be unsure about: dated on
+        // arrival, as every report was before.
+        let mut old = in_session("s2", None);
+        old.stamp(None, 9_300_000);
+        assert!(!old.limits_age_unknown);
+
+        // And it only goes over the wire when set.
+        assert!(
+            !serde_json::to_string(&old)
+                .unwrap()
+                .contains("limitsAgeUnknown")
+        );
+        assert!(
+            serde_json::to_string(&first)
+                .unwrap()
+                .contains(r#""limitsAgeUnknown":true"#)
+        );
+    }
+
     #[test]
     fn a_new_api_time_is_new_whichever_way_it_moved() {
         // Resumed, the total can start again from somewhere else; it is the
@@ -1299,6 +1396,7 @@ mod tests {
             Some(LimitsSeen {
                 api_duration_ms: 2_300,
                 at: 1_000,
+                age_unknown: false,
             }),
             5_000,
         );
@@ -1314,6 +1412,7 @@ mod tests {
             Some(LimitsSeen {
                 api_duration_ms: 2_300,
                 at: 1_000,
+                age_unknown: false,
             }),
             5_000,
         );

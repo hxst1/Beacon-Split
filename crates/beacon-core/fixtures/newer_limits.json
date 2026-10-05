@@ -1,0 +1,19 @@
+{
+  "about": "Which of two reports holds the newer five-hour limits. Read by protocol.rs (has_newer_limits_than) and src/features/usage/usage.test.ts (newerLimits), so the two rules cannot drift apart. `current` is what is held, `incoming` what has just arrived; `used` is the share used, `resetsAt` Unix seconds, `seenAt` when the limits were new, in ms.",
+  "cases": [
+    { "name": "nothing held yet", "current": null, "incoming": { "used": 40, "resetsAt": 1800000000, "seenAt": 1000 }, "incomingWins": true },
+    { "name": "a report without limits never takes their place", "current": { "used": 40, "resetsAt": 1800000000, "seenAt": 1000 }, "incoming": { "seenAt": 9000 }, "incomingWins": false },
+    { "name": "nothing held, and nothing in the report either", "current": null, "incoming": { "seenAt": 9000 }, "incomingWins": false },
+    { "name": "held without a figure: any figure wins", "current": { "seenAt": 9000 }, "incoming": { "used": 40, "resetsAt": 1800000000, "seenAt": 1000 }, "incomingWins": true },
+    { "name": "a later window wins with less used", "current": { "used": 92, "resetsAt": 1800000000, "seenAt": 9000 }, "incoming": { "used": 5, "resetsAt": 1800018000, "seenAt": 1000 }, "incomingWins": true },
+    { "name": "an earlier window loses with more used", "current": { "used": 5, "resetsAt": 1800018000, "seenAt": 1000 }, "incoming": { "used": 92, "resetsAt": 1800000000, "seenAt": 9000 }, "incomingWins": false },
+    { "name": "same window: more used is newer", "current": { "used": 67, "resetsAt": 1800000000, "seenAt": 9000 }, "incoming": { "used": 92, "resetsAt": 1800000000, "seenAt": 1000 }, "incomingWins": true },
+    { "name": "same window: less used is older, however new its date", "current": { "used": 92, "resetsAt": 1800000000, "seenAt": 1000 }, "incoming": { "used": 67, "resetsAt": 1800000000, "seenAt": 9000 }, "incomingWins": false },
+    { "name": "reset times exactly 60 s apart are the same window", "current": { "used": 40, "resetsAt": 1800000000, "seenAt": 1000 }, "incoming": { "used": 30, "resetsAt": 1800000060, "seenAt": 9000 }, "incomingWins": false },
+    { "name": "reset times 61 s apart are different windows", "current": { "used": 40, "resetsAt": 1800000000, "seenAt": 9000 }, "incoming": { "used": 30, "resetsAt": 1800000061, "seenAt": 1000 }, "incomingWins": true },
+    { "name": "one side without a reset time: the figures are not compared, the dates decide", "current": { "used": 92, "seenAt": 1000 }, "incoming": { "used": 30, "resetsAt": 1800000000, "seenAt": 9000 }, "incomingWins": true },
+    { "name": "the same figures: the newer date wins", "current": { "used": 40, "resetsAt": 1800000000, "seenAt": 1000 }, "incoming": { "used": 40, "resetsAt": 1800000000, "seenAt": 9000 }, "incomingWins": true },
+    { "name": "the same figures: an older date loses", "current": { "used": 40, "resetsAt": 1800000000, "seenAt": 9000 }, "incoming": { "used": 40, "resetsAt": 1800000000, "seenAt": 1000 }, "incomingWins": false },
+    { "name": "the same figures and date: the one arriving wins the tie", "current": { "used": 40, "resetsAt": 1800000000, "seenAt": 5000 }, "incoming": { "used": 40, "resetsAt": 1800000000, "seenAt": 5000 }, "incomingWins": true }
+  ]
+}

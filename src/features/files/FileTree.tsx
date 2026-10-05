@@ -158,7 +158,14 @@ export function FileTree({
   const chooseHit = (path: string): void => {
     setQuery('')
     setRevealing(path)
-    void reveal(workspaceId, projectId, path)
+    // Once its folders are read, the row is on screen or it never will be —
+    // a dotfile while the tree hides them — and then there is nothing left to
+    // wait for. A frame later, so the tree has drawn what was just read.
+    void reveal(workspaceId, projectId, path).finally(() => {
+      window.requestAnimationFrame(() => {
+        setRevealing((waiting) => (waiting === path && !rows.current.has(path) ? null : waiting))
+      })
+    })
     void openFile(workspaceId, projectId, path)
     void showPanel('editor')
   }

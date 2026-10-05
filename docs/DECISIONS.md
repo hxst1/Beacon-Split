@@ -1909,8 +1909,9 @@ working one's 92%.
   decided by the numbers first: a window that resets later is later, and within
   one window the higher share used is the later. The dates decide only when the
   numbers say the same.
-- The allowance and a project's context are dimmed apart: the meter as a whole
-  dims only when everything on it is old.
+- The allowance and a project's context are dimmed apart: each number greys on
+  its own when only it is old, and the meter as a whole dims when everything on
+  it is.
 - Past the window's reset time the meter says so, rather than show the share of
   a window that is over.
 
@@ -1929,7 +1930,21 @@ neither is something it promises:
    the higher figure is still the safer one to show.
 
 What the daemon keeps per conversation lives in memory and is gone when it
-restarts. A reset time within a minute of another counts as the same window.
+restarts. So the first report it hears from a conversation is marked
+`limitsAgeUnknown`, and so are its repeats until the API time moves: right
+after a restart that is every conversation, and the meter says the allowance
+was *first heard* then, not reported then, rather than call a number current
+that may be hours old. It does not dim it — the numbers-first order has already
+picked the right one, and its age is unknown, not known to be old.
+
+A reset time within a minute of another counts as the same window. Which side
+wins is fixed by `crates/beacon-core/fixtures/newer_limits.json`, which the
+Rust and the TypeScript tests both read.
+
+The order assumes one account, as [ADR-083](#adr-083-one-sign-in-reaches-every-open-project)
+does. With two, a report from an account whose window resets later would win
+every comparison against the other, however old, until the other's window came
+round.
 
 ## ADR-087: A listing that stopped early says so
 

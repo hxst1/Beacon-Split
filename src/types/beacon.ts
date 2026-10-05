@@ -550,6 +550,12 @@ export interface UsageReport {
    * when the report only repeats an earlier one's.
    */
   limitsSeenAt?: number
+  /**
+   * `limitsSeenAt` is only when the daemon first heard these limits: the first
+   * report from a conversation it did not know, as after it restarts. They may
+   * be older than that.
+   */
+  limitsAgeUnknown?: boolean
 }
 
 /**

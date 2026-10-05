@@ -111,7 +111,7 @@ export function UsageMeter(): React.ReactElement | null {
       >
       {named ? <span className={styles['agent']}>{named}</span> : null}
       {sessionLeft !== null ? (
-        <>
+        <span className={styles['part']} data-stale={limitsStale}>
           <span className={styles['bar']}>
             <span
               className={styles['fill']}
@@ -125,13 +125,13 @@ export function UsageMeter(): React.ReactElement | null {
           ) : resets ? (
             <span className={styles['muted']}>· {resets}</span>
           ) : null}
-        </>
+        </span>
       ) : null}
 
       {sessionReset ? <span className={styles['muted']}>5h reset</span> : null}
 
       {contextUsed !== null ? (
-        <span className={styles['muted']}>
+        <span className={styles['muted']} data-stale={contextStale}>
           {sessionLeft !== null || sessionReset ? '· ' : ''}
           {contextUsed}% ctx
           {contextStale ? ' · stale' : ''}
@@ -229,7 +229,9 @@ export function UsageMeter(): React.ReactElement | null {
               <div className={styles['note']}>
                 {limitsStale
                   ? `Allowance last reported ${howLongAgo(account.limitsAt, now)}. No session here has had a reply since, so anything used after that — on claude.ai or another machine too — is not in it.`
-                  : `Allowance reported ${howLongAgo(account.limitsAt, now)}.`}
+                  : account.report.limitsAgeUnknown
+                    ? `Allowance first heard ${howLongAgo(account.limitsAt, now)}, from a session Beacon had not heard from before — it may be older than that. The next reply settles it.`
+                    : `Allowance reported ${howLongAgo(account.limitsAt, now)}.`}
               </div>
             ) : null}
             {projectUsage ? (

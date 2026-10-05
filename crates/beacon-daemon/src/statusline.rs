@@ -121,6 +121,7 @@ pub fn interpret(event: &serde_json::Value, project: ProjectId) -> UsageReport {
         // The daemon's to set, on arrival.
         reported_at: None,
         limits_seen_at: None,
+        limits_age_unknown: false,
     }
 }
 
