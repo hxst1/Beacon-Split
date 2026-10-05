@@ -9,8 +9,10 @@ import {
   cacheIsCold,
   contextHealth,
   healthLabel,
+  hasReset,
   howLongAgo,
   isStale,
+  leftInWindow,
   levelOf,
   percent,
   thousands,
@@ -45,16 +47,24 @@ export function UsageMeter(): React.ReactElement | null {
     return () => window.clearInterval(timer)
   }, [])
 
-  const sessionUsed = percent(account?.report.fiveHourUsedPercentage)
+  const fiveHourResetsAt = account?.report.fiveHourResetsAt
+  const sessionLeft = leftInWindow(account?.report.fiveHourUsedPercentage, fiveHourResetsAt, now)
+  const sessionReset = account !== null && hasReset(fiveHourResetsAt, now)
   const contextUsed = percent(projectUsage?.report.contextUsedPercentage)
 
-  if (sessionUsed === null && contextUsed === null) return null
+  if (sessionLeft === null && !sessionReset && contextUsed === null) return null
 
-  const stale = isStale(account ?? projectUsage, now)
+  // The allowance is as old as the response that brought it, which an idle
+  // session repeating itself does not make any newer.
+  const reportedAt = account ? account.limitsAt : projectUsage?.at
+  const stale = isStale(reportedAt, now)
   const advice = adviceFor(projectUsage?.report, now)
-  const resets = untilReset(account?.report.fiveHourResetsAt, now)
-  const weekUsed = percent(account?.report.sevenDayUsedPercentage)
-  const reportedAt = account?.at ?? projectUsage?.at
+  const resets = untilReset(fiveHourResetsAt, now)
+  const weekLeft = leftInWindow(
+    account?.report.sevenDayUsedPercentage,
+    account?.report.sevenDayResetsAt,
+    now,
+  )
 
   // Everything worth knowing now lives in the panel, where it can be read at
   // leisure rather than raced against a tooltip.
@@ -68,23 +78,25 @@ export function UsageMeter(): React.ReactElement | null {
         title="What this session is costing"
         onClick={(event) => setAnchor(event.currentTarget.getBoundingClientRect())}
       >
-      {sessionUsed !== null ? (
+      {sessionLeft !== null ? (
         <>
           <span className={styles['bar']}>
             <span
               className={styles['fill']}
-              data-level={stale ? 'unknown' : levelOf(sessionUsed)}
-              style={{ width: `${100 - sessionUsed}%` }}
+              data-level={stale ? 'unknown' : levelOf(100 - sessionLeft)}
+              style={{ width: `${sessionLeft}%` }}
             />
           </span>
-          <span>{100 - sessionUsed}%</span>
+          <span>{sessionLeft}%</span>
           {resets && !stale ? <span className={styles['muted']}>· {resets}</span> : null}
         </>
       ) : null}
 
+      {sessionReset ? <span className={styles['muted']}>5h reset</span> : null}
+
       {contextUsed !== null ? (
         <span className={styles['muted']}>
-          {sessionUsed !== null ? '· ' : ''}
+          {sessionLeft !== null || sessionReset ? '· ' : ''}
           {contextUsed}% ctx
         </span>
       ) : null}
@@ -96,17 +108,22 @@ export function UsageMeter(): React.ReactElement | null {
         <Popover anchor={anchor} align="end" onClose={() => setAnchor(null)}>
           <div className={styles['details']}>
             <div className={styles['heading']}>Session</div>
-            {sessionUsed !== null ? (
+            {sessionReset && fiveHourResetsAt !== undefined ? (
+              <div className={styles['note']}>
+                The five-hour window came round {howLongAgo(fiveHourResetsAt * 1000, now)}.
+                Claude Code says how much of the new one is gone with its next reply.
+              </div>
+            ) : sessionLeft !== null ? (
               <>
                 <div className={styles['line']}>
                   <span className={styles['lineLabel']}>Five-hour allowance left</span>
-                  <span className={styles['lineValue']}>{100 - sessionUsed}%</span>
+                  <span className={styles['lineValue']}>{sessionLeft}%</span>
                 </div>
                 <div className={styles['track']}>
                   <span
                     className={styles['fill']}
-                    data-level={stale ? 'unknown' : levelOf(sessionUsed)}
-                    style={{ width: `${100 - sessionUsed}%` }}
+                    data-level={stale ? 'unknown' : levelOf(100 - sessionLeft)}
+                    style={{ width: `${sessionLeft}%` }}
                   />
                 </div>
                 {resets ? (
@@ -122,10 +139,10 @@ export function UsageMeter(): React.ReactElement | null {
                 one.
               </div>
             )}
-            {weekUsed !== null ? (
+            {weekLeft !== null ? (
               <div className={styles['line']}>
                 <span className={styles['lineLabel']}>Week left</span>
-                <span className={styles['lineValue']}>{100 - weekUsed}%</span>
+                <span className={styles['lineValue']}>{weekLeft}%</span>
               </div>
             ) : null}
 
@@ -173,9 +190,15 @@ export function UsageMeter(): React.ReactElement | null {
 
             {reportedAt ? (
               <div className={styles['note']}>
-                {stale
-                  ? `Last reported ${howLongAgo(reportedAt, now)}. Claude Code has said nothing since, so these may be out of date.`
-                  : `Reported ${howLongAgo(reportedAt, now)}.`}
+                {/* Says which number it dates: the allowance when there is
+                    one, since that is the one people plan around. */}
+                {account
+                  ? stale
+                    ? `Allowance last reported ${howLongAgo(reportedAt, now)}. No session here has had a reply since, so anything used after that — on claude.ai or another machine too — is not in it.`
+                    : `Allowance reported ${howLongAgo(reportedAt, now)}.`
+                  : stale
+                    ? `Last reported ${howLongAgo(reportedAt, now)}. Claude Code has said nothing since, so these may be out of date.`
+                    : `Reported ${howLongAgo(reportedAt, now)}.`}
               </div>
             ) : null}
           </div>
