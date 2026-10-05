@@ -501,29 +501,79 @@ const SKIPPED_DIRS: &[&str] = &[
 /// Stops a walk of a pathological directory tree from becoming the whole app.
 pub const MAX_LISTED_FILES: usize = 50_000;
 
-/// Every file in a project, for quick open.
+/// Every file in a project, for quick open and the files panel's search.
 ///
 /// A repository is listed with `git ls-files`, which respects the user's own
 /// ignore rules and is far faster than walking. Anything else is walked with a
 /// fixed skip list, which is a poor substitute but only applies where there is
 /// nothing better to go on.
-pub fn list_project_files(root: &Path) -> Result<Vec<String>> {
+///
+/// Either way it stops at `MAX_LISTED_FILES`. The walk always did; git's
+/// listing did not, and a monorepo's could be large enough to make every
+/// search result a long sort in the window.
+///
+/// It says when it stopped, because a listing that is quietly short is a
+/// search that quietly cannot find a file that exists — which is worse than a
+/// slow one. What is dropped is the tail of the alphabet, so in a repository
+/// over the limit it is whole top-level directories that go.
+pub fn list_project_files(root: &Path) -> Result<ProjectFiles> {
+    list_project_files_capped(root, MAX_LISTED_FILES)
+}
+
+/// What a project's listing holds, and whether it is all of it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFiles {
+    pub files: Vec<String>,
+    /// Whether the limit was reached, and there are files not in `files`.
+    pub truncated: bool,
+}
+
+/// The same, with the limit given, so a test can reach it without half a
+/// million files.
+fn list_project_files_capped(root: &Path, limit: usize) -> Result<ProjectFiles> {
     if crate::git::is_repository(root) {
-        if let Ok(listed) = crate::git::list_files(root) {
-            return Ok(listed);
+        match crate::git::list_files(root) {
+            Ok(listed) => return Ok(capped(listed, limit)),
+            // A repository git refuses to read is still a folder we can walk —
+            // but the walk skips directories git would have listed, so a
+            // listing that falls back here is both slower and short, and that
+            // is worth a line in the log rather than a silent change of plan.
+            Err(err) => tracing::warn!(
+                error = %err,
+                root = %root.display(),
+                "could not list the repository with git; walking it instead"
+            ),
         }
-        // A repository git refuses to read is still a folder we can walk.
     }
 
     let root = dunce::canonicalize(root).map_err(|err| CoreError::io(root, err))?;
     let mut found = Vec::new();
-    walk(&root, &root, &mut found);
+    walk(&root, &root, &mut found, limit);
     found.sort();
-    Ok(found)
+    // The walk stops in whatever order the directories came back in, so unlike
+    // git's listing it is not the tail of the alphabet that goes — it is
+    // whatever it had not reached yet, which may differ between two runs.
+    Ok(capped(found, limit))
 }
 
-fn walk(root: &Path, dir: &Path, found: &mut Vec<String>) {
-    if found.len() >= MAX_LISTED_FILES {
+/// The first `limit` paths of a listing, and whether there were more.
+fn capped(mut files: Vec<String>, limit: usize) -> ProjectFiles {
+    let truncated = files.len() > limit;
+    if truncated {
+        files.truncate(limit);
+        tracing::warn!(
+            limit,
+            "a project has more files than Beacon lists; the rest will not be found by name"
+        );
+    }
+    ProjectFiles { files, truncated }
+}
+
+fn walk(root: &Path, dir: &Path, found: &mut Vec<String>, limit: usize) {
+    // One past the limit, so the caller can tell a project of exactly `limit`
+    // files from one that was cut short.
+    if found.len() > limit {
         return;
     }
     let Ok(reader) = std::fs::read_dir(dir) else {
@@ -545,10 +595,10 @@ fn walk(root: &Path, dir: &Path, found: &mut Vec<String>) {
             if file_type.is_symlink() {
                 continue;
             }
-            walk(root, &entry.path(), found);
+            walk(root, &entry.path(), found, limit);
         } else if file_type.is_file() {
             found.push(relative_of(root, &entry.path()));
-            if found.len() >= MAX_LISTED_FILES {
+            if found.len() > limit {
                 return;
             }
         }
@@ -558,6 +608,74 @@ fn walk(root: &Path, dir: &Path, found: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_listing_keeps_its_first_paths_up_to_the_cap_and_says_it_cut() {
+        let listed: Vec<String> = ["a.rs", "b.rs", "c.rs", "d.rs"].map(String::from).into();
+
+        let cut = capped(listed.clone(), 2);
+        assert_eq!(cut.files, ["a.rs", "b.rs"]);
+        assert!(cut.truncated, "two of the four were dropped");
+
+        // Under the cap, nothing is lost and nothing is claimed.
+        let whole = capped(listed.clone(), 10);
+        assert_eq!(whole.files, listed);
+        assert!(!whole.truncated);
+
+        // Exactly the cap is not a cut. A project of precisely this many files
+        // is listed in full, and saying otherwise would send somebody looking
+        // for a file that is right there.
+        let exact = capped(listed.clone(), 4);
+        assert_eq!(exact.files, listed);
+        assert!(!exact.truncated);
+    }
+
+    #[test]
+    fn a_walked_project_over_the_cap_is_cut_and_says_so() {
+        // Through `list_project_files_capped` rather than through `capped`:
+        // the bug was the wiring, and a test of `truncate` would have passed
+        // happily while the git path stayed uncapped.
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..5 {
+            std::fs::write(dir.path().join(format!("f{i}.txt")), "").unwrap();
+        }
+        assert!(!crate::git::is_repository(dir.path()));
+
+        let listed = list_project_files_capped(dir.path(), 3).unwrap();
+        assert_eq!(listed.files.len(), 3);
+        assert!(listed.truncated);
+
+        let whole = list_project_files_capped(dir.path(), 5).unwrap();
+        assert_eq!(whole.files.len(), 5);
+        assert!(!whole.truncated);
+    }
+
+    #[test]
+    fn a_repository_over_the_cap_is_cut_and_says_so() {
+        // The path that was uncapped. Skipped where git is not installed,
+        // which is a machine that would take the walk anyway.
+        let dir = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .output()
+        };
+        if git(&["init"]).is_err() {
+            eprintln!("skipped: no git on this machine");
+            return;
+        }
+        for i in 0..5 {
+            std::fs::write(dir.path().join(format!("f{i}.txt")), "").unwrap();
+        }
+        assert!(crate::git::is_repository(dir.path()));
+
+        let listed = list_project_files_capped(dir.path(), 3).unwrap();
+        assert_eq!(listed.files.len(), 3, "the git listing is capped too");
+        assert!(listed.truncated);
+        // Sorted before it is cut, so what survives is the same every run.
+        assert_eq!(listed.files, ["f0.txt", "f1.txt", "f2.txt"]);
+    }
 
     fn project() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
@@ -814,12 +932,16 @@ mod tests {
         std::fs::write(dir.path().join("node_modules/pkg/index.js"), "").unwrap();
 
         let listed = list_project_files(dir.path()).unwrap();
-        assert!(listed.contains(&"src/main.rs".to_string()));
-        assert!(listed.contains(&".env".to_string()));
+        assert!(listed.files.contains(&"src/main.rs".to_string()));
+        assert!(listed.files.contains(&".env".to_string()));
         assert!(
-            !listed.iter().any(|path| path.starts_with("node_modules")),
+            !listed
+                .files
+                .iter()
+                .any(|path| path.starts_with("node_modules")),
             "got: {listed:?}"
         );
+        assert!(!listed.truncated, "a handful of files is not a cut listing");
     }
 
     #[test]

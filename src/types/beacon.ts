@@ -654,3 +654,16 @@ export interface GitStatus {
   unborn: boolean
   entries: GitEntry[]
 }
+
+/**
+ * A project's file listing, and whether it is all of it.
+ *
+ * Beacon stops at fifty thousand. Past that the window would spend longer
+ * ranking the list than the user spends reading it — but a listing that is
+ * quietly short is a search that quietly cannot find a file that exists, so
+ * it says when it stopped.
+ */
+export interface ProjectFiles {
+  files: string[]
+  truncated: boolean
+}

@@ -1930,3 +1930,34 @@ neither is something it promises:
 
 What the daemon keeps per conversation lives in memory and is gone when it
 restarts. A reset time within a minute of another counts as the same window.
+
+## ADR-087: A listing that stopped early says so
+
+**Context.** Quick Open and the files panel's search both ask for every file in
+the project. A repository is listed with `git ls-files`, anything else is
+walked. The walk has always stopped at fifty thousand files; git's listing did
+not, so a monorepo sent every path it had into the window, which then ranked
+all of them on every search.
+
+**Decision.** Both paths stop at `MAX_LISTED_FILES`, and the listing carries
+`truncated` to say whether it did. Where the window would otherwise print "No
+matches", it says how many files it looked at instead. The daemon logs the cut,
+and logs a repository it could not list with git before falling back to the
+walk.
+
+**Why.** A cap without a signal turns a slow search into a wrong one. The git
+listing is sorted before it is cut, so what is dropped is the tail of the
+alphabet — in a large repository that is whole top-level directories, and
+`services/…` simply never appears. "No matches" for a file somebody is looking
+straight at is the kind of answer that gets a tool uninstalled, and it costs a
+boolean to avoid. The number comes from the listing itself rather than from the
+constant, so the sentence cannot drift from the limit.
+
+**Consequence.** `list_project_files` returns a `ProjectFiles` rather than a
+`Vec<String>`, and both callers unwrap it. The cap bounds what the window is
+given, not what git is asked for: the output is still read, decoded, sorted and
+deduplicated in full, which is acceptable now that the work is off the IPC
+thread but is not a bound on the cost. The walk's cut is not the alphabet's
+tail but whatever it had not reached, which can differ between two runs on the
+same directory.
+

@@ -22,6 +22,8 @@ export function QuickOpen({ onClose }: { onClose: () => void }): React.ReactElem
 
   const [query, setQuery] = useState('')
   const [files, setFiles] = useState<string[] | null>(null)
+  /** Whether the project has more files than Beacon lists. */
+  const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -31,7 +33,9 @@ export function QuickOpen({ onClose }: { onClose: () => void }): React.ReactElem
     ipc
       .listProjectFiles(workspaceId, project.id)
       .then((found) => {
-        if (!cancelled) setFiles(found)
+        if (cancelled) return
+        setFiles(found.files)
+        setTruncated(found.truncated)
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(errorMessage(err))
@@ -67,7 +71,16 @@ export function QuickOpen({ onClose }: { onClose: () => void }): React.ReactElem
       query={query}
       onQueryChange={setQuery}
       onClose={onClose}
-      emptyMessage={error ?? (files === null ? 'Reading the project…' : 'No matches')}
+      // Where the listing stopped, say so: "No matches" on a project Beacon
+      // only read part of sends somebody looking for a file that is there.
+      emptyMessage={
+        error ??
+        (files === null
+          ? 'Reading the project…'
+          : truncated
+            ? `No matches in the first ${files.length.toLocaleString()} files, which is as many as Beacon lists`
+            : 'No matches')
+      }
       onChoose={(path) => {
         onClose()
         if (!workspaceId || !project) return

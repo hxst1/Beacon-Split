@@ -3,7 +3,8 @@ use beacon_core::domain::{ProjectId, WorkspaceId};
 use beacon_core::git::{self, GitStatus};
 use tauri::State;
 
-use crate::error::{CommandError, CommandResult};
+use super::run_off_thread;
+use crate::error::CommandResult;
 use crate::state::AppState;
 
 /// What the Git panel shows: branch, tracking position, and changed paths.
@@ -158,15 +159,4 @@ pub async fn git_pull(
         .beacon()
         .checkout_root(&workspace_id, &project_id, agent)?;
     run_off_thread(move || git::pull(&root)).await
-}
-
-async fn run_off_thread<T, F>(work: F) -> CommandResult<T>
-where
-    T: Send + 'static,
-    F: FnOnce() -> beacon_core::Result<T> + Send + 'static,
-{
-    tauri::async_runtime::spawn_blocking(work)
-        .await
-        .map_err(|err| CommandError::from(err.to_string()))?
-        .map_err(CommandError::from)
 }
