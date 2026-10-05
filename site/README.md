@@ -80,8 +80,8 @@ files are served as they are.
 ### The origin is written in, and `set-origin.sh` keeps it right
 
 Several things need an absolute URL: the canonical link, `og:url`, `og:image`
-and `twitter:image`, the `url` and `image` of the application's JSON-LD, the
-`Sitemap:` line in `robots.txt`, and `sitemap.xml`. Now that the domain is
+and `twitter:image`, the `@id`, `url` and `image` of the application's JSON-LD,
+the `Sitemap:` line in `robots.txt`, and `sitemap.xml`. Now that the domain is
 settled they are committed with it, and `set-origin.sh` is what writes them —
 run it before every deploy, which is what keeps `sitemap.xml`'s `lastmod`
 true, and run it with a different domain if the site ever moves. It replaces
