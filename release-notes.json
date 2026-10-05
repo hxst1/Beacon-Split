@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.7.0",
+    "date": "2026-10-05",
+    "summary": "A guide on your first run, one sign-in for every project, a chime when Claude needs you, search in the files panel, and the settings grouped by what they are about.",
+    "changes": [
+      "A short guide on the first run says what is where, and offers the basics — theme, notifications and the two sounds — before you have to go looking for them. Seven steps on a new install, and the last one is the Claude panel, where signing in happens. Escape skips it, it never comes back uninvited, and “Show the welcome guide” in the command palette brings it back. Contributed by jimy-k4.",
+      "Sign in to Claude Code once and every open project picks it up, instead of each one asking in turn. Contributed by jimy-k4.",
+      "Beacon chimes when Claude has finished or needs an answer, and the last reply stays above the terminal until the next turn starts, so you can read it without scrolling back. Both sounds start off. Contributed by jimy-k4.",
+      "The files panel has a search field. Typing lists the matching files with the matched letters marked, ↑ and ↓ walk them and Return opens one, which also reveals it in the tree. The list is read fresh each time, so a file an agent has just written is found. Contributed by jimy-k4.",
+      "Settings are grouped by what they are about rather than listed in one column.",
+      "The terminal is legible in the light theme. The sixteen colours a program can ask for were xterm's, made for a dark background, so a program's white came out white on near-white — Claude Code's questions worst of all. There is a light palette now, every colour clears the contrast floor against the window, and any colour a program picks for itself is lifted to meet it. Contributed by jimy-k4.",
+      "The five-hour allowance in the status bar is dated by when the number was new rather than by when Beacon heard it. A session repeating itself, or reopening the window, no longer makes the morning's figure look current, and an idle project can no longer overwrite what a working one reported. Past the reset time it says so instead of showing the old window's percentage. Contributed by jimy-k4.",
+      "The editor's find panel is the app's, rather than CodeMirror's grey buttons and grey border. Contributed by jimy-k4.",
+      "A development build no longer looks for updates. Contributed by jimy-k4."
+    ]
+  },
+  {
     "version": "0.6.1",
     "date": "2026-10-02",
     "summary": "Shift+Enter breaks the line, @ and # can be typed on any keyboard, and updating on Windows no longer leaves the old daemon behind.",
