@@ -11,10 +11,10 @@ import {
   healthLabel,
   hasReset,
   howLongAgo,
-  isStale,
   leftInWindow,
   levelOf,
   percent,
+  staleness,
   thousands,
   untilReset,
   useAccountUsage,
@@ -54,10 +54,16 @@ export function UsageMeter(): React.ReactElement | null {
 
   if (sessionLeft === null && !sessionReset && contextUsed === null) return null
 
-  // The allowance is as old as the response that brought it, which an idle
-  // session repeating itself does not make any newer.
-  const reportedAt = account ? account.limitsAt : projectUsage?.at
-  const stale = isStale(reportedAt, now)
+  // Two numbers, dated apart: the allowance is as old as the response that
+  // brought it — whichever project that was, and an idle session repeating
+  // itself does not make it newer — while the context is this project's own.
+  // One being old says nothing about the other, so each dims on its own, and
+  // the whole meter only when everything on it is old.
+  const {
+    limits: limitsStale,
+    context: contextStale,
+    all: allStale,
+  } = staleness(account, projectUsage, now)
   const advice = adviceFor(projectUsage?.report, now)
   const resets = untilReset(fiveHourResetsAt, now)
   const weekLeft = leftInWindow(
@@ -74,7 +80,7 @@ export function UsageMeter(): React.ReactElement | null {
       <button
         type="button"
         className={styles['meter']}
-        data-stale={stale}
+        data-stale={allStale}
         title="What this session is costing"
         onClick={(event) => setAnchor(event.currentTarget.getBoundingClientRect())}
       >
@@ -83,12 +89,16 @@ export function UsageMeter(): React.ReactElement | null {
           <span className={styles['bar']}>
             <span
               className={styles['fill']}
-              data-level={stale ? 'unknown' : levelOf(100 - sessionLeft)}
+              data-level={limitsStale ? 'unknown' : levelOf(100 - sessionLeft)}
               style={{ width: `${sessionLeft}%` }}
             />
           </span>
           <span>{sessionLeft}%</span>
-          {resets && !stale ? <span className={styles['muted']}>· {resets}</span> : null}
+          {limitsStale ? (
+            <span className={styles['muted']}>· stale</span>
+          ) : resets ? (
+            <span className={styles['muted']}>· {resets}</span>
+          ) : null}
         </>
       ) : null}
 
@@ -98,10 +108,9 @@ export function UsageMeter(): React.ReactElement | null {
         <span className={styles['muted']}>
           {sessionLeft !== null || sessionReset ? '· ' : ''}
           {contextUsed}% ctx
+          {contextStale ? ' · stale' : ''}
         </span>
       ) : null}
-
-        {stale ? <span className={styles['muted']}>· stale</span> : null}
       </button>
 
       {anchor ? (
@@ -122,14 +131,14 @@ export function UsageMeter(): React.ReactElement | null {
                 <div className={styles['track']}>
                   <span
                     className={styles['fill']}
-                    data-level={stale ? 'unknown' : levelOf(100 - sessionLeft)}
+                    data-level={limitsStale ? 'unknown' : levelOf(100 - sessionLeft)}
                     style={{ width: `${sessionLeft}%` }}
                   />
                 </div>
                 {resets ? (
                   <div className={styles['line']}>
                     <span className={styles['lineLabel']}>Comes back in</span>
-                    <span className={styles['lineValue']}>{stale ? 'unknown' : resets}</span>
+                    <span className={styles['lineValue']}>{limitsStale ? 'unknown' : resets}</span>
                   </div>
                 ) : null}
               </>
@@ -188,17 +197,20 @@ export function UsageMeter(): React.ReactElement | null {
               <div className={styles['note']}>Nothing reported for this project yet.</div>
             )}
 
-            {reportedAt ? (
+            {/* Each number dated on its own line: they come from different
+                sessions, and can be different ages. */}
+            {account ? (
               <div className={styles['note']}>
-                {/* Says which number it dates: the allowance when there is
-                    one, since that is the one people plan around. */}
-                {account
-                  ? stale
-                    ? `Allowance last reported ${howLongAgo(reportedAt, now)}. No session here has had a reply since, so anything used after that — on claude.ai or another machine too — is not in it.`
-                    : `Allowance reported ${howLongAgo(reportedAt, now)}.`
-                  : stale
-                    ? `Last reported ${howLongAgo(reportedAt, now)}. Claude Code has said nothing since, so these may be out of date.`
-                    : `Reported ${howLongAgo(reportedAt, now)}.`}
+                {limitsStale
+                  ? `Allowance last reported ${howLongAgo(account.limitsAt, now)}. No session here has had a reply since, so anything used after that — on claude.ai or another machine too — is not in it.`
+                  : `Allowance reported ${howLongAgo(account.limitsAt, now)}.`}
+              </div>
+            ) : null}
+            {projectUsage ? (
+              <div className={styles['note']}>
+                {contextStale
+                  ? `Context last reported ${howLongAgo(projectUsage.at, now)}. Claude Code has said nothing since, so it may be out of date.`
+                  : `Context reported ${howLongAgo(projectUsage.at, now)}.`}
               </div>
             ) : null}
           </div>
