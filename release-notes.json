@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.8.0",
+    "date": "2026-10-05",
+    "summary": "The status bar says what Codex is spending, the git panel follows the agent you are working in, and the files panel searches a project of any size without quietly missing half of it.",
+    "changes": [
+      "The status bar says what Codex is spending, not only Claude. Codex has no status line to ask, but it writes the numbers down: every turn it records how much of the context window the conversation is using and how much of both its rate-limit windows is gone. Beacon reads them. The two allowances are kept apart — Claude's is Anthropic's and Codex's is OpenAI's — and the meter follows the agent you are working in, naming it whenever there is another agent it could have been.",
+      "The git panel reads the checkout of the agent you are working in. With a checkout each, reading Claude's diff while working in Codex is how somebody commits the wrong thing, and nothing in the files themselves says which one you are in. Pressing the control still looks anywhere, and going back to an agent panel puts it in step again. The control also looks like a control now, and its label no longer breaks across two lines in a narrow panel.",
+      "The files panel's search works in a project of any size, and says when it had to stop. The listing is capped, and where the search would have said \"no matches\" it now says how many files it looked at — so a file it never read is not reported as a file that does not exist. The listing also runs off the thread that answers the window, so a large repository no longer makes the first keystroke of a search wait. Contributed by jimy-k4.",
+      "The first-run guide is seven steps instead of twelve. A panel you have put away no longer gets a step of its own, and files, editor, terminal and git share one. The keyboard step says which panels are hidden and that the palette brings them back.",
+      "Ctrl/⌘+G's go-to-line panel is the app's rather than CodeMirror's grey buttons, and opening a file from the search brings its row into view in the tree. Contributed by jimy-k4.",
+      "The five-hour allowance is ordered by its own numbers before its dates: a later reset time wins outright, and within one window the higher percentage does. A daemon that has just restarted can no longer let an idle session's old figure outrank a session that has just replied. The allowance and the context are dated apart, so one being old no longer dims the other. Contributed by jimy-k4.",
+      "Reopening a conversation works from Claude Code's own transcript, with a test to keep it working. Contributed by jimy-k4.",
+      "Codex can be restarted from a project's menu, where only Claude and the terminal could be. The checkout setting in that menu is one line again instead of a paragraph, and Settings says what Codex reports rather than pointing at Claude's page.",
+      "Beacon no longer takes a Claude Code parent's switches as your own. Started from a Claude Code tool — which is how Beacon is usually developed — it passed `NO_COLOR` and `GIT_EDITOR` to every session, so Claude drew itself without colour and `git commit` aborted on an empty message without opening an editor. Switches somebody may have set in their own shell profile are left alone. Contributed by jimy-k4."
+    ]
+  },
+  {
     "version": "0.7.0",
     "date": "2026-10-05",
     "summary": "A guide on your first run, one sign-in for every project, a chime when Claude needs you, search in the files panel, and the settings grouped by what they are about.",
