@@ -16,7 +16,7 @@ export interface GuideStep {
   paragraphs: string[]
   anchor?: Anchor
   /** A step that does something rather than only saying something. */
-  action?: 'basics' | 'addProject' | 'showPanel' | 'signIn'
+  action?: 'basics' | 'addProject' | 'signIn'
 }
 
 /** What the steps depend on, so they can be worked out without a window. */
@@ -51,30 +51,52 @@ export const PANEL_STEPS: Record<PanelId, { title: string; paragraphs: string[] 
   files: {
     title: 'Files',
     paragraphs: [
-      'The project’s files, marked with what git says has changed. Click one to open it in the editor.',
+      'Files is the project’s tree, marked with what git says has changed. Click one to open it in the editor.',
     ],
   },
   editor: {
     title: 'Editor',
     paragraphs: [
-      'For the small change you would rather make yourself than ask for: open a file, edit it, save it, without leaving Beacon.',
+      'The editor is for the small change you would rather make yourself than ask for: open a file, change it, save it, without leaving Beacon.',
     ],
   },
   terminal: {
     title: 'Terminal',
     paragraphs: [
-      'Your own shell in the project’s folder, as many as you like. Beacon is the terminal here, so it is the same shell you already use.',
+      'The terminal is your own shell in the project’s folder, as many as you like. Beacon is the terminal here, so it is the shell you already use.',
     ],
   },
   git: {
     title: 'Git',
     paragraphs: [
-      'What has changed and on which branch: read a diff, stage, commit, pull and push.',
+      'Git is what has changed and on which branch: read a diff, stage, commit, pull and push.',
     ],
   },
 }
 
-const PANEL_ORDER: PanelId[] = ['claude', 'codex', 'files', 'editor', 'terminal', 'git']
+/**
+ * The panels a step is spent on one at a time, and the ones that share one.
+ *
+ * An agent is why somebody opened Beacon, so it is worth a step of its own.
+ * The other four explain themselves from their names, and four cards in a row
+ * saying "this is X" is the stretch of a guide people skip — so they are
+ * introduced together, in a sentence each.
+ *
+ * A test holds both lists against the panels that exist, so a panel added
+ * later cannot slip into neither.
+ */
+export const ALONE: PanelId[] = ['claude', 'codex']
+export const TOGETHER: PanelId[] = ['files', 'editor', 'terminal', 'git']
+
+/** "Files, editor, terminal and git" — only the first keeps its capital. */
+function listed(titles: string[]): string {
+  const [first, ...rest] = titles
+  if (first === undefined) return ''
+  const lower = rest.map((title) => title.toLowerCase())
+  const last = lower.pop()
+  if (last === undefined) return first
+  return `${[first, ...lower].join(', ')} and ${last}`
+}
 
 /** The guide, worked out for the window as it is now. */
 export function guideSteps(facts: GuideFacts): GuideStep[] {
@@ -119,25 +141,30 @@ export function guideSteps(facts: GuideFacts): GuideStep[] {
     anchor: { region: 'titlebar' },
   })
 
-  // Panels are only pointed at once there is a project for them to be in.
+  // Panels are only pointed at once there is a project for them to be in, and
+  // a hidden one gets no step at all. Offering to show it made the guide
+  // longer the less of Beacon somebody had chosen to see, and Codex is hidden
+  // until it is asked for — so a first minute spent offering a second agent to
+  // somebody who has not met the first one. The keyboard step says where the
+  // hidden ones are instead.
   if (facts.hasProject) {
-    for (const panel of PANEL_ORDER) {
+    for (const panel of ALONE) {
+      if (facts.hidden.includes(panel)) continue
       const { title, paragraphs } = PANEL_STEPS[panel]
-      const hidden = facts.hidden.includes(panel)
-      const hint = facts.hint(`panel.toggle.${panel}`)
+      steps.push({ id: `panel.${panel}`, title, paragraphs, anchor: { panel } })
+    }
+
+    const together = TOGETHER.filter((panel) => !facts.hidden.includes(panel))
+    const [firstOfThem] = together
+    if (firstOfThem !== undefined) {
       steps.push({
-        id: `panel.${panel}`,
-        title,
-        paragraphs: hidden
-          ? [
-              ...paragraphs,
-              hint
-                ? `It is hidden right now. ${hint} shows or hides it, or show it from here.`
-                : 'It is hidden right now. Show it from here.',
-            ]
-          : paragraphs,
-        anchor: { panel },
-        ...(hidden ? { action: 'showPanel' as const } : {}),
+        id: 'panel.panes',
+        title: listed(together.map((panel) => PANEL_STEPS[panel].title)),
+        // The first line of each, which is the line that says what it is.
+        paragraphs: together.flatMap((panel) => PANEL_STEPS[panel].paragraphs.slice(0, 1)),
+        // Files when it is there, and whichever of them is otherwise: a step
+        // about four panels should point at one the reader can actually see.
+        anchor: { panel: firstOfThem },
       })
     }
   }
@@ -154,6 +181,7 @@ export function guideSteps(facts: GuideFacts): GuideStep[] {
   const palette = facts.hint('palette.open')
   const quickOpen = facts.hint('quickOpen.open')
   const settings = facts.hint('settings.open')
+  const away = [...ALONE, ...TOGETHER].filter((panel) => facts.hidden.includes(panel))
   steps.push({
     id: 'keyboard',
     title: 'Everything, from the keyboard',
@@ -165,6 +193,18 @@ export function guideSteps(facts: GuideFacts): GuideStep[] {
       settings
         ? `${settings} opens Settings, where all of this and more can be changed later. This guide is in the palette too, as “Show the welcome guide”.`
         : 'Settings has all of this and more. This guide is in the palette too, as “Show the welcome guide”.',
+      // Said once, here, rather than as a step each: a panel somebody has
+      // hidden is not a thing to walk them through, only a thing to be able
+      // to find again.
+      ...(away.length > 0
+        ? [
+            `${listed(away.map((panel) => PANEL_STEPS[panel].title))} ${
+              away.length === 1 ? 'is' : 'are'
+            } hidden right now; the palette brings ${
+              away.length === 1 ? 'it' : 'them'
+            } back.`,
+          ]
+        : []),
     ],
   })
 

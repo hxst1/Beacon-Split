@@ -1814,24 +1814,37 @@ particular is due to be rearranged.
 
 **Decision.** A first run opens a short guide once the first workspace exists:
 the basics (theme, notifications, the two sounds), a first project if there is
-none, a step for each part of the window, the keyboard, and last the Claude
-panel, where signing in happens. Its switches are its own, calling the store
-actions Settings calls, never Settings' rows or their place on screen. It
-points at things only through hooks that exist for other reasons — a panel's
-`data-panel`, and a `data-region` on each bar — and a step whose target is not
-on screen is shown in the middle instead of pointing at nothing. Every panel
-has a step, and a test fails when a panel is added without one; another fails
-if a hook it points at is removed. It counts as seen once it has opened, is
-skipped with Escape, and stays in the command palette for later. A settings
-file from before it existed means somebody who found their way without it, so
-only a fresh install sees it on its own.
+none, the two bars, an agent's panel in a step of its own, one step shared by
+files, editor, terminal and git, the keyboard, and last the Claude panel, where
+signing in happens. A panel that is hidden gets no step at all; the keyboard
+step names the hidden ones and says the palette brings them back. Its switches
+are its own, calling the store actions Settings calls, never Settings' rows or
+their place on screen. It points at things only through hooks that exist for
+other reasons — a panel's `data-panel`, and a `data-region` on each bar — and a
+step whose target is not on screen is shown in the middle instead of pointing
+at nothing. Every panel is introduced somewhere, alone or with the others, and
+a test fails when a panel is added without being put in one or the other;
+another fails if a hook it points at is removed. It counts as seen once it has
+opened, is skipped with Escape, and stays in the command palette for later. A
+settings file from before it existed means somebody who found their way without
+it, so only a fresh install sees it on its own.
 
 **Why.** Settings can then move a switch, rename a section or split the screen
 without touching the guide, and a hidden or absent panel cannot leave a
 spotlight on an empty rectangle. Counting it as seen when it opens, rather than
 when it is finished, means it never comes back uninvited.
 
-**Consequence.** What the guide says about a screen is still words that can
-fall behind it; only what it points at and what its switches do are held in
-place by code. The macOS notification permission waits until the guide closes,
+A step for every panel, hidden ones included, made twelve, and made the guide
+longer the less of Beacon somebody had chosen to see. Codex is hidden until it
+is asked for, so that version spent a new user's first minute offering them a
+second agent before they had met the first. Files, editor, terminal and git say
+what they are from their names, and four cards in a row saying "this is X" is
+the stretch of a guide people skip — so they are introduced together, a
+sentence each, and the step points at whichever of them is on screen.
+
+**Consequence.** Seven steps on the run this is about — a fresh install, where
+there is no project yet and so no panel to point at — eight once there is one,
+with Codex and the editor away as Beacon starts them, and nine with every panel
+open. What the guide says about a screen is still words that can fall behind
+it; only what it points at and what its switches do are held in place by code. The macOS notification permission waits until the guide closes,
 rather than opening a second prompt on top of it.

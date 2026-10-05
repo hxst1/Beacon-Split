@@ -3,7 +3,15 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { PANEL_LABELS } from '@/lib/layout'
-import { anchorSelector, guideSteps, PANEL_STEPS, placeCard, type GuideFacts } from './steps'
+import {
+  ALONE,
+  anchorSelector,
+  guideSteps,
+  PANEL_STEPS,
+  placeCard,
+  TOGETHER,
+  type GuideFacts,
+} from './steps'
 
 const HINTS: Record<string, string> = {
   'palette.open': '⌘K',
@@ -28,6 +36,28 @@ describe('the welcome guide', () => {
     expect(Object.keys(PANEL_STEPS).sort()).toEqual(Object.keys(PANEL_LABELS).sort())
   })
 
+  it('gives every panel somewhere to be introduced', () => {
+    // Having words for a panel is not the same as showing them to anybody: a
+    // panel in neither list is described and never reached. Nothing may be in
+    // both, or it would be introduced twice.
+    expect([...ALONE, ...TOGETHER].sort()).toEqual(Object.keys(PANEL_LABELS).sort())
+  })
+
+  it('is short enough to be the minute it promises', () => {
+    // The run this is really about: a fresh install, where there is no project
+    // yet and so no panel to point at.
+    expect(ids(facts({ hasProject: false }))).toHaveLength(7)
+
+    // Then with a project, and Codex and the editor away, which is how Beacon
+    // starts — `HIDDEN_BY_DEFAULT` in `crates/beacon-core/src/layout.rs`.
+    expect(ids(facts({ hidden: ['codex', 'editor'] }))).toHaveLength(8)
+
+    // And with every panel open. The panels are the part that grows: before
+    // this they had a card each, which made twelve. A new panel belongs in the
+    // step the others share, not in a step of its own.
+    expect(ids(facts())).toHaveLength(9)
+  })
+
   it('asks for a first project, and points at no panel, until there is one', () => {
     const steps = ids(facts({ hasProject: false }))
     expect(steps).toContain('project')
@@ -37,14 +67,33 @@ describe('the welcome guide', () => {
   it('walks round the panels once there is a project', () => {
     const steps = ids(facts())
     expect(steps).not.toContain('project')
+    // An agent each, then the four that explain themselves, together.
     expect(steps.filter((id) => id.startsWith('panel.'))).toEqual([
       'panel.claude',
       'panel.codex',
-      'panel.files',
-      'panel.editor',
-      'panel.terminal',
-      'panel.git',
+      'panel.panes',
     ])
+  })
+
+  it('introduces the four together, naming each of them, and points at one', () => {
+    const panes = guideSteps(facts()).find((step) => step.id === 'panel.panes')
+
+    expect(panes?.title).toBe('Files, editor, terminal and git')
+    expect(panes?.paragraphs).toHaveLength(4)
+    // Each line says which one it is about, because the heading no longer can.
+    expect(panes?.paragraphs[0]).toContain('Files')
+    expect(panes?.paragraphs[1]).toContain('editor')
+    expect(panes?.paragraphs[2]).toContain('terminal')
+    expect(panes?.paragraphs[3]).toContain('Git')
+    expect(panes?.anchor).toEqual({ panel: 'files' })
+  })
+
+  it('points the shared step at one that is on screen', () => {
+    // Pointing at Files when Files is hidden would spotlight an empty
+    // rectangle, so it points at the first of them that is there.
+    const panes = guideSteps(facts({ hidden: ['files'] })).find((s) => s.id === 'panel.panes')
+    expect(panes?.title).toBe('Editor, terminal and git')
+    expect(panes?.anchor).toEqual({ panel: 'editor' })
   })
 
   it('starts with the basics and ends at signing in, in the Claude panel', () => {
@@ -55,17 +104,37 @@ describe('the welcome guide', () => {
     expect(last?.anchor).toEqual({ panel: 'claude' })
   })
 
-  it('offers to show a hidden panel, with its shortcut when it has one', () => {
+  it('leaves a hidden panel out, and says in the keyboard step where it went', () => {
+    // Codex is hidden until somebody asks for it, so a guide that stopped at
+    // every hidden panel spent a new user's first minute offering them a
+    // second agent before they had met the first.
     const steps = guideSteps(facts({ hidden: ['codex', 'git'] }))
-    const codex = steps.find((step) => step.id === 'panel.codex')
-    const git = steps.find((step) => step.id === 'panel.git')
-    const files = steps.find((step) => step.id === 'panel.files')
 
-    expect(codex?.action).toBe('showPanel')
-    expect(codex?.paragraphs.at(-1)).toContain('⇧⌘O')
-    expect(git?.action).toBe('showPanel')
-    expect(git?.paragraphs.at(-1)).toBe('It is hidden right now. Show it from here.')
-    expect(files?.action).toBeUndefined()
+    expect(steps.map((step) => step.id)).not.toContain('panel.codex')
+    expect(steps.find((step) => step.id === 'panel.panes')?.title).toBe(
+      'Files, editor and terminal',
+    )
+    expect(steps.find((step) => step.id === 'keyboard')?.paragraphs.at(-1)).toBe(
+      'Codex and git are hidden right now; the palette brings them back.',
+    )
+  })
+
+  it('says it in the singular for one hidden panel', () => {
+    const keyboard = guideSteps(facts({ hidden: ['git'] })).find((s) => s.id === 'keyboard')
+    expect(keyboard?.paragraphs.at(-1)).toBe(
+      'Git is hidden right now; the palette brings it back.',
+    )
+  })
+
+  it('says nothing about hidden panels when none are', () => {
+    const keyboard = guideSteps(facts()).find((step) => step.id === 'keyboard')
+    expect(keyboard?.paragraphs.join(' ')).not.toContain('hidden')
+  })
+
+  it('skips the shared step when all four are hidden', () => {
+    const steps = ids(facts({ hidden: ['files', 'editor', 'terminal', 'git'] }))
+    expect(steps).not.toContain('panel.panes')
+    expect(steps).toContain('panel.claude')
   })
 
   it('names the shortcuts the user actually has', () => {

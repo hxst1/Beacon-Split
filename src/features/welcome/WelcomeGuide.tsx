@@ -127,8 +127,6 @@ export function WelcomeGuide({ onClose }: { onClose: () => void }): React.ReactE
 
   if (!step) return <></>
 
-  const hiddenPanel =
-    step.action === 'showPanel' && step.anchor && 'panel' in step.anchor ? step.anchor.panel : null
   const position = placeCard(target, cardSize, viewport)
 
   return (
@@ -210,16 +208,6 @@ export function WelcomeGuide({ onClose }: { onClose: () => void }): React.ReactE
               Add project…
             </button>
           ) : null}
-          {hiddenPanel ? (
-            <button
-              type="button"
-              className={styles['secondary']}
-              onClick={() => void showPanel(hiddenPanel)}
-            >
-              Show it
-            </button>
-          ) : null}
-
           {step.action === 'signIn' ? (
             <button type="button" className={styles['primary']} onClick={() => void goToClaude()}>
               Go to Claude
