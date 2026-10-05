@@ -14,6 +14,7 @@ import {
   newerLimits,
   percent,
   reported,
+  staleness,
   untilReset,
 } from './usage'
 
@@ -213,6 +214,49 @@ describe('how old the numbers are', () => {
     )
     expect(newerLimits(newerLimits(null, working), idle)?.report.fiveHourUsedPercentage).toBe(92)
     expect(newerLimits(newerLimits(null, idle), working)?.report.fiveHourUsedPercentage).toBe(92)
+  })
+
+  it('after a restart, the window decides and not who spoke last', () => {
+    // Both dated on arrival by a daemon that knows neither conversation, and
+    // the idle one, repeating 67% from hours ago, arrives last.
+    const working = reported(
+      report({ sessionId: 's1', fiveHourUsedPercentage: 92, fiveHourResetsAt: 1_800_000_000, reportedAt: NOW - 60_000, limitsSeenAt: NOW - 60_000 }),
+      NOW,
+    )
+    const idle = reported(
+      report({ sessionId: 's2', fiveHourUsedPercentage: 67, fiveHourResetsAt: 1_800_000_000, reportedAt: NOW, limitsSeenAt: NOW }),
+      NOW,
+    )
+    expect(newerLimits(working, idle)).toBe(working)
+    expect(newerLimits(idle, working)).toBe(working)
+  })
+
+  it('takes a later window whatever it has used, and a few seconds off is the same one', () => {
+    const old = reported(report({ fiveHourUsedPercentage: 92, fiveHourResetsAt: 1_800_000_000, limitsSeenAt: NOW }), NOW)
+    const fresh = reported(
+      report({ fiveHourUsedPercentage: 5, fiveHourResetsAt: 1_800_000_000 + 5 * 3600, limitsSeenAt: NOW - HOUR }),
+      NOW,
+    )
+    expect(newerLimits(old, fresh)).toBe(fresh)
+    expect(newerLimits(fresh, old)).toBe(fresh)
+
+    const nearly = reported(report({ fiveHourUsedPercentage: 30, fiveHourResetsAt: 1_800_000_020, limitsSeenAt: NOW + 1 }), NOW)
+    expect(newerLimits(old, nearly)).toBe(old)
+  })
+
+  it('dims the allowance and the context each on its own', () => {
+    // The allowance came from another project hours ago; this project's
+    // context is ten seconds old.
+    const account = reported(report({ fiveHourUsedPercentage: 40, reportedAt: NOW - 3 * HOUR, limitsSeenAt: NOW - 3 * HOUR }), NOW)
+    const project = reported(report({ reportedAt: NOW - 10_000, limitsSeenAt: NOW - 10_000 }), NOW)
+    expect(staleness(account, project, NOW)).toEqual({ limits: true, context: false, all: false })
+
+    // Everything old: the whole meter dims.
+    const oldProject = reported(report({ reportedAt: NOW - HOUR, limitsSeenAt: NOW - HOUR }), NOW)
+    expect(staleness(account, oldProject, NOW).all).toBe(true)
+    // Nothing reported for one of them is not the same as fresh.
+    expect(staleness(null, oldProject, NOW)).toEqual({ limits: false, context: true, all: true })
+    expect(staleness(null, project, NOW).all).toBe(false)
   })
 
   it('never lets a report with no allowance in it take the place of one', () => {

@@ -165,8 +165,10 @@ pub struct UsageReport {
     pub worktree: Option<String>,
     /// How long the conversation has spent waiting on the API, in ms.
     ///
-    /// Carried for one reason: it only grows when a response arrives, and a
-    /// response is the only thing that brings Claude Code new rate limits.
+    /// Carried for one reason: it is taken to grow only when a response
+    /// arrives, which is what brings Claude Code new rate limits. That is an
+    /// assumption about Claude Code, not something it promises; see
+    /// `UsageReport::stamp`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_duration_ms: Option<u64>,
     /// Unix ms when the daemon heard this report. Set by the daemon.
@@ -178,6 +180,11 @@ pub struct UsageReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limits_seen_at: Option<i64>,
 }
+
+/// How far apart two reset times can be and still be the same five-hour
+/// window. Claude Code reports a fixed time, but nothing promises it to the
+/// second.
+const SAME_WINDOW_SECS: i64 = 60;
 
 /// What the daemon keeps of a conversation's last report, to tell new rate
 /// limits from old ones said again.
@@ -229,13 +236,20 @@ impl UsageReport {
     /// repeats the rate limits from its last response. Dated on arrival, those
     /// would pass for current and outrank a session whose numbers really are:
     /// the allowance from hours ago shown over the one that is true. So the
-    /// limits keep the time they were first seen until the API time moves,
-    /// which only a response can do.
+    /// limits keep the time they were first seen until the API time moves.
+    ///
+    /// That rests on an assumption: that the API time grows with each response
+    /// and only then. If Claude Code ever ran the status line with new limits
+    /// before adding the response's time, those limits would keep the older
+    /// date and lose comparisons they should win — which
+    /// `has_newer_limits_than` guards against by asking the window first. The
+    /// other way round, time growing without new limits, is harmless.
     ///
     /// The first report heard from a conversation has nothing to compare with
     /// and is dated on arrival. That is right for a new conversation, whose
-    /// limits only appear with its first response, and wrong only for one the
-    /// daemon has not heard since it started that repeats limits from before.
+    /// limits only appear with its first response, and wrong for one the
+    /// daemon has not heard since it started that repeats limits from before —
+    /// which is why the date is the last thing the comparison looks at.
     pub fn stamp(&mut self, previous: Option<LimitsSeen>, now_ms: i64) -> Option<LimitsSeen> {
         self.reported_at = Some(now_ms);
         let seen = match (previous, self.api_duration_ms) {
@@ -256,16 +270,35 @@ impl UsageReport {
     /// that reported them, so they are kept apart from the per-project reports:
     /// two sessions in one project take turns as its last report, and the one
     /// repeating old limits would otherwise replace the one with new ones.
+    ///
+    /// The numbers are asked before the dates, because they cannot be wrong
+    /// about their own order the way a date can (see `stamp`): a five-hour
+    /// window that resets later is a later window, and within one window the
+    /// share used only goes up, so the lower figure is the older one. Only
+    /// when both say the same is it down to when they were new. The window
+    /// only going up is an assumption too, about how the allowance is counted,
+    /// and the safer one: were it wrong, the higher figure is the one to show.
+    ///
+    /// `newerLimits` in `src/features/usage/usage.ts` decides the same way.
     pub fn has_newer_limits_than(&self, other: Option<&UsageReport>) -> bool {
-        if self.five_hour_used_percentage.is_none() {
+        let Some(used) = self.five_hour_used_percentage else {
             return false;
-        }
-        match other {
-            Some(other) if other.five_hour_used_percentage.is_some() => {
-                self.limits_seen_at.unwrap_or_default() >= other.limits_seen_at.unwrap_or_default()
+        };
+        let Some(other) = other else {
+            return true;
+        };
+        let Some(other_used) = other.five_hour_used_percentage else {
+            return true;
+        };
+        if let (Some(mine), Some(theirs)) = (self.five_hour_resets_at, other.five_hour_resets_at) {
+            if (mine - theirs).abs() > SAME_WINDOW_SECS {
+                return mine > theirs;
             }
-            _ => true,
+            if used != other_used {
+                return used > other_used;
+            }
         }
+        self.limits_seen_at.unwrap_or_default() >= other.limits_seen_at.unwrap_or_default()
     }
 }
 
@@ -1182,6 +1215,71 @@ mod tests {
         quiet.five_hour_used_percentage = None;
         quiet.stamp(None, 9_200_000);
         assert!(!quiet.has_newer_limits_than(Some(&working)));
+    }
+
+    #[test]
+    fn after_a_restart_the_window_decides_and_not_who_spoke_last() {
+        // The daemon has just started and knows neither conversation, so both
+        // are dated on arrival — and the idle one, repeating 67% from hours
+        // ago, arrives after the one that has just answered with 92%.
+        let mut working = in_session("s1", Some(9_000));
+        working.five_hour_used_percentage = Some(92.0);
+        working.stamp(None, 9_000_000);
+
+        let mut idle = in_session("s2", Some(2_300));
+        idle.five_hour_used_percentage = Some(67.0);
+        idle.stamp(None, 9_100_000);
+
+        // Same window, and a window's share only goes up: 67% is the older.
+        assert!(!idle.has_newer_limits_than(Some(&working)));
+        assert!(working.has_newer_limits_than(Some(&idle)));
+    }
+
+    #[test]
+    fn a_later_window_is_newer_whatever_it_has_used() {
+        let mut old_window = in_session("s1", Some(9_000));
+        old_window.five_hour_used_percentage = Some(92.0);
+        old_window.stamp(None, 9_000_000);
+
+        // The window came round: 5% of a window that resets five hours later.
+        let mut new_window = in_session("s2", Some(100));
+        new_window.five_hour_used_percentage = Some(5.0);
+        new_window.five_hour_resets_at = Some(1_800_000_000 + 5 * 3_600);
+        new_window.stamp(None, 1_000);
+
+        assert!(new_window.has_newer_limits_than(Some(&old_window)));
+        assert!(!old_window.has_newer_limits_than(Some(&new_window)));
+    }
+
+    #[test]
+    fn a_reset_time_a_few_seconds_off_is_the_same_window() {
+        let mut first = in_session("s1", Some(9_000));
+        first.five_hour_used_percentage = Some(40.0);
+        first.stamp(None, 2_000);
+
+        let mut second = in_session("s2", Some(2_300));
+        second.five_hour_used_percentage = Some(30.0);
+        second.five_hour_resets_at = Some(1_800_000_000 + 20);
+        second.stamp(None, 3_000);
+
+        // Twenty seconds later is not a later window: 30% is older than 40%.
+        assert!(!second.has_newer_limits_than(Some(&first)));
+    }
+
+    #[test]
+    fn the_same_figures_are_down_to_when_they_were_new() {
+        let mut earlier = in_session("s1", Some(9_000));
+        earlier.stamp(None, 1_000);
+        let mut later = in_session("s2", Some(9_000));
+        later.stamp(None, 2_000);
+
+        assert!(later.has_newer_limits_than(Some(&earlier)));
+        assert!(!earlier.has_newer_limits_than(Some(&later)));
+
+        // And without reset times there is only the date to go on.
+        earlier.five_hour_resets_at = None;
+        earlier.five_hour_used_percentage = Some(99.0);
+        assert!(later.has_newer_limits_than(Some(&earlier)));
     }
 
     #[test]
