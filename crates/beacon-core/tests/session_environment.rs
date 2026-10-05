@@ -70,6 +70,10 @@ fn a_session_does_not_inherit_the_launchers_state() {
         std::env::set_var("CLAUDECODE", "1");
         std::env::set_var("NO_COLOR", "1");
         std::env::set_var("CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH", "1");
+        // The one with the worst ending: a terminal that inherits it cannot
+        // write a commit message, because `git commit` with no `-m` aborts on
+        // an empty one without ever opening an editor.
+        std::env::set_var("GIT_EDITOR", "true");
     }
 
     let recorder = Arc::new(Recorder::default());
@@ -89,25 +93,27 @@ fn a_session_does_not_inherit_the_launchers_state() {
     let probe = if cfg!(windows) {
         concat!(
             "'pr{0}=[{1}] si{2}=[{3}] chi{4}=[{5}] tok{6}=[{7}] ba{8}=[{9}] nocol{10}=[{11}] ",
-            "refr{12}=[{13}]' -f ",
+            "refr{12}=[{13}] ed{14}=[{15}]' -f ",
             "'og',$env:TERM_PROGRAM,",
             "'d',$env:TERM_SESSION_ID,",
             "'ld',$env:CLAUDE_CODE_CHILD_SESSION,",
             "'en',$env:CLAUDE_CODE_MESSAGING_TOKEN,",
             "'se',$env:ANTHROPIC_BASE_URL,",
             "'or',$env:NO_COLOR,",
-            "'esh',$env:CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH\r",
+            "'esh',$env:CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH,",
+            "'itor',$env:GIT_EDITOR\r",
         )
     } else {
         concat!(
-            "printf 'pr%s=[%s] si%s=[%s] chi%s=[%s] tok%s=[%s] ba%s=[%s] nocol%s=[%s] refr%s=[%s]\\n' ",
+            "printf 'pr%s=[%s] si%s=[%s] chi%s=[%s] tok%s=[%s] ba%s=[%s] nocol%s=[%s] refr%s=[%s] ed%s=[%s]\\n' ",
             "og \"$TERM_PROGRAM\" ",
             "d \"$TERM_SESSION_ID\" ",
             "ld \"$CLAUDE_CODE_CHILD_SESSION\" ",
             "en \"$CLAUDE_CODE_MESSAGING_TOKEN\" ",
             "se \"$ANTHROPIC_BASE_URL\" ",
             "or \"$NO_COLOR\" ",
-            "esh \"$CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH\"\n",
+            "esh \"$CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH\" ",
+            "itor \"$GIT_EDITOR\"\n",
         )
     };
     manager.write(&id, probe.as_bytes()).unwrap();
@@ -144,6 +150,10 @@ fn a_session_does_not_inherit_the_launchers_state() {
     assert!(
         !seen.contains("a-private-token"),
         "the parent's messaging token leaked; saw: {seen:?}"
+    );
+    assert!(
+        seen.contains("editor=[]"),
+        "a Claude Code parent's GIT_EDITOR leaked, and git commit would abort on an empty message; saw: {seen:?}"
     );
     assert!(
         seen.contains("base=[https://example.invalid]"),

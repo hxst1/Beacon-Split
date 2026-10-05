@@ -276,14 +276,8 @@ pub(crate) const STRIPPED_ENV: &[&str] = &[
     "CLAUDE_CODE_USER_EMAIL",
     "CLAUDE_CODE_DESKTOP_APP_VERSION",
     "CLAUDE_AGENT_SDK_VERSION",
-    "CLAUDE_CODE_EAGER_FLUSH",
-    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
-    "CLAUDE_CODE_DISABLE_CRON",
     "CLAUDE_CODE_TERMINAL_MCP_TOOLS",
     "CLAUDE_CODE_REPORT_FINDINGS",
-    "CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES",
-    "CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL",
-    "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
     "CLAUDE_PREVIEW_CLASSIFIER_FLOOR",
 ];
 
@@ -293,10 +287,25 @@ pub(crate) const STRIPPED_ENV: &[&str] = &[
 /// than shows. A Beacon started from one of them — `pnpm app:dev` in a
 /// session, which is how Beacon is usually worked on — handed it to every
 /// session, and Claude Code then drew itself without colour: the mascot white
-/// instead of orange, every highlight gone. `NO_COLOR` set by the user is a
-/// preference and is passed through like any other; it is only dropped when
-/// `CLAUDECODE` says the launcher was a Claude Code tool.
-pub(crate) const LEFT_BY_A_CLAUDE_CODE_PARENT: &[&str] = &["NO_COLOR"];
+/// instead of orange, every highlight gone. `GIT_EDITOR=true` is the same
+/// story with a worse ending: in a terminal that inherited it, `git commit`
+/// with no `-m` aborts on an empty message without ever opening an editor, and
+/// `git rebase -i` gives you nothing to edit.
+///
+/// The rest are switches somebody may well have put in their own shell
+/// profile. That is the whole reason this list is separate from `STRIPPED_ENV`:
+/// every name here is one that a user could mean, so it is only dropped when
+/// `CLAUDECODE` says the launcher was a Claude Code tool and not the Dock.
+pub(crate) const LEFT_BY_A_CLAUDE_CODE_PARENT: &[&str] = &[
+    "NO_COLOR",
+    "GIT_EDITOR",
+    "CLAUDE_CODE_EAGER_FLUSH",
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
+    "CLAUDE_CODE_DISABLE_CRON",
+    "CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES",
+    "CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL",
+    "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
+];
 
 /// Writes the MCP configuration Claude sessions are started with, and returns
 /// where it went.
@@ -1312,6 +1321,61 @@ impl<T> LockOrRecover<T> for Mutex<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A name somebody could have put in their own shell profile belongs in
+    /// the list that only applies under `CLAUDECODE`. In `STRIPPED_ENV` it
+    /// would be taken from a Beacon opened from the Dock as well, which is
+    /// Beacon overruling a preference it was never asked about.
+    #[test]
+    fn a_preference_only_goes_when_a_claude_code_tool_set_it() {
+        for name in [
+            "NO_COLOR",
+            "GIT_EDITOR",
+            "CLAUDE_CODE_EAGER_FLUSH",
+            "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
+            "CLAUDE_CODE_DISABLE_CRON",
+            "CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES",
+            "CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL",
+            "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
+        ] {
+            assert!(
+                LEFT_BY_A_CLAUDE_CODE_PARENT.contains(&name),
+                "{name} is something a user can mean, so it is only dropped under CLAUDECODE"
+            );
+            assert!(
+                !STRIPPED_ENV.contains(&name),
+                "{name} would be taken from a Beacon opened from the Dock too"
+            );
+        }
+    }
+
+    /// And the other way round: who is signed in to the desktop app, and which
+    /// session of it this is, are never anybody's preference.
+    #[test]
+    fn what_the_parent_is_goes_whatever_started_beacon() {
+        for name in [
+            "CLAUDE_CODE_ACCOUNT_UUID",
+            "CLAUDE_CODE_USER_EMAIL",
+            "CLAUDE_CODE_HOST_SESSION_ID",
+            "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
+        ] {
+            assert!(STRIPPED_ENV.contains(&name), "{name} is the parent's state");
+            assert!(
+                !LEFT_BY_A_CLAUDE_CODE_PARENT.contains(&name),
+                "{name} would survive a Beacon started from the Dock"
+            );
+        }
+    }
+
+    /// Nothing is in both, which would only make the second removal a no-op
+    /// but would mean somebody had stopped being able to say which rule a
+    /// name is there under.
+    #[test]
+    fn the_two_lists_do_not_overlap() {
+        for name in LEFT_BY_A_CLAUDE_CODE_PARENT {
+            assert!(!STRIPPED_ENV.contains(name), "{name} is in both lists");
+        }
+    }
 
     const ID: &str = "b57bf9d0-8020-4275-a060-a521d289beae";
     const PARENT: &str = "e4e2464c-b66a-46ca-b65b-2af448574bb5";
