@@ -49,6 +49,12 @@ export function buildCommands(): Command[] {
       run: () => store.setOverlay('settings'),
     },
     {
+      id: 'app.welcome',
+      title: 'Show the welcome guide',
+      group: 'Beacon',
+      run: () => store.setOverlay('welcome'),
+    },
+    {
       id: 'app.clips',
       title: 'Show clips to copy',
       group: 'Beacon',

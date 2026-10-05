@@ -78,6 +78,14 @@ pub struct Settings {
     /// shows there is something to read, and reading it is a click away.
     #[serde(default = "yes")]
     pub release_notices: bool,
+    /// Whether the welcome guide has been through, finished or skipped.
+    ///
+    /// False only for a fresh install. A settings file from before the guide
+    /// existed belongs to somebody who found their way without it, and meeting
+    /// them with it after an update would be the interruption it is meant to
+    /// spare a newcomer.
+    #[serde(default = "yes")]
+    pub welcomed: bool,
     /// Whether Beacon offers its own subagents to the sessions it starts.
     ///
     /// On by default, and a switch because it is not free: the agents'
@@ -134,6 +142,7 @@ impl Default for Settings {
             sounds: Sounds::default(),
             last_seen_version: None,
             release_notices: true,
+            welcomed: false,
             show_hidden_files: false,
             claude_agents: true,
             appearance: Appearance::default(),
@@ -179,6 +188,21 @@ mod tests {
                 done: false
             }
         );
+    }
+
+    #[test]
+    fn only_a_fresh_install_is_welcomed() {
+        assert!(!Settings::default().welcomed);
+
+        // Somebody who already had a settings file found their way without it.
+        let old: Settings = serde_json::from_str(r#"{ "schemaVersion": 1 }"#).unwrap();
+        assert!(old.welcomed);
+
+        // And a fresh install that has not been through it yet stays that way
+        // across a save, even though the field is now written out.
+        let saved = serde_json::to_string(&Settings::default()).unwrap();
+        let back: Settings = serde_json::from_str(&saved).unwrap();
+        assert!(!back.welcomed);
     }
 
     #[test]

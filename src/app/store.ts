@@ -43,7 +43,7 @@ interface BeaconState {
   /** Panel temporarily expanded to fill the window. Never persisted. */
   fullscreenPanel: PanelId | null
   /** Which overlay is open, if any. Never persisted. */
-  overlay: 'palette' | 'quickOpen' | 'settings' | null
+  overlay: 'palette' | 'quickOpen' | 'settings' | 'welcome' | null
   /**
    * Bumped whenever the daemon connection is rebuilt.
    *
@@ -138,6 +138,8 @@ interface BeaconState {
   setSounds: (sounds: Sounds) => Promise<void>
   markReleasesSeen: () => Promise<void>
   setReleaseNotices: (enabled: boolean) => Promise<void>
+  /** Records that the welcome guide has been through, so it stops opening on its own. */
+  markWelcomed: () => Promise<void>
   /** Whether the file tree lists dotfiles. */
   setShowHiddenFiles: (shown: boolean) => Promise<void>
   /** Whether Beacon offers its own subagents. Takes effect on the next session. */
@@ -147,7 +149,7 @@ interface BeaconState {
   /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
   showPanel: (panel: PanelId) => Promise<void>
   toggleFullscreen: (panel: PanelId) => void
-  setOverlay: (overlay: 'palette' | 'quickOpen' | 'settings' | null) => void
+  setOverlay: (overlay: 'palette' | 'quickOpen' | 'settings' | 'welcome' | null) => void
   dismissNotice: () => void
 }
 
@@ -352,6 +354,8 @@ export const useBeacon = create<BeaconState>((set, get) => {
     markReleasesSeen: () => run(() => ipc.markReleasesSeen()),
 
     setReleaseNotices: (enabled) => run(() => ipc.setReleaseNotices(enabled)),
+
+    markWelcomed: () => run(() => ipc.markWelcomed()),
 
     setShowHiddenFiles: (shown) => run(() => ipc.setShowHiddenFiles(shown)),
 

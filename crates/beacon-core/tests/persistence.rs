@@ -462,3 +462,31 @@ fn a_chosen_shell_survives_a_reload() {
     assert_eq!(shell.program, "/opt/homebrew/bin/fish");
     assert_eq!(shell.args, vec!["-l".to_string()]);
 }
+
+#[test]
+fn a_fresh_install_has_not_been_welcomed_and_it_is_remembered_once_it_has() {
+    let (_guard, config) = scratch();
+
+    let mut beacon = Beacon::load(&config).unwrap();
+    assert!(!beacon.snapshot().welcomed);
+
+    beacon.create_workspace("Personal", "#8B5CF6").unwrap();
+    beacon.mark_welcomed().unwrap();
+
+    assert!(Beacon::load(&config).unwrap().snapshot().welcomed);
+}
+
+#[test]
+fn somebody_with_workspaces_but_no_settings_file_is_not_new() {
+    // Settings are written only once one changes; an install that never
+    // changed one has workspaces and nothing else, and must not be met with
+    // the welcome guide after an update.
+    let (_guard, config) = scratch();
+    Beacon::load(&config)
+        .unwrap()
+        .create_workspace("Personal", "#8B5CF6")
+        .unwrap();
+    let _ = std::fs::remove_file(config.join("settings.json"));
+
+    assert!(Beacon::load(&config).unwrap().snapshot().welcomed);
+}
