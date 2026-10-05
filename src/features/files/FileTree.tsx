@@ -67,6 +67,10 @@ export function FileTree({
 
   const [query, setQuery] = useState('')
   const [hitIndex, setHitIndex] = useState(0)
+  // The file a search just opened, until its row is on screen. The tree is
+  // drawn afresh when the search ends, scrolled to the top, and its folders
+  // open one read at a time — so the row is waited for, not looked up once.
+  const [revealing, setRevealing] = useState<string | null>(null)
   const searching = query.trim() !== ''
   const projectFiles = useProjectFiles(workspaceId, projectId, searching)
   const hits = useMemo(
@@ -78,6 +82,7 @@ export function FileTree({
   // A search belongs to the project it was typed in.
   useEffect(() => {
     setQuery('')
+    setRevealing(null)
   }, [projectId])
 
   useEffect(() => {
@@ -141,15 +146,29 @@ export function FileTree({
     void showPanel('editor')
   }
 
+  useEffect(() => {
+    if (revealing === null) return
+    const row = rows.current.get(revealing)
+    if (!row) return
+    row.scrollIntoView({ block: 'nearest' })
+    setRevealing(null)
+  }, [revealing, visible])
+
   /** Opens a match, and leaves the tree showing where it is. */
   const chooseHit = (path: string): void => {
     setQuery('')
+    setRevealing(path)
     void reveal(workspaceId, projectId, path)
     void openFile(workspaceId, projectId, path)
     void showPanel('editor')
   }
 
   const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    // A key that confirms an IME composition belongs to the composition, not
+    // to the search. WebKit sends it with `isComposing` already false but
+    // with keyCode 229, as the terminal found (#10).
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
+
     switch (event.key) {
       case 'ArrowDown':
         // Never past the bottom, and never below the top: with no results yet

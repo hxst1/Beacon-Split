@@ -1848,3 +1848,35 @@ with Codex and the editor away as Beacon starts them, and nine with every panel
 open. What the guide says about a screen is still words that can fall behind
 it; only what it points at and what its switches do are held in place by code. The macOS notification permission waits until the guide closes,
 rather than opening a second prompt on top of it.
+
+## ADR-085: The files panel searches in place of the tree
+
+**Context.** The files panel's toolbar had room to spare, and finding a file
+by walking folders is slow in a large project. Quick Open already finds one
+from anywhere, but it is a palette that closes: it says nothing about where the
+file sits, which is what the panel is for.
+
+**Decision.** A search field in the panel's toolbar. While it has text, the
+list of matches takes the tree's place; clearing it brings the tree back.
+
+- The project's files are read when a search starts, from the same listing as
+  Quick Open (`git ls-files` where there is a repository, so the ignore rules
+  apply once), and not again on each key.
+- A match on the file's name ranks ahead of any match that needs its folders,
+  whatever their fuzzy scores; only the name is highlighted.
+- Dotfiles follow the tree: hidden there, left out of the search.
+- Opening a match reveals it in the tree and brings its row into view.
+
+The editor's find panel and its dialogs (go to line) use the app's fields and
+buttons, under selectors as specific as CodeMirror's own light and dark rules.
+
+**Why.** Replacing the tree rather than floating over it, because the panel is
+narrow and a list of matches is the tree's job for as long as the search lasts.
+Read fresh, because a search that cannot find the file an agent has just
+written is worse than the moment it takes to list them.
+
+**Consequence.** Each search lists the whole project again. Nothing caps the
+listing on the git path, and the command is synchronous, so a very large
+repository costs a pause — the same exposure Quick Open has, made easier to
+reach.
+
