@@ -501,16 +501,20 @@ const SKIPPED_DIRS: &[&str] = &[
 /// Stops a walk of a pathological directory tree from becoming the whole app.
 pub const MAX_LISTED_FILES: usize = 50_000;
 
-/// Every file in a project, for quick open.
+/// Every file in a project, for quick open and the files panel's search.
 ///
 /// A repository is listed with `git ls-files`, which respects the user's own
 /// ignore rules and is far faster than walking. Anything else is walked with a
 /// fixed skip list, which is a poor substitute but only applies where there is
 /// nothing better to go on.
+///
+/// Either way it stops at `MAX_LISTED_FILES`. The walk always did; git's
+/// listing did not, and a monorepo's could be large enough to make every
+/// search a pause and every search result a long sort.
 pub fn list_project_files(root: &Path) -> Result<Vec<String>> {
     if crate::git::is_repository(root) {
         if let Ok(listed) = crate::git::list_files(root) {
-            return Ok(listed);
+            return Ok(capped(listed, MAX_LISTED_FILES));
         }
         // A repository git refuses to read is still a folder we can walk.
     }
@@ -520,6 +524,15 @@ pub fn list_project_files(root: &Path) -> Result<Vec<String>> {
     walk(&root, &root, &mut found);
     found.sort();
     Ok(found)
+}
+
+/// The first `limit` paths of a sorted listing.
+///
+/// Sorted first, so what is kept is the same every time rather than whatever
+/// git happened to print first.
+fn capped(mut files: Vec<String>, limit: usize) -> Vec<String> {
+    files.truncate(limit);
+    files
 }
 
 fn walk(root: &Path, dir: &Path, found: &mut Vec<String>) {
@@ -558,6 +571,14 @@ fn walk(root: &Path, dir: &Path, found: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_listing_keeps_its_first_paths_up_to_the_cap() {
+        let listed: Vec<String> = ["a.rs", "b.rs", "c.rs", "d.rs"].map(String::from).into();
+        assert_eq!(capped(listed.clone(), 2), ["a.rs", "b.rs"]);
+        // Under the cap, nothing is lost.
+        assert_eq!(capped(listed.clone(), 10), listed);
+    }
 
     fn project() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();

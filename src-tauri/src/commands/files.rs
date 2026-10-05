@@ -3,6 +3,7 @@ use beacon_core::dotenv::{self, EnvEntry};
 use beacon_core::files::{self, DirEntry, FileContents, FileRead, WriteOutcome};
 use tauri::State;
 
+use super::run_off_thread;
 use crate::error::CommandResult;
 use crate::state::AppState;
 
@@ -160,18 +161,19 @@ pub fn reveal_path(
         .map_err(|err| crate::error::CommandError::from(err.to_string()))
 }
 
-/// Every file in a project, for quick open.
+/// Every file in a project, for quick open and the files panel's search.
 ///
 /// Listed on demand rather than kept in memory: a project's file list changes
-/// under us constantly, and a stale one is worse than a fresh read.
+/// under us constantly, and a stale one is worse than a fresh read. Off the
+/// IPC thread, because in a large repository git takes a moment to list it.
 #[tauri::command]
-pub fn list_project_files(
+pub async fn list_project_files(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
 ) -> CommandResult<Vec<String>> {
     let root = project_root!(state, workspace_id, project_id);
-    Ok(files::list_project_files(&root)?)
+    run_off_thread(move || files::list_project_files(&root)).await
 }
 
 /// Reads a `.env` file into its assignments.
