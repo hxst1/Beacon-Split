@@ -59,6 +59,15 @@
   background: var(--danger);
 }
 
+/* Whose numbers these are, shown only when there is another agent they could
+   have belonged to. Quieter than the figures themselves: it is a label, and
+   the number is the thing being read. */
+.agent {
+  color: var(--fg-4);
+  font-variant: small-caps;
+  letter-spacing: 0.02em;
+}
+
 .muted {
   color: var(--fg-4);
 }

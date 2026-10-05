@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { MissingTool } from '@/features/settings/MissingTool'
-import { usePanelFocus } from '@/app/panelFocus'
-import { selectHidden, useBeacon } from '@/app/store'
+import { useAgentInFront } from '@/app/agentInFront'
+import { useBeacon } from '@/app/store'
 import { useClips } from '@/features/clips/clips'
 import { errorMessage, ipc } from '@/ipc'
-import { AGENT_PANELS } from '@/lib/layout'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 import type { AgentKind, Checkout, FileState, GitEntry, GitStatus } from '@/types/beacon'
 import { noNotices, reduceNotices, type Notices } from './notices'
@@ -56,22 +55,6 @@ export function nextCheckout(current: AgentKind | undefined): AgentKind | undefi
   const order: Array<AgentKind | undefined> = [undefined, 'claude', 'codex']
   const at = order.indexOf(current)
   return order[(at + 1) % order.length]
-}
-
-/**
- * The agent the user is working in.
- *
- * The one the keyboard was in last, as long as it is still on screen; failing
- * that the only one that is, which is the common case — Codex starts put away,
- * so most windows have exactly one agent in them and never have to choose.
- */
-function useAgentInFront(): AgentKind {
-  const lastAgent = usePanelFocus((s) => s.lastAgent)
-  const hidden = useBeacon(selectHidden)
-
-  const shown = AGENT_PANELS.filter((panel) => !hidden.includes(panel)) as AgentKind[]
-  if (lastAgent !== null && shown.includes(lastAgent)) return lastAgent
-  return shown[0] ?? 'claude'
 }
 
 export function GitPane({

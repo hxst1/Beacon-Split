@@ -77,6 +77,9 @@ pub fn interpret(event: &serde_json::Value, project: ProjectId) -> UsageReport {
 
     UsageReport {
         project,
+        // A status line is Claude Code's. Codex has none, and what it spends is
+        // read from its rollout instead.
+        agent: beacon_core::agent::AgentKind::Claude,
         session_id: top_text("session_id"),
         session_name: top_text("session_name"),
         model: event

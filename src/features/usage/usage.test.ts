@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { UsageReport } from '@/types/beacon'
 import {
@@ -16,6 +16,9 @@ import {
   reported,
   staleness,
   untilReset,
+  acceptForTests,
+  forgetUsage,
+  useUsage,
 } from './usage'
 
 const NOW = 1_800_000_000_000
@@ -265,5 +268,59 @@ describe('how old the numbers are', () => {
 
     const some = reported(report({ fiveHourUsedPercentage: 40, limitsSeenAt: NOW - HOUR }), NOW)
     expect(newerLimits(some, none)).toBe(some)
+  })
+})
+
+describe('two agents in one window', () => {
+  const report = (project: string, agent: 'claude' | 'codex', used: number): UsageReport =>
+    ({
+      project,
+      agent,
+      fiveHourUsedPercentage: used,
+      fiveHourResetsAt: 1_790_000_000,
+      contextUsedPercentage: used,
+      reportedAt: 1_000,
+      limitsSeenAt: 1_000,
+    }) as UsageReport
+
+  beforeEach(() => {
+    useUsage.setState({ byAgent: {}, limits: {} })
+  })
+
+  it('keeps the two agents apart, project by project', () => {
+    acceptForTests(report('pj_1', 'claude', 20))
+    acceptForTests(report('pj_1', 'codex', 80))
+
+    const state = useUsage.getState()
+    expect(state.byAgent['pj_1:claude']?.report.contextUsedPercentage).toBe(20)
+    expect(state.byAgent['pj_1:codex']?.report.contextUsedPercentage).toBe(80)
+  })
+
+  it('does not let one account allowance replace the other', () => {
+    // The whole reason the limits are kept per agent: these are different
+    // accounts with different allowances, and the newer report is not a newer
+    // word on the same number.
+    acceptForTests(report('pj_1', 'claude', 20))
+    acceptForTests(report('pj_1', 'codex', 95))
+
+    const { limits } = useUsage.getState()
+    expect(limits.claude?.report.fiveHourUsedPercentage).toBe(20)
+    expect(limits.codex?.report.fiveHourUsedPercentage).toBe(95)
+  })
+
+  it('reads a report with no agent as one of Claude, as an older daemon sends it', () => {
+    acceptForTests({ project: 'pj_1', fiveHourUsedPercentage: 30 } as UsageReport)
+    expect(useUsage.getState().byAgent['pj_1:claude']).toBeDefined()
+  })
+
+  it('forgets both agents when a project goes', () => {
+    acceptForTests(report('pj_1', 'claude', 20))
+    acceptForTests(report('pj_1', 'codex', 80))
+    acceptForTests(report('pj_2', 'claude', 40))
+
+    forgetUsage('pj_1')
+
+    const { byAgent } = useUsage.getState()
+    expect(Object.keys(byAgent)).toEqual(['pj_2:claude'])
   })
 })
