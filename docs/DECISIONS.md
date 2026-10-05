@@ -1999,13 +1999,19 @@ shown whichever agent reported last as if it were the allowance being spent.
 
 Reading rather than being told is the one piece of Beacon that polls, and that
 is a real cost: ten seconds of latency, and a directory walk to find the file.
+The walk is bounded — the sixty-four newest rollouts, and eight kilobytes of
+each one's first line, which is where the directory is written and well short
+of the model instructions that follow it.
 It is the only way in without Codex growing a status line. Only the tail of the
 rollout is read, so a long conversation costs no more to ask about than a short
 one, and nothing happens at all when no window is attached.
 
-**Consequence.** Codex's context is as old as ten seconds, where Claude's is as
-old as its last message. A conversation that has been compacted reports more
-tokens than the window holds, so the fraction is clamped rather than trusted.
+**Consequence.** Codex's context is read at most ten seconds after it changes,
+where Claude's arrives with its next message. The figure is the last turn's
+total rather than the conversation's: `total_token_usage` adds up every request
+ever made and runs to millions, which is a number about the bill and not about
+the window. The fraction is still clamped, because a window Codex has not
+reported a size for cannot be ruled out.
 Nothing the status line reports and Codex does not — the model, its effort, the
 prompt cache — is filled in with a plausible value; it stays unknown, and the
 panel shows nothing for it.

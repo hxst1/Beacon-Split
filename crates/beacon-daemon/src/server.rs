@@ -317,6 +317,12 @@ fn read_codex_usage(daemon: &Daemon) {
             continue;
         };
 
+        // Dated by when Codex wrote the numbers down and not by when Beacon
+        // went to look, so a conversation left open since this morning reads as
+        // this morning's. Only a rollout whose timestamp cannot be read falls
+        // back to the time of the read, and then it is one report, not every
+        // report from then on.
+        let wrote_at = usage.at;
         let mut report = usage.into_report(info.project.clone(), None);
         let key = (info.project.clone(), AgentKind::Codex);
 
@@ -333,9 +339,9 @@ fn read_codex_usage(daemon: &Daemon) {
             }
         }
 
-        let now_ms = now_ms();
-        report.reported_at = Some(now_ms);
-        report.limits_seen_at = Some(now_ms);
+        let at = wrote_at.unwrap_or_else(now_ms);
+        report.reported_at = Some(at);
+        report.limits_seen_at = Some(at);
 
         {
             let mut account = daemon.account_limits.lock_or_recover();

@@ -58,6 +58,16 @@ fn reads_the_numbers_out_of_a_rollout_codex_wrote() {
             size > 1000,
             "a context window of {size} is not a context window"
         );
+        // The invariant that catches reading the wrong field: one turn cannot
+        // hold more than the window does. `total_token_usage` is the running
+        // total of every request ever made and runs to millions, which read as
+        // a permanently full context until this was asserted.
+        if let Some(used) = usage.context_used_tokens {
+            assert!(
+                used <= size,
+                "a turn of {used} tokens does not fit in a window of {size}"
+            );
+        }
     }
     if let Some(percentage) = usage.context_used_percentage() {
         assert!(
