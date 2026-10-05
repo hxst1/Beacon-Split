@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { Popover } from '@/app/ui/Popover'
 
+import { useAgentInFront } from '@/app/agentInFront'
 import { selectActiveProject, useBeacon } from '@/app/store'
-import type { UsageReport } from '@/types/beacon'
+import type { AgentKind, UsageReport } from '@/types/beacon'
 import {
   adviceFor,
   cacheIsCold,
@@ -22,6 +23,9 @@ import {
 } from './usage'
 import styles from './UsageMeter.module.css'
 
+/** What each agent is called where the meter has room to say it. */
+const AGENT_NAMES: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex' }
+
 /**
  * How much of the session allowance is left, in the title bar.
  *
@@ -34,9 +38,26 @@ import styles from './UsageMeter.module.css'
  * should not be taken as current.
  */
 export function UsageMeter(): React.ReactElement | null {
-  const account = useAccountUsage()
+  // Whose numbers these are. Two agents in one window spend two allowances
+  // against two accounts, and a meter that quietly showed one of them while
+  // you worked in the other would be the wrong number at the moment it
+  // mattered — so it follows the agent you are in.
+  const inFront = useAgentInFront()
   const project = useBeacon(selectActiveProject)
-  const projectUsage = useProjectUsage(project?.id ?? '')
+
+  const theirs = useAccountUsage(inFront)
+  const theirContext = useProjectUsage(project?.id ?? '', inFront)
+  // The other one, for the first seconds of a Codex nobody has read yet: a
+  // meter that blinks out when you move between panels looks broken. It is
+  // only ever shown with its agent named, so it cannot be mistaken for yours.
+  const other: AgentKind = inFront === 'claude' ? 'codex' : 'claude'
+  const others = useAccountUsage(other)
+  const otherContext = useProjectUsage(project?.id ?? '', other)
+
+  const standIn = theirs === null && theirContext === null
+  const agent = standIn ? other : inFront
+  const account = standIn ? others : theirs
+  const projectUsage = standIn ? otherContext : theirContext
 
   // Only to keep the countdown and the staleness honest; twice a minute is as
   // precise as either needs to be.
@@ -53,6 +74,10 @@ export function UsageMeter(): React.ReactElement | null {
   const contextUsed = percent(projectUsage?.report.contextUsedPercentage)
 
   if (sessionLeft === null && !sessionReset && contextUsed === null) return null
+
+  // Named only when there is another agent it could have been. On the window
+  // most people have — one agent — the meter says what it always said.
+  const named = standIn || (others !== null || otherContext !== null) ? AGENT_NAMES[agent] : null
 
   // Two numbers, dated apart: the allowance is as old as the response that
   // brought it — whichever project that was, and an idle session repeating
@@ -81,9 +106,10 @@ export function UsageMeter(): React.ReactElement | null {
         type="button"
         className={styles['meter']}
         data-stale={allStale}
-        title="What this session is costing"
+        title={`What ${AGENT_NAMES[agent]} is costing`}
         onClick={(event) => setAnchor(event.currentTarget.getBoundingClientRect())}
       >
+      {named ? <span className={styles['agent']}>{named}</span> : null}
       {sessionLeft !== null ? (
         <>
           <span className={styles['bar']}>
@@ -116,7 +142,7 @@ export function UsageMeter(): React.ReactElement | null {
       {anchor ? (
         <Popover anchor={anchor} align="end" onClose={() => setAnchor(null)}>
           <div className={styles['details']}>
-            <div className={styles['heading']}>Session</div>
+            <div className={styles['heading']}>{AGENT_NAMES[agent]}</div>
             {sessionReset && fiveHourResetsAt !== undefined ? (
               <div className={styles['note']}>
                 The five-hour window came round {howLongAgo(fiveHourResetsAt * 1000, now)}.

@@ -103,6 +103,13 @@ pub enum ClaudeActivity {
 #[serde(rename_all = "camelCase")]
 pub struct UsageReport {
     pub project: ProjectId,
+    /// Which agent this is about.
+    ///
+    /// Defaulted to Claude Code, which is what every report was until Codex
+    /// had one: the status line sends no agent, and neither does a daemon or a
+    /// window from before this existed.
+    #[serde(default)]
+    pub agent: AgentKind,
     /// The conversation Claude Code is in, as it identifies it.
     ///
     /// The reason this is worth carrying: it is how a running session can be
@@ -203,6 +210,7 @@ impl UsageReport {
     pub fn unknown(project: ProjectId) -> Self {
         Self {
             project,
+            agent: AgentKind::Claude,
             session_id: None,
             session_name: None,
             model: None,

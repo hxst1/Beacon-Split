@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import { watchActivity } from '@/features/terminal/sessionBridge'
 import { ipc } from '@/ipc'
-import type { PromptCache, UsageReport } from '@/types/beacon'
+import type { AgentKind, PromptCache, UsageReport } from '@/types/beacon'
 
 /**
  * How long a usage report is presented as current.
@@ -23,11 +23,34 @@ export interface Reported {
   limitsAt: number
 }
 
+/**
+ * A project's report about one agent.
+ *
+ * Keyed by both because two agents can be working in one project and their
+ * numbers are not comparable: a context window belongs to a conversation, and
+ * there is a conversation per agent.
+ */
+function keyOf(project: string, agent: AgentKind): string {
+  return `${project}:${agent}`
+}
+
+/** Claude, for a report from a daemon that predates Codex having one. */
+function agentOf(report: UsageReport): AgentKind {
+  return report.agent ?? 'claude'
+}
+
 interface UsageState {
-  /** The last report from each project. */
-  byProject: Record<string, Reported>
-  /** The report with the newest rate limits, from whichever project. */
-  limits: Reported | null
+  /** The last report from each project, per agent. */
+  byAgent: Record<string, Reported>
+  /**
+   * The report with the newest rate limits, per agent.
+   *
+   * Per agent because the accounts are different accounts: Claude's five-hour
+   * window is Anthropic's and Codex's is OpenAI's. Letting them share a slot
+   * would show whichever reported last as if it were the allowance being
+   * spent.
+   */
+  limits: Partial<Record<AgentKind, Reported>>
 }
 
 /**
@@ -37,7 +60,7 @@ interface UsageState {
  * knows how much of the five-hour allowance is gone, and it either says so or
  * it does not.
  */
-export const useUsage = create<UsageState>(() => ({ byProject: {}, limits: null }))
+export const useUsage = create<UsageState>(() => ({ byAgent: {}, limits: {} }))
 
 /**
  * Dates a report by when the daemon heard it, not by when this window did.
@@ -54,11 +77,21 @@ export function reported(report: UsageReport, heardAt: number): Reported {
 
 function accept(report: UsageReport): void {
   const entry = reported(report, Date.now())
+  const agent = agentOf(report)
   useUsage.setState((state) => ({
-    byProject: { ...state.byProject, [report.project]: entry },
-    limits: newerLimits(state.limits, entry),
+    byAgent: { ...state.byAgent, [keyOf(report.project, agent)]: entry },
+    limits: { ...state.limits, [agent]: newerLimits(state.limits[agent] ?? null, entry) },
   }))
 }
+
+/**
+ * `accept`, for a test that wants to put a report in without a daemon.
+ *
+ * Exported rather than exercised through the event stream: what is worth
+ * pinning here is how two agents' reports are filed, and that is this function
+ * and not the transport under it.
+ */
+export const acceptForTests = accept
 
 /**
  * Drops what a project reported, e.g. when its sessions are stopped.
@@ -68,9 +101,12 @@ function accept(report: UsageReport): void {
  */
 export function forgetUsage(project: string): void {
   useUsage.setState((state) => {
-    const byProject = { ...state.byProject }
-    delete byProject[project]
-    return { byProject }
+    const byAgent = { ...state.byAgent }
+    // Every agent's report for this project, since the key carries both.
+    for (const key of Object.keys(byAgent)) {
+      if (key.startsWith(`${project}:`)) delete byAgent[key]
+    }
+    return { byAgent }
   })
 }
 
@@ -138,12 +174,12 @@ export function newerLimits(current: Reported | null, incoming: Reported): Repor
   return incoming.limitsAt >= current.limitsAt ? incoming : current
 }
 
-export function useAccountUsage(): Reported | null {
-  return useUsage((state) => state.limits)
+export function useAccountUsage(agent: AgentKind): Reported | null {
+  return useUsage((state) => state.limits[agent] ?? null)
 }
 
-export function useProjectUsage(project: string): Reported | null {
-  return useUsage((state) => state.byProject[project] ?? null)
+export function useProjectUsage(project: string, agent: AgentKind): Reported | null {
+  return useUsage((state) => state.byAgent[keyOf(project, agent)] ?? null)
 }
 
 /**

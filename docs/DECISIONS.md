@@ -1961,3 +1961,57 @@ thread but is not a bound on the cost. The walk's cut is not the alphabet's
 tail but whatever it had not reached, which can differ between two runs on the
 same directory.
 
+## ADR-088: What Codex spends is read from the rollout it writes
+
+**Context.** Claude Code has a status line: a program it runs on every
+assistant message, which Beacon asks to report what the conversation costs.
+Codex has nothing of the kind. Its hooks say what is happening — a turn
+started, a tool wants permission, it stopped — and never what it cost. So the
+meter in the status bar showed Claude's numbers whoever you were working in,
+unlabelled, which with two agents on screen is the wrong number at the moment
+it matters.
+
+But the numbers are already on disk. Codex writes a rollout of every
+conversation as it goes, and after each turn that rollout gets a `token_count`
+event holding the whole account: tokens used, the size of the context window,
+and both rate limits with the time each comes round again — under
+`window_minutes` 300 and 10080, the same pair Beacon already shows for Claude.
+
+**Decision.** The daemon reads it. Every ten seconds, while a window is
+attached, each live Codex session's rollout is found — by the conversation id
+when a hook has said one, by the directory Codex recorded on the rollout's
+first line otherwise — and its last `token_count` is read from the tail of the
+file. A report is sent only when the numbers have changed, and is dated then,
+so the time on it is the time they were new.
+
+`UsageReport` carries the agent it is about, defaulting to Claude. The daemon
+keeps its reports per project *and* agent, and the newest limits per agent. The
+meter shows the agent you are working in, and names it whenever there is
+another agent it could have been.
+
+**Why.** Guessing was the alternative, and this is a gauge: a context
+percentage that is nearly right is worse than none, because somebody will plan
+a compaction around it. Everything here is a number Codex wrote down.
+
+Per agent, because the accounts are different accounts — Claude's five-hour
+window is Anthropic's and Codex's is OpenAI's. Sharing one slot would have
+shown whichever agent reported last as if it were the allowance being spent.
+
+Reading rather than being told is the one piece of Beacon that polls, and that
+is a real cost: ten seconds of latency, and a directory walk to find the file.
+It is the only way in without Codex growing a status line. Only the tail of the
+rollout is read, so a long conversation costs no more to ask about than a short
+one, and nothing happens at all when no window is attached.
+
+**Consequence.** Codex's context is as old as ten seconds, where Claude's is as
+old as its last message. A conversation that has been compacted reports more
+tokens than the window holds, so the fraction is clamped rather than trusted.
+Nothing the status line reports and Codex does not — the model, its effort, the
+prompt cache — is filled in with a plausible value; it stays unknown, and the
+panel shows nothing for it.
+
+Finding the rollout by directory is a guess when two Codexes are running in one
+folder: the newest wins, which is the one started last. A hook that has said
+the conversation id removes the guess, which is one more reason to install the
+plugin, and none to require it.
+

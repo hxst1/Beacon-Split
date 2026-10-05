@@ -1,4 +1,5 @@
 use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -141,21 +142,33 @@ impl SessionEvents for Broadcaster {
 
 struct Daemon {
     socket: std::path::PathBuf,
-    /// The last usage reported per project.
+    /// The last usage reported per project, per agent.
     ///
     /// Retained, unlike activity: a window that has just attached should see
     /// what a session costs immediately rather than waiting for its next turn.
-    usage: Mutex<std::collections::BTreeMap<ProjectId, beacon_core::protocol::UsageReport>>,
+    ///
+    /// Keyed by the agent as well as the project because two of them can be
+    /// working in one project and their numbers are not comparable: a context
+    /// window is the conversation's, and there is one conversation per agent.
+    usage: Mutex<
+        std::collections::BTreeMap<(ProjectId, AgentKind), beacon_core::protocol::UsageReport>,
+    >,
     /// What each conversation's last report said about its API time, so rate
     /// limits it only repeats keep the time they were new. See
     /// `UsageReport::stamp`. One entry per conversation the daemon has heard
     /// from, kept for as long as it runs: a few dozen bytes each, which is not
     /// worth tying to when a conversation ends.
     limits_seen: Mutex<std::collections::HashMap<String, LimitsSeen>>,
-    /// The report with the newest rate limits, from whichever project. Kept
-    /// apart from `usage` because the limits are the account's, and a
-    /// project's last report can be an idle session repeating old ones.
-    account_limits: Mutex<Option<UsageReport>>,
+    /// The report with the newest rate limits, from whichever project, for
+    /// each agent. Kept apart from `usage` because the limits are the
+    /// account's, and a project's last report can be an idle session repeating
+    /// old ones.
+    ///
+    /// Per agent, because the accounts are different accounts: Claude's
+    /// five-hour window is Anthropic's and Codex's is OpenAI's, and letting
+    /// them compete for one slot would show whichever reported last as if it
+    /// were the allowance somebody was spending.
+    account_limits: Mutex<std::collections::BTreeMap<AgentKind, UsageReport>>,
     /// Things Claude produced for the user to paste elsewhere.
     ///
     /// Held here rather than in the window for the same reason sessions are:
@@ -199,7 +212,7 @@ pub fn serve(listener: LocalListener, socket: std::path::PathBuf) {
         socket: socket.clone(),
         usage: Mutex::new(std::collections::BTreeMap::new()),
         limits_seen: Mutex::new(std::collections::HashMap::new()),
-        account_limits: Mutex::new(None),
+        account_limits: Mutex::new(std::collections::BTreeMap::new()),
         clips: Mutex::new(clip_store.load()),
         clip_store,
         workstreams: Mutex::new(workstream_store.load()),
@@ -216,6 +229,7 @@ pub fn serve(listener: LocalListener, socket: std::path::PathBuf) {
     // The accept loop blocks, so the idle check gets its own thread and stops
     // the daemon by closing the socket out from under it.
     spawn_idle_watch(Arc::clone(&daemon));
+    spawn_codex_usage_watch(Arc::clone(&daemon));
 
     for stream in listener.incoming() {
         if daemon.stopping.load(Ordering::SeqCst) {
@@ -237,6 +251,111 @@ pub fn serve(listener: LocalListener, socket: std::path::PathBuf) {
     }
 
     let _ = std::fs::remove_file(&socket);
+}
+
+/// How often a live Codex is asked what it has spent.
+///
+/// Slower than a status line, which runs on every assistant message, because
+/// this is Beacon going to look rather than Codex coming to tell. Ten seconds
+/// is well inside the fifteen a report is presented as current for.
+const CODEX_USAGE_EVERY: Duration = Duration::from_secs(10);
+
+/// Reads what each live Codex is spending, and says so when it changes.
+///
+/// Claude Code reports through its status line, a program Beacon can ask it to
+/// run. Codex has nothing of the kind — its hooks say what is happening, never
+/// what it costs — so somebody has to go and look at the rollout it writes,
+/// and this is who.
+///
+/// Only while a window is attached. Nobody is reading a meter in a daemon with
+/// no window, and this is the one piece of Beacon that does work on a timer
+/// rather than when something happens.
+fn spawn_codex_usage_watch(daemon: Arc<Daemon>) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(CODEX_USAGE_EVERY);
+            if daemon.stopping.load(Ordering::SeqCst) {
+                return;
+            }
+            if daemon.attached.load(Ordering::SeqCst) == 0 {
+                continue;
+            }
+            read_codex_usage(&daemon);
+        }
+    });
+}
+
+/// Where a Codex session's conversation is written down.
+///
+/// By the id when a hook has said which conversation this is, and by the
+/// directory otherwise — Codex writes the directory it was started in on the
+/// first line of every rollout, so the common case, a Codex nobody has asked
+/// to report, still works.
+fn codex_rollout(daemon: &Daemon, info: &beacon_core::session::SessionInfo) -> Option<PathBuf> {
+    let home = beacon_core::codex_usage::home();
+    let by_id = daemon
+        .workstreams
+        .lock_or_recover()
+        .current(&info.project, AgentKind::Codex)
+        .and_then(|stream| stream.resume_id())
+        .map(str::to_string);
+
+    by_id
+        .and_then(|id| beacon_core::codex_usage::rollout_for(&home, &id))
+        .or_else(|| beacon_core::codex_usage::rollout_in(&home, Path::new(&info.cwd)))
+}
+
+fn read_codex_usage(daemon: &Daemon) {
+    for info in daemon.sessions.list() {
+        if info.kind.agent() != Some(AgentKind::Codex) || !info.running {
+            continue;
+        }
+        let Some(rollout) = codex_rollout(daemon, &info) else {
+            continue;
+        };
+        let Some(usage) = beacon_core::codex_usage::read(&rollout) else {
+            continue;
+        };
+
+        let mut report = usage.into_report(info.project.clone(), None);
+        let key = (info.project.clone(), AgentKind::Codex);
+
+        // Dated when the numbers change and not when they were read, which is
+        // what makes the meter able to say the allowance is old. Codex has no
+        // equivalent of the API time the status line reports, so the numbers
+        // themselves are the test — and they are the honest one.
+        {
+            let held = daemon.usage.lock_or_recover();
+            if let Some(before) = held.get(&key) {
+                if same_numbers(before, &report) {
+                    continue;
+                }
+            }
+        }
+
+        let now_ms = now_ms();
+        report.reported_at = Some(now_ms);
+        report.limits_seen_at = Some(now_ms);
+
+        {
+            let mut account = daemon.account_limits.lock_or_recover();
+            if report.has_newer_limits_than(account.get(&AgentKind::Codex)) {
+                account.insert(AgentKind::Codex, report.clone());
+            }
+        }
+        daemon.usage.lock_or_recover().insert(key, report.clone());
+        daemon.broadcast(&Event::Usage(Box::new(report)));
+    }
+}
+
+/// Whether two reports say the same thing, ignoring when they were said.
+fn same_numbers(one: &UsageReport, other: &UsageReport) -> bool {
+    one.context_used_tokens == other.context_used_tokens
+        && one.context_size == other.context_size
+        && one.five_hour_used_percentage == other.five_hour_used_percentage
+        && one.five_hour_resets_at == other.five_hour_resets_at
+        && one.seven_day_used_percentage == other.seven_day_used_percentage
+        && one.seven_day_resets_at == other.seven_day_resets_at
 }
 
 fn spawn_idle_watch(daemon: Arc<Daemon>) {
@@ -766,12 +885,20 @@ fn resume_workstream(
     into_agent(daemon, &project, stream, cwd, size, shell)
 }
 
-/// Dates a usage report on arrival, keeping the time its rate limits were new.
-fn stamp_usage(daemon: &Daemon, usage: &mut UsageReport) {
-    let now_ms = std::time::SystemTime::now()
+/// The wall clock, in milliseconds, or zero if it cannot be read.
+///
+/// Zero is the oldest a report can be dated, which is the safe way round: it
+/// loses every comparison rather than winning them all.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|since| since.as_millis() as i64)
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+/// Dates a usage report on arrival, keeping the time its rate limits were new.
+fn stamp_usage(daemon: &Daemon, usage: &mut UsageReport) {
+    let now_ms = now_ms();
 
     let Some(session) = usage.session_id.clone() else {
         usage.stamp(None, now_ms);
@@ -967,14 +1094,15 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             }
             {
                 let mut account = daemon.account_limits.lock_or_recover();
-                if usage.has_newer_limits_than(account.as_ref()) {
-                    *account = Some((*usage).clone());
+                let held = account.get(&usage.agent);
+                if usage.has_newer_limits_than(held) {
+                    account.insert(usage.agent, (*usage).clone());
                 }
             }
             daemon
                 .usage
                 .lock_or_recover()
-                .insert(usage.project.clone(), (*usage).clone());
+                .insert((usage.project.clone(), usage.agent), (*usage).clone());
             daemon.broadcast(&Event::Usage(usage));
             Ok(Reply::Done)
         }
@@ -986,8 +1114,8 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             reports: daemon
                 .account_limits
                 .lock_or_recover()
-                .clone()
-                .into_iter()
+                .values()
+                .cloned()
                 .chain(daemon.usage.lock_or_recover().values().cloned())
                 .collect(),
         }),

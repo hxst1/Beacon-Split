@@ -502,6 +502,14 @@ export function supportsWorkstreams(capabilities: ClaudeCapabilities): boolean {
  */
 export interface UsageReport {
   project: string
+  /**
+   * Which agent this is about.
+   *
+   * Absent from a daemon that predates Codex reporting anything, and from
+   * Claude Code's status line, which does not know there is another agent —
+   * both of which mean Claude.
+   */
+  agent?: AgentKind
   /** The conversation Claude Code is in. How a session becomes addressable. */
   sessionId?: string
   /**

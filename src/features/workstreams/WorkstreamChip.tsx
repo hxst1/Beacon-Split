@@ -44,7 +44,9 @@ export function WorkstreamChip({
   const supported = useWorkstreamsSupported()
   const { list, current } = useProjectWorkstreams(projectId)
   const stream = useCurrentWorkstream(projectId)
-  const usage = useProjectUsage(projectId)
+  // Workstreams are Claude Code's: the chip names its conversation, so the
+  // numbers beside it are its conversation's too.
+  const usage = useProjectUsage(projectId, 'claude')
   const busy = useWorkstreams((state) => state.busy === projectId)
 
   const [anchor, setAnchor] = useState<DOMRect | null>(null)

@@ -65,24 +65,26 @@ fn reads_the_numbers_out_of_a_rollout_codex_wrote() {
             "context used {percentage}% is not a percentage"
         );
     }
-    for limit in [
+    for used in [
         usage.five_hour_used_percentage,
         usage.seven_day_used_percentage,
-    ] {
-        if let Some(used) = limit {
-            assert!((0.0..=100.0).contains(&used), "{used}% is not a percentage");
-        }
+    ]
+    .into_iter()
+    .flatten()
+    {
+        assert!((0.0..=100.0).contains(&used), "{used}% is not a percentage");
     }
     // Reset times are seconds, not milliseconds. A millisecond value here
     // would be a thousand times too far in the future and would show as an
     // allowance that never comes round.
-    for resets in [usage.five_hour_resets_at, usage.seven_day_resets_at] {
-        if let Some(at) = resets {
-            assert!(
-                (1_600_000_000..10_000_000_000).contains(&at),
-                "{at} does not look like a unix time in seconds"
-            );
-        }
+    for at in [usage.five_hour_resets_at, usage.seven_day_resets_at]
+        .into_iter()
+        .flatten()
+    {
+        assert!(
+            (1_600_000_000..10_000_000_000).contains(&at),
+            "{at} does not look like a unix time in seconds"
+        );
     }
 
     eprintln!(

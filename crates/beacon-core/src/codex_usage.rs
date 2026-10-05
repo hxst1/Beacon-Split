@@ -64,6 +64,36 @@ impl CodexUsage {
     }
 }
 
+impl CodexUsage {
+    /// The same numbers in the shape the rest of Beacon speaks.
+    ///
+    /// `session_id` is whatever Codex calls the conversation, when a hook has
+    /// said; it is carried so a report can be matched to a workstream, exactly
+    /// as the status line's is. Everything Claude Code's status line says and
+    /// Codex does not — the model, its effort, the prompt cache — stays
+    /// unknown rather than being filled in with a plausible value.
+    pub fn into_report(
+        self,
+        project: crate::domain::ProjectId,
+        session_id: Option<String>,
+    ) -> crate::protocol::UsageReport {
+        let context_used_percentage = self.context_used_percentage();
+        crate::protocol::UsageReport {
+            agent: crate::agent::AgentKind::Codex,
+            session_id,
+            context_used_percentage,
+            context_remaining_percentage: context_used_percentage.map(|used| 100.0 - used),
+            context_used_tokens: self.context_used_tokens,
+            context_size: self.context_size,
+            five_hour_used_percentage: self.five_hour_used_percentage,
+            five_hour_resets_at: self.five_hour_resets_at,
+            seven_day_used_percentage: self.seven_day_used_percentage,
+            seven_day_resets_at: self.seven_day_resets_at,
+            ..crate::protocol::UsageReport::unknown(project)
+        }
+    }
+}
+
 /// Where Codex keeps its configuration and its sessions.
 ///
 /// `CODEX_HOME` first, because that is what Beacon sets when it wants Codex
@@ -90,6 +120,50 @@ pub fn rollout_for(home: &Path, session: &str) -> Option<PathBuf> {
             .into_iter()
             .find(|path| path.to_string_lossy().ends_with(&wanted))
     })
+}
+
+/// The newest rollout started in a directory.
+///
+/// For a Codex nobody has asked to report. Beacon starts it in the project's
+/// own checkout and Codex writes that directory into the first line of the
+/// rollout, so the conversation can be found without a hook having said which
+/// one it is. The newest is taken, which is the one Beacon just started unless
+/// somebody is running two Codexes in the same folder — and then it is the one
+/// they started last, which is the better guess of the two.
+///
+/// Compared with both sides resolved: on macOS a project under `/var` is
+/// written by Codex as `/private/var`, and the two never match as text.
+pub fn rollout_in(home: &Path, cwd: &Path) -> Option<PathBuf> {
+    let wanted = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    days(&home.join("sessions")).into_iter().find_map(|day| {
+        read_dir_sorted(&day)
+            .into_iter()
+            .find(|path| started_in(path, &wanted))
+    })
+}
+
+/// Whether a rollout says it was started in this directory.
+///
+/// Only the first line is read. `session_meta` is written before anything
+/// else, so a whole transcript never has to be opened to answer this.
+fn started_in(rollout: &Path, wanted: &Path) -> bool {
+    use std::io::{BufRead, BufReader};
+
+    let Ok(file) = std::fs::File::open(rollout) else {
+        return false;
+    };
+    let mut first = String::new();
+    if BufReader::new(file).read_line(&mut first).is_err() {
+        return false;
+    }
+    let Ok(record) = serde_json::from_str::<Value>(&first) else {
+        return false;
+    };
+    let Some(cwd) = record["payload"]["cwd"].as_str() else {
+        return false;
+    };
+    let cwd = PathBuf::from(cwd);
+    cwd.canonicalize().as_deref().unwrap_or(&cwd) == wanted
 }
 
 /// The last thing a rollout said about what the conversation had spent.
@@ -329,6 +403,72 @@ mod tests {
 
         assert_eq!(rollout_for(home.path(), "01a0f728-667c"), Some(wanted));
         assert_eq!(rollout_for(home.path(), "never-happened"), None);
+    }
+
+    #[test]
+    fn finds_the_newest_conversation_started_in_a_directory() {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let sessions = home.path().join("sessions");
+
+        let meta = |at: &Path| {
+            serde_json::json!({
+                "type": "session_meta",
+                "payload": { "cwd": at.to_string_lossy() }
+            })
+            .to_string()
+        };
+
+        rollout(
+            &sessions.join("2026/10/05"),
+            "rollout-2026-10-05T07-00-00-older.jsonl",
+            &[meta(project.path()), event(1, 100, 1.0, 1.0)],
+        );
+        let newest = rollout(
+            &sessions.join("2026/10/05"),
+            "rollout-2026-10-05T09-00-00-newer.jsonl",
+            &[meta(project.path()), event(2, 100, 1.0, 1.0)],
+        );
+        rollout(
+            &sessions.join("2026/10/05"),
+            "rollout-2026-10-05T23-00-00-somewhere-else.jsonl",
+            &[meta(elsewhere.path()), event(3, 100, 1.0, 1.0)],
+        );
+
+        assert_eq!(rollout_in(home.path(), project.path()), Some(newest));
+
+        // A directory Codex has never been started in.
+        let unknown = tempfile::tempdir().unwrap();
+        assert_eq!(rollout_in(home.path(), unknown.path()), None);
+    }
+
+    #[test]
+    fn a_report_says_which_agent_it_is_about_and_leaves_the_rest_unknown() {
+        let usage = CodexUsage {
+            context_used_tokens: Some(25_840),
+            context_size: Some(258_400),
+            five_hour_used_percentage: Some(41.0),
+            five_hour_resets_at: Some(1_790_876_384),
+            seven_day_used_percentage: Some(94.0),
+            seven_day_resets_at: Some(1_791_114_078),
+        };
+
+        let report = usage.into_report(crate::domain::ProjectId("pj_x".into()), Some("abc".into()));
+
+        assert_eq!(report.agent, crate::agent::AgentKind::Codex);
+        assert_eq!(report.session_id.as_deref(), Some("abc"));
+        assert_eq!(report.context_used_percentage, Some(10.0));
+        assert_eq!(report.context_remaining_percentage, Some(90.0));
+        assert_eq!(report.context_used_tokens, Some(25_840));
+        assert_eq!(report.five_hour_used_percentage, Some(41.0));
+        assert_eq!(report.seven_day_resets_at, Some(1_791_114_078));
+
+        // What Claude Code's status line says and Codex does not is left
+        // unknown rather than filled in with something plausible.
+        assert_eq!(report.model, None);
+        assert_eq!(report.effort, None);
+        assert_eq!(report.prompt_cache, None);
     }
 
     #[test]
