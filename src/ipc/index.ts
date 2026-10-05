@@ -28,6 +28,7 @@ import type {
   GitStatus,
   EnvEntry,
   FileRead,
+  ProjectFiles,
   WriteOutcome,
   HostPlatform,
   LayoutNode,
@@ -338,9 +339,14 @@ export const ipc = {
   revealPath: (workspaceId: string, projectId: string, path: string) =>
     invoke<void>('reveal_path', { workspaceId, projectId, path }),
 
-  /** Listed on demand: a stale file list is worse than a fresh read. */
+  /**
+   * Listed on demand: a stale file list is worse than a fresh read.
+   *
+   * `truncated` says the project has more files than Beacon lists, which is
+   * the difference between "no such file" and "not in the part I looked at".
+   */
   listProjectFiles: (workspaceId: string, projectId: string) =>
-    invoke<string[]>('list_project_files', { workspaceId, projectId }),
+    invoke<ProjectFiles>('list_project_files', { workspaceId, projectId }),
 
   /** Read fresh every time; values are never cached on this side either. */
   readEnvFile: (workspaceId: string, projectId: string, path: string) =>

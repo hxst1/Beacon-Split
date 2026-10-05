@@ -1,6 +1,6 @@
 use beacon_core::domain::{ProjectId, WorkspaceId};
 use beacon_core::dotenv::{self, EnvEntry};
-use beacon_core::files::{self, DirEntry, FileContents, FileRead, WriteOutcome};
+use beacon_core::files::{self, DirEntry, FileContents, FileRead, ProjectFiles, WriteOutcome};
 use tauri::State;
 
 use super::run_off_thread;
@@ -171,7 +171,7 @@ pub async fn list_project_files(
     state: State<'_, AppState>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
-) -> CommandResult<Vec<String>> {
+) -> CommandResult<ProjectFiles> {
     let root = project_root!(state, workspace_id, project_id);
     run_off_thread(move || files::list_project_files(&root)).await
 }

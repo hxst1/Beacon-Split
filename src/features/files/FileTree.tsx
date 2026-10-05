@@ -333,7 +333,15 @@ export function FileTree({
             hits={hits}
             active={activeHit}
             status={
-              projectFiles.error ?? (projectFiles.files === null ? 'Reading the project…' : 'No matches')
+              projectFiles.error ??
+              (projectFiles.files === null
+                ? 'Reading the project…'
+                : // Where the listing stopped, say so. "No matches" on a
+                  // project Beacon only read part of sends somebody looking
+                  // for a file that is right there.
+                  projectFiles.truncated
+                  ? `No matches in the first ${projectFiles.files.length.toLocaleString()} files, which is as many as Beacon lists`
+                  : 'No matches')
             }
             onHover={setHitIndex}
             onChoose={chooseHit}
@@ -473,28 +481,36 @@ function Row({
  * panel is open, and a search that cannot find the file Claude just wrote is
  * worse than the moment it takes to list them.
  */
+interface ProjectListing {
+  files: string[] | null
+  /** Whether the project has more files than Beacon lists. */
+  truncated: boolean
+  error: string | null
+}
+
 function useProjectFiles(
   workspaceId: string,
   projectId: string,
   wanted: boolean,
-): { files: string[] | null; error: string | null } {
-  const [state, setState] = useState<{ files: string[] | null; error: string | null }>({
+): ProjectListing {
+  const [state, setState] = useState<ProjectListing>({
     files: null,
+    truncated: false,
     error: null,
   })
 
   useEffect(() => {
-    setState({ files: null, error: null })
+    setState({ files: null, truncated: false, error: null })
     if (!wanted) return
     let cancelled = false
 
     ipc
       .listProjectFiles(workspaceId, projectId)
-      .then((files) => {
-        if (!cancelled) setState({ files, error: null })
+      .then((listed) => {
+        if (!cancelled) setState({ files: listed.files, truncated: listed.truncated, error: null })
       })
       .catch((err: unknown) => {
-        if (!cancelled) setState({ files: null, error: errorMessage(err) })
+        if (!cancelled) setState({ files: null, truncated: false, error: errorMessage(err) })
       })
 
     return () => {
