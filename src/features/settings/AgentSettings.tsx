@@ -258,16 +258,18 @@ export function CodexSettings(): React.ReactElement {
   return (
     <>
       <section className={styles['section']}>
-        <h2 className={styles['sectionTitle']}>What Codex is doing</h2>
+        <h2 className={styles['sectionTitle']}>What Codex reports</h2>
         <p className={styles['sectionNote']}>
-          The same thing the Claude Code hooks do, for the other agent: a tab that can say whether
-          Codex is working, has finished, or has stopped and is waiting for an answer.
+          With this installed, a project's tab says what Codex is doing while you are looking at
+          something else: working, finished, or stopped and waiting for an answer. Codex itself
+          runs exactly as it does in your own terminal either way — this only asks it to say when
+          a turn starts, when it wants permission and when it ends.
         </p>
 
         {missing ? (
           <p className={styles['sectionNote']}>
-            Codex is not installed on this machine. Requirements has the commands for it; a Codex
-            panel works as a plain terminal until then.
+            Codex is not installed on this machine. Requirements has the command that installs it.
+            Until then a Codex panel is a plain terminal and there is nothing here to set up.
           </p>
         ) : (
           <>

@@ -4,7 +4,7 @@ import { selectActiveWorkspace, selectHidden, useBeacon } from '@/app/store'
 import { errorMessage, ipc } from '@/ipc'
 import { ACCENT_PRESETS } from '@/lib/accent'
 import { applyAppearance } from '@/lib/appearance'
-import { PANEL_LABELS } from '@/lib/layout'
+import { PANEL_LABELS, prune } from '@/lib/layout'
 import type { Appearance, LayoutNode, LayoutPreset, PanelId, Theme } from '@/types/beacon'
 import { LayoutThumb } from './LayoutThumb'
 import styles from './SettingsScreen.module.css'
@@ -206,6 +206,7 @@ const TOGGLEABLE: PanelId[] = (Object.keys(PANEL_LABELS) as PanelId[]).sort()
 function ArrangementSection(): React.ReactElement {
   const current = useBeacon((s) => s.snapshot?.preset)
   const setPreset = useBeacon((s) => s.setPreset)
+  const hidden = useBeacon(selectHidden)
   const [presets, setPresets] = useState<Array<{ preset: LayoutPreset; layout: LayoutNode }>>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -228,8 +229,9 @@ function ArrangementSection(): React.ReactElement {
     <section className={styles['section']}>
       <h2 className={styles['sectionTitle']}>Arrangement</h2>
       <p className={styles['sectionNote']}>
-        Each preview is drawn from the layout it would apply, so what you see is what you get.
-        Dragging a splitter keeps the preset; the sizes are yours from then on.
+        Each preview is drawn from the layout it would apply, with the panels you have put away
+        left out — so what you see is what you get. Dragging a splitter keeps the preset; the
+        sizes are yours from then on.
       </p>
 
       {error ? (
@@ -244,7 +246,11 @@ function ArrangementSection(): React.ReactElement {
               data-selected={preset === current}
               onClick={() => void setPreset(preset)}
             >
-              <LayoutThumb node={layout} />
+              {/* Pruned, or the preview would promise a window nobody has: every
+                  preset holds all six panels, and Codex and the editor start
+                  put away, so an untouched install was shown two agents side
+                  by side and given one big one. */}
+              <LayoutThumb node={prune(layout, hidden) ?? layout} />
               {PRESET_LABELS[preset]}
             </button>
           ))}

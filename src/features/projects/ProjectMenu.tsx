@@ -29,6 +29,9 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
   const revealProject = useBeacon((s) => s.revealProject)
   const stopProject = useBeacon((s) => s.stopProject)
   const restartSession = useBeacon((s) => s.restartSession)
+  // Offered only where it can work. A menu item that restarts a program this
+  // machine has not got is an item that reports an error for a living.
+  const codexInstalled = useBeacon((s) => !s.missing.some((entry) => entry.id === 'codex'))
 
   if (renaming) {
     return (
@@ -52,16 +55,18 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
       <MenuHeading>{project.displayPath}</MenuHeading>
 
       <MenuItem label="Rename…" onSelect={() => setRenaming(true)} />
+      {/* One line each. This is a menu beside a tab, and a paragraph here made
+          it as wide as the window it was supposed to be a corner of — the
+          reason for the setting belongs in Settings, where there is room to
+          give it. */}
       <MenuItem
         label={
-          project.agentWorktrees
-            ? 'Agents share this checkout'
-            : 'Give each agent its own checkout'
+          project.agentWorktrees ? 'Share this checkout again' : 'Give each agent its own checkout'
         }
         hint={
           project.agentWorktrees
-            ? 'Agents work in git worktrees of their own. Turning this off leaves those checkouts where they are — they may hold work nobody has merged.'
-            : 'Two agents editing the same files means the second one to save wins. Each gets a git worktree instead, and this directory stays yours.'
+            ? 'Their worktrees are left where they are.'
+            : 'Otherwise the second one to save wins.'
         }
         onSelect={() => {
           void setAgentWorktrees(project.id, !project.agentWorktrees)
@@ -109,6 +114,15 @@ export function ProjectMenu({ project, onDone }: ProjectMenuProps): React.ReactE
           onDone()
         }}
       />
+      {codexInstalled ? (
+        <MenuItem
+          label="Restart Codex"
+          onSelect={() => {
+            void restartSession(project.id, 'codex')
+            onDone()
+          }}
+        />
+      ) : null}
       <MenuItem
         label="Restart terminal"
         onSelect={() => {

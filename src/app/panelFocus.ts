@@ -1,11 +1,27 @@
 import { create } from 'zustand'
 
-import type { PanelId } from '@/types/beacon'
+import { AGENT_PANELS } from '@/lib/layout'
+import type { AgentKind, PanelId } from '@/types/beacon'
 
 interface PanelFocusState {
   /** The panel the keyboard is in, or null when focus is elsewhere. */
   focused: PanelId | null
+  /**
+   * The agent panel the keyboard was in last.
+   *
+   * Kept after focus leaves, which is the whole point: clicking into the git
+   * panel to read a diff should not stop that diff being the agent's. It is
+   * the nearest thing to "the agent you are working in" that does not need
+   * anybody to declare it.
+   */
+  lastAgent: AgentKind | null
   set: (panel: PanelId | null) => void
+}
+
+function agentOf(panel: PanelId | null): AgentKind | null {
+  return panel !== null && (AGENT_PANELS as readonly PanelId[]).includes(panel)
+    ? (panel as AgentKind)
+    : null
 }
 
 /**
@@ -19,8 +35,14 @@ interface PanelFocusState {
  */
 export const usePanelFocus = create<PanelFocusState>((set) => ({
   focused: null,
+  lastAgent: null,
   // Guarded so a focus move inside the same panel is not a state change.
-  set: (panel) => set((state) => (state.focused === panel ? state : { focused: panel })),
+  set: (panel) =>
+    set((state) => {
+      if (state.focused === panel) return state
+      const agent = agentOf(panel)
+      return { focused: panel, lastAgent: agent ?? state.lastAgent }
+    }),
 }))
 
 /**
