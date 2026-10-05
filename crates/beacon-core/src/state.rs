@@ -65,6 +65,8 @@ pub struct Snapshot {
     pub unseen_releases: Vec<crate::releases::Release>,
     /// Whether a new version announces itself, rather than waiting to be asked.
     pub release_notices: bool,
+    /// Whether the welcome guide has been through. False only on a fresh install.
+    pub welcomed: bool,
     /// Whether the file tree lists dotfiles.
     pub show_hidden_files: bool,
     /// Whether Beacon offers its own subagents to the sessions it starts.
@@ -108,6 +110,14 @@ impl Beacon {
             workspaces.schema_version,
             WorkspacesFile::SCHEMA_VERSION,
         )?;
+
+        // Settings are only written once one changes, so somebody who has used
+        // Beacon for months without changing any has workspaces and no
+        // settings file — and is not new, whatever the defaults say.
+        let mut settings = settings;
+        if !settings_store.path().exists() && !workspaces.workspaces.is_empty() {
+            settings.welcomed = true;
+        }
 
         // The UI document is read through its own loader: its shape depends on
         // the stored schema version, and an old one is migrated rather than
@@ -204,6 +214,7 @@ impl Beacon {
             unseen_releases: crate::releases::unseen(self.settings.last_seen_version.as_deref())
                 .unwrap_or_default(),
             release_notices: self.settings.release_notices,
+            welcomed: self.settings.welcomed,
             show_hidden_files: self.settings.show_hidden_files,
             claude_agents: self.settings.claude_agents,
             projects_home: home.to_string_lossy().into_owned(),
@@ -643,6 +654,13 @@ impl Beacon {
     /// Whether a new version announces itself on start.
     pub fn set_release_notices(&mut self, enabled: bool) -> Result<()> {
         self.settings.release_notices = enabled;
+        self.save_settings()
+    }
+
+    /// Records that the welcome guide has been through, so it does not open on
+    /// its own again. It can still be asked for.
+    pub fn mark_welcomed(&mut self) -> Result<()> {
+        self.settings.welcomed = true;
         self.save_settings()
     }
 

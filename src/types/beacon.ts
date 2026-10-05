@@ -105,6 +105,8 @@ export interface Snapshot {
   unseenReleases: Release[]
   /** Whether a new version announces itself, rather than waiting to be asked. */
   releaseNotices: boolean
+  /** Whether the welcome guide has been through. False only on a fresh install. */
+  welcomed: boolean
   /** Whether the file tree lists dotfiles. */
   showHiddenFiles: boolean
   /** Whether Beacon offers its own subagents to the sessions it starts. */

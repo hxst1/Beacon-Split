@@ -78,6 +78,7 @@ pub fn run() {
             commands::open_notification_settings,
             commands::mark_releases_seen,
             commands::set_release_notices,
+            commands::mark_welcomed,
             commands::set_show_hidden_files,
             commands::release_notes,
             commands::set_active_project,

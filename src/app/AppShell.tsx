@@ -1,9 +1,12 @@
+import { useEffect } from 'react'
+
 import { ClipDrawer } from '@/features/clips/ClipDrawer'
 import { UnsavedOnQuit } from '@/features/editor/UnsavedOnQuit'
 import { NotificationPrompt } from '@/features/notifications/NotificationPrompt'
 import { CommandPalette } from '@/features/palette/CommandPalette'
 import { QuickOpen } from '@/features/palette/QuickOpen'
 import { SettingsScreen } from '@/features/settings/SettingsScreen'
+import { WelcomeGuide } from '@/features/welcome/WelcomeGuide'
 import { AccentFrame } from './AccentFrame'
 import { StatusBar } from './StatusBar'
 import { TitleBar } from './TitleBar'
@@ -19,6 +22,13 @@ export function AppShell(): React.ReactElement {
   const setOverlay = useBeacon((s) => s.setOverlay)
   const close = (): void => setOverlay(null)
 
+  // A fresh install opens on the welcome guide, once the first workspace
+  // exists and there is a window to walk round.
+  const welcomed = useBeacon((s) => s.snapshot?.welcomed ?? true)
+  useEffect(() => {
+    if (!welcomed) setOverlay('welcome')
+  }, [welcomed, setOverlay])
+
   return (
     <div className={styles['shell']}>
       <AccentFrame />
@@ -31,8 +41,9 @@ export function AppShell(): React.ReactElement {
       <ClipDrawer />
 
       {/* Asks for the macOS notification permission, once, and only while
-          macOS has never been asked. */}
-      <NotificationPrompt />
+          macOS has never been asked — after the welcome guide, on a first run,
+          rather than on top of it. */}
+      <NotificationPrompt held={overlay === 'welcome'} />
 
       {/* Quitting is the one action that can throw away work which exists
           nowhere else, so it is the one action Beacon asks about. */}
@@ -41,6 +52,7 @@ export function AppShell(): React.ReactElement {
       {overlay === 'palette' ? <CommandPalette onClose={close} /> : null}
       {overlay === 'quickOpen' ? <QuickOpen onClose={close} /> : null}
       {overlay === 'settings' ? <SettingsScreen onClose={close} /> : null}
+      {overlay === 'welcome' ? <WelcomeGuide onClose={close} /> : null}
     </div>
   )
 }
