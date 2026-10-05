@@ -101,18 +101,41 @@ export function startUsageTracking(): () => void {
 }
 
 /**
+ * How far apart two reset times, in seconds, can be and still be the same
+ * five-hour window. Claude Code reports a fixed time, but nothing promises it
+ * to the second.
+ */
+const SAME_WINDOW_S = 60
+
+/**
  * The rate limits, which belong to the account rather than to a project.
  *
  * Every session sees the same allowance, so the one to believe is whichever
- * heard about it last — by when its limits were new, not by which session
- * spoke last. An idle session repeating its old numbers speaks often, and in a
- * project with two sessions it is that project's last report as often as not;
- * so the limits are kept apart, and only newer ones replace them.
+ * heard about it last — not whichever session spoke last. An idle session
+ * repeating its old numbers speaks often, and in a project with two sessions it
+ * is that project's last report as often as not; so the limits are kept apart,
+ * and only newer ones replace them.
+ *
+ * The numbers are asked before the dates, because they cannot be wrong about
+ * their own order the way a date can: a window that resets later is a later
+ * window, and within one window the share used only goes up, so the lower
+ * figure is the older one. Only when both say the same is it down to when they
+ * were new. `has_newer_limits_than` in beacon-core decides the same way.
  */
 export function newerLimits(current: Reported | null, incoming: Reported): Reported | null {
-  if (incoming.report.fiveHourUsedPercentage === undefined) return current
-  if (current === null || incoming.limitsAt >= current.limitsAt) return incoming
-  return current
+  const used = incoming.report.fiveHourUsedPercentage
+  if (used === undefined) return current
+  if (current === null) return incoming
+  const theirs = current.report.fiveHourUsedPercentage
+  if (theirs === undefined) return incoming
+
+  const mine = incoming.report.fiveHourResetsAt
+  const theirReset = current.report.fiveHourResetsAt
+  if (mine !== undefined && theirReset !== undefined) {
+    if (Math.abs(mine - theirReset) > SAME_WINDOW_S) return mine > theirReset ? incoming : current
+    if (used !== theirs) return used > theirs ? incoming : current
+  }
+  return incoming.limitsAt >= current.limitsAt ? incoming : current
 }
 
 export function useAccountUsage(): Reported | null {
@@ -121,6 +144,24 @@ export function useAccountUsage(): Reported | null {
 
 export function useProjectUsage(project: string): Reported | null {
   return useUsage((state) => state.byProject[project] ?? null)
+}
+
+/**
+ * Which of the meter's two numbers are too old to read as current.
+ *
+ * The allowance is as old as the response that brought it — whichever project
+ * that was — and the context is the project's own, so one being old says
+ * nothing about the other. `all` is when everything the meter shows is old,
+ * which is when the meter as a whole dims.
+ */
+export function staleness(
+  account: Reported | null,
+  project: Reported | null,
+  now: number,
+): { limits: boolean; context: boolean; all: boolean } {
+  const limits = account !== null && isStale(account.limitsAt, now)
+  const context = project !== null && isStale(project.at, now)
+  return { limits, context, all: (account === null || limits) && (project === null || context) }
 }
 
 /** Whether something said at `at` is old enough not to be read as current. */

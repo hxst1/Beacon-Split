@@ -724,6 +724,10 @@ confidently.
 intended trade. Old numbers are shown greyed rather than hidden — what they said
 is still worth something, as long as it does not claim to be current.
 
+**Amended in part by [ADR-086](#adr-086-the-allowance-is-dated-by-when-it-was-new).**
+A usage report now carries two dates, set by the daemon, and the allowance and
+the context are dimmed apart.
+
 ## ADR-039: Modules do not subscribe on import
 
 **Context.** The usage store called `watchActivity` at module scope, so
@@ -1848,3 +1852,51 @@ with Codex and the editor away as Beacon starts them, and nine with every panel
 open. What the guide says about a screen is still words that can fall behind
 it; only what it points at and what its switches do are held in place by code. The macOS notification permission waits until the guide closes,
 rather than opening a second prompt on top of it.
+
+## ADR-086: The allowance is dated by when it was new
+
+Amends [ADR-038](#adr-038-a-report-is-a-fact-with-a-date-on-it).
+
+**Context.** ADR-038 dated a report by when the window heard it. Two things made
+that wrong for the five-hour allowance. Claude Code runs the status line again
+for things that bring no news — a session resumed, the permission mode
+changed, an idle session's cache expiring — and repeats the limits from its last
+response each time, so an old figure kept arriving looking new. And the daemon
+replays what it holds to a window that opens, so opening Beacon made the
+morning's figure current again. The account's limits were also taken from
+whichever project spoke last, so an idle session repeating 67% could replace a
+working one's 92%.
+
+**Decision.**
+
+- The daemon dates a report on arrival (`reportedAt`), not the window.
+- It also dates the limits by when they were first seen (`limitsSeenAt`), and
+  keeps that date while the conversation's API time
+  (`cost.total_api_duration_ms`) stays where it was.
+- The account's limits are kept apart from each project's last report — in
+  the daemon and in the window — and replaced only by newer ones. Newer is
+  decided by the numbers first: a window that resets later is later, and within
+  one window the higher share used is the later. The dates decide only when the
+  numbers say the same.
+- The allowance and a project's context are dimmed apart: the meter as a whole
+  dims only when everything on it is old.
+- Past the window's reset time the meter says so, rather than show the share of
+  a window that is over.
+
+**Why.** A date is only as good as what it is taken from. The numbers carry
+their own order, which a date can get wrong in two cases: right after the
+daemon starts, when it has nothing to compare a conversation with and dates
+everything on arrival, and if the API time ever moved after the limits did.
+
+**Consequence.** Two assumptions about Claude Code are written into it, and
+neither is something it promises:
+
+1. The API time grows with each response, and only then. If it ever grew after
+   the limits came, new limits would keep the old date. The numbers coming
+   first is the guard.
+2. Within one five-hour window the share used only goes up. Were that wrong,
+   the higher figure is still the safer one to show.
+
+What the daemon keeps per conversation lives in memory and is gone when it
+restarts. A reset time within a minute of another counts as the same window.
+
