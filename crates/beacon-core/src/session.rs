@@ -263,7 +263,40 @@ pub(crate) const STRIPPED_ENV: &[&str] = &[
     "CLAUDE_CODE_MESSAGING_TOKEN",
     "CLAUDE_EFFORT",
     "CLAUDE_PID",
+    // The same, as Claude Code's desktop app hands them to every command it
+    // runs: who is signed in to it, its own session and its switches. Leaving
+    // them in told the Claude Beacon starts that a host was refreshing its
+    // sign-in for it, among other things that are not true.
+    "CLAUDE_CODE_HOST_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
+    "CLAUDE_CODE_OAUTH_SCOPES",
+    "CLAUDE_CODE_ACCOUNT_UUID",
+    "CLAUDE_CODE_ORGANIZATION_UUID",
+    "CLAUDE_CODE_USER_EMAIL",
+    "CLAUDE_CODE_DESKTOP_APP_VERSION",
+    "CLAUDE_AGENT_SDK_VERSION",
+    "CLAUDE_CODE_EAGER_FLUSH",
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
+    "CLAUDE_CODE_DISABLE_CRON",
+    "CLAUDE_CODE_TERMINAL_MCP_TOOLS",
+    "CLAUDE_CODE_REPORT_FINDINGS",
+    "CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES",
+    "CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL",
+    "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
+    "CLAUDE_PREVIEW_CLASSIFIER_FLOOR",
 ];
+
+/// What a Claude Code parent sets for the commands it runs, and only then.
+///
+/// Claude Code sets `NO_COLOR` for its own tools, whose output it reads rather
+/// than shows. A Beacon started from one of them — `pnpm app:dev` in a
+/// session, which is how Beacon is usually worked on — handed it to every
+/// session, and Claude Code then drew itself without colour: the mascot white
+/// instead of orange, every highlight gone. `NO_COLOR` set by the user is a
+/// preference and is passed through like any other; it is only dropped when
+/// `CLAUDECODE` says the launcher was a Claude Code tool.
+pub(crate) const LEFT_BY_A_CLAUDE_CODE_PARENT: &[&str] = &["NO_COLOR"];
 
 /// Writes the MCP configuration Claude sessions are started with, and returns
 /// where it went.
@@ -324,6 +357,11 @@ fn write_mcp_config(dir: &Path) -> std::io::Result<PathBuf> {
 fn prepare_environment(command: &mut CommandBuilder) {
     for key in STRIPPED_ENV {
         command.env_remove(key);
+    }
+    if std::env::var_os("CLAUDECODE").is_some() {
+        for key in LEFT_BY_A_CLAUDE_CODE_PARENT {
+            command.env_remove(key);
+        }
     }
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("npm_") {
