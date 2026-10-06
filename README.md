@@ -112,6 +112,11 @@ on Windows, the window has no system title bar: Beacon draws its own minimise,
 maximise and close buttons at the top right. Translucency needs a compositor;
 without one the window is simply opaque.
 
+The notification sounds go through the webview, which on Linux plays audio
+through GStreamer — an optional dependency of `webkit2gtk` that distributions
+do not install by default. Without `gst-plugins-good` the sounds are silent and
+nothing else changes; system notifications are unaffected.
+
 **From source** — see [Building it](#building-it). A build made on the machine
 it runs on is never quarantined.
 
