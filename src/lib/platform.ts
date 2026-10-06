@@ -27,9 +27,22 @@ export function isMac(): boolean {
   return platform === 'macos'
 }
 
-/** Windows, where the window has no system title bar and draws its own controls. */
+/** Windows, which differs from Linux in the terminal and in the pseudo-console. */
 export function isWindows(): boolean {
   return platform === 'windows'
+}
+
+/**
+ * Whether Beacon draws its own minimise, maximise and close buttons.
+ *
+ * Everywhere but macOS, which keeps its traffic lights under an overlay title
+ * bar. Windows has no such overlay, and on Linux a system title bar would sit
+ * above Beacon's own as a second row of chrome — so both windows are
+ * undecorated and the buttons are Beacon's to draw. The capability that allows
+ * them names the same two platforms.
+ */
+export function drawsOwnWindowControls(): boolean {
+  return !isMac()
 }
 
 let windowsBuild: number | null = null

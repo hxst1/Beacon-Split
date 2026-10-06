@@ -221,8 +221,7 @@ billable session by itself.
 
 ## Milestone 9 — Handing it to someone else 🚧
 
-macOS first, and now Windows; Arch Linux is next and has never been built, so
-nothing here claims it works there.
+macOS first, then Windows, and now Linux.
 
 Done:
 
@@ -248,14 +247,29 @@ Done:
   npm's `.cmd` shims are looked through to the program they start. The whole
   test suite runs on Windows, and CI runs it on both platforms
 
+- Linux, x86_64. Less than Windows took, because Windows had already found
+  where the differences live: everything under the UI was portable Rust that
+  already had a unix branch, and it compiled, linted and passed the whole test
+  suite first time. What it needed was its own window configuration —
+  undecorated, with the caption buttons Windows already had, because no two
+  Linux desktops decorate a window the same way (ADR-092) — install commands
+  that name the package manager the machine actually has rather than Homebrew,
+  and the places a Linux installs programs: pnpm's XDG home, and the node
+  versions fnm manages, whose binaries are otherwise only on the PATH of the
+  shell that asked for them. Built and run on Arch under Hyprland: Claude Code
+  and Codex in their panels, files, git, editor and terminal, with the
+  transparency the compositor allows and no frosting, which Linux has no window
+  server API for. The release AppImage is built on Ubuntu in CI, which is where
+  an AppImage belongs (ADR-093), and CI runs the suite on all three platforms
+
 Remaining:
 
 - Signing and notarisation, which needs an Apple Developer membership
 - A universal build; today's is Apple Silicon only
 - Code-signing the Windows installer, so SmartScreen stops warning about it
-- Linux: build it, condition the window configuration by platform — vibrancy and
-  the overlay title bar are macOS-only — and document the system dependencies.
-  Windows already has its own window configuration to follow
+- An aarch64 Linux build; today's AppImage is x86_64 only
+- A native package for Arch — a PKGBUILD — and `.deb` and `.rpm`, none of which
+  the AppImage needs but all of which somebody will want
 
 ## Milestone 10 — Appearance ✅
 

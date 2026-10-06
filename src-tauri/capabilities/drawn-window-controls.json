@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "drawn-window-controls",
+  "description": "Where the window has no system title bar, Beacon draws its own minimise, maximise and close buttons and needs to be allowed to do what they say. That is Windows, which has no overlay title bar to put them under, and Linux, where a system title bar would be a second row of chrome above Beacon's own. macOS keeps its traffic lights and is not here.",
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "linux",
+    "windows"
+  ],
+  "permissions": [
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-close"
+  ]
+}

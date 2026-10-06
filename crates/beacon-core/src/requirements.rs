@@ -169,7 +169,7 @@ fn check_claude() -> Requirement {
                     command: "winget install Anthropic.ClaudeCode",
                 },
             ]
-        } else {
+        } else if cfg!(target_os = "macos") {
             vec![
                 InstallOption {
                     label: "Official installer",
@@ -178,6 +178,19 @@ fn check_claude() -> Requirement {
                 InstallOption {
                     label: "Homebrew",
                     command: "brew install --cask claude-code",
+                },
+            ]
+        } else {
+            // No Homebrew here: a cask is macOS-only, and offering one that
+            // cannot install anything is worse than offering nothing.
+            vec![
+                InstallOption {
+                    label: "Official installer",
+                    command: "curl -fsSL https://claude.ai/install.sh | bash",
+                },
+                InstallOption {
+                    label: "npm",
+                    command: "npm install -g @anthropic-ai/claude-code",
                 },
             ]
         },
@@ -211,16 +224,25 @@ fn check_codex() -> Requirement {
         what_breaks: "Beacon can run Codex beside Claude Code, in its own \
                       conversation. Without it, the Codex panel has nothing to \
                       run — everything else works.",
-        install: vec![
-            InstallOption {
+        install: if cfg!(target_os = "macos") {
+            vec![
+                InstallOption {
+                    label: "npm",
+                    command: "npm install -g @openai/codex",
+                },
+                InstallOption {
+                    label: "Homebrew",
+                    command: "brew install --cask codex",
+                },
+            ]
+        } else {
+            // Windows and Linux both get it from npm; the Homebrew cask is
+            // macOS-only.
+            vec![InstallOption {
                 label: "npm",
                 command: "npm install -g @openai/codex",
-            },
-            InstallOption {
-                label: "Homebrew",
-                command: "brew install --cask codex",
-            },
-        ],
+            }]
+        },
         note: Some(
             "Codex needs a ChatGPT plan or an API key. After installing, run \
              `codex` once in a terminal to sign in — Beacon does not handle \
@@ -250,7 +272,7 @@ fn check_git() -> Requirement {
                 label: "Git for Windows (WinGet)",
                 command: "winget install --id Git.Git -e --source winget",
             }]
-        } else {
+        } else if cfg!(target_os = "macos") {
             vec![
                 InstallOption {
                     label: "Apple command line tools",
@@ -261,15 +283,100 @@ fn check_git() -> Requirement {
                     command: "brew install git",
                 },
             ]
+        } else {
+            package_manager_install()
         },
         note: Some(if cfg!(windows) {
             "Git for Windows also brings Git Bash, which Claude Code prefers \
              for running commands and hooks when it is there."
-        } else {
+        } else if cfg!(target_os = "macos") {
             "The Apple tools are the smaller install and enough for everything \
              Beacon does with git."
+        } else {
+            "Your distribution's own git is the right one; Beacon only runs it."
         }),
     }
+}
+
+/// How to install git, by the package manager this machine actually has.
+///
+/// Every distribution spells it differently, and a copyable command that does
+/// not run is worse than none — somebody follows it, is told
+/// `pacman: command not found`, and now has two problems. So the one that is
+/// here is the one offered.
+///
+/// Looked for on the filesystem rather than through [`resolve_program`]: that
+/// asks a login shell, which costs a subprocess per lookup, and a package
+/// manager is at a known place or nowhere. When none of them is recognised —
+/// a distribution we have not heard of, or an immutable one — all of them are
+/// offered, because a panel that says a program is missing and nothing about
+/// getting it leaves the reader exactly as stuck.
+fn package_manager_install() -> Vec<InstallOption> {
+    const MANAGERS: &[(&str, InstallOption)] = &[
+        (
+            "pacman",
+            InstallOption {
+                label: "pacman",
+                command: "sudo pacman -S --needed git",
+            },
+        ),
+        (
+            "apt",
+            InstallOption {
+                label: "apt",
+                command: "sudo apt install git",
+            },
+        ),
+        (
+            "dnf",
+            InstallOption {
+                label: "dnf",
+                command: "sudo dnf install git",
+            },
+        ),
+        (
+            "zypper",
+            InstallOption {
+                label: "zypper",
+                command: "sudo zypper install git",
+            },
+        ),
+        (
+            "apk",
+            InstallOption {
+                label: "apk",
+                command: "sudo apk add git",
+            },
+        ),
+    ];
+
+    let here: Vec<InstallOption> = MANAGERS
+        .iter()
+        .filter(|(program, _)| on_the_system(program))
+        .map(|(_, option)| option.clone())
+        .collect();
+
+    if here.is_empty() {
+        return MANAGERS.iter().map(|(_, option)| option.clone()).collect();
+    }
+    here
+}
+
+/// Whether a program sits in one of the directories a system program lives in.
+///
+/// The PATH as well, because an immutable distribution puts its manager
+/// somewhere of its own and says so there.
+fn on_the_system(program: &str) -> bool {
+    let standard = ["/usr/bin", "/usr/sbin", "/bin", "/sbin", "/usr/local/bin"]
+        .iter()
+        .map(std::path::PathBuf::from);
+    let on_path = std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    standard
+        .chain(on_path)
+        .any(|dir| dir.join(program).is_file())
 }
 
 /// Asks a program its version, briefly.
@@ -301,6 +408,29 @@ pub fn daemon_present(binary: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The whole point of looking: a command nobody here can run is not help.
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn git_is_offered_through_a_package_manager_this_machine_has() {
+        for option in package_manager_install() {
+            assert!(
+                on_the_system(option.label),
+                "offered {}, which is not on this machine",
+                option.label
+            );
+        }
+    }
+
+    /// Only when nothing was recognised, and then it is a list to read rather
+    /// than a command to run.
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn a_distribution_we_do_not_know_is_still_told_something() {
+        // Every entry names its own program, so an unknown machine falling
+        // back to all of them cannot produce an empty panel.
+        assert!(!package_manager_install().is_empty());
+    }
 
     #[test]
     fn a_state_is_worked_out_from_what_was_already_asked() {

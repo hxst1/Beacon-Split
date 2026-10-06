@@ -19,6 +19,16 @@ pub fn run() -> ! {
 }
 
 fn report() -> Option<()> {
+    // Read before deciding whether there is anywhere to send it. Exiting
+    // without draining stdin leaves whoever was writing to it holding a pipe
+    // with no reader, and on Linux that write loses the race often enough to
+    // fail outright — which is exactly the case this hook is quietest in, a
+    // Claude started outside Beacon. Claude Code must never notice this hook,
+    // and a failed write is noticing. It costs one read of a payload that was
+    // already on its way.
+    let mut payload = String::new();
+    std::io::stdin().read_to_string(&mut payload).ok()?;
+
     let socket = std::env::var("BEACON_SOCKET").ok()?;
     let project = std::env::var("BEACON_PROJECT").ok()?;
     // Absent means the hook was registered before Beacon ran more than one
@@ -29,8 +39,6 @@ fn report() -> Option<()> {
         Err(_) => AgentKind::Claude,
     };
 
-    let mut payload = String::new();
-    std::io::stdin().read_to_string(&mut payload).ok()?;
     let event: serde_json::Value = serde_json::from_str(&payload).ok()?;
 
     // A subagent is not the session, so it does not get a session state.

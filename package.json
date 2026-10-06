@@ -11,7 +11,7 @@
     "tauri": "tauri",
     "daemon:build": "node scripts/free-daemon.mjs && cargo build -p beacon-daemon && node scripts/prepare-daemon.mjs",
     "app:dev": "pnpm daemon:build && tauri dev",
-    "app:build": "node scripts/free-daemon.mjs && cargo build --release -p beacon-daemon && node scripts/prepare-daemon.mjs --release && tauri build",
+    "app:build": "node scripts/free-daemon.mjs && cargo build --release -p beacon-daemon && node scripts/prepare-daemon.mjs --release && node scripts/bundle-app.mjs",
     "rs:check": "cargo check --workspace --all-targets",
     "rs:test": "node scripts/free-daemon.mjs && cargo test --workspace",
     "rs:fmt": "cargo fmt --all -- --check",

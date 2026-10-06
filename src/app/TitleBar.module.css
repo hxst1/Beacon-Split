@@ -103,8 +103,10 @@
   flex: none;
 }
 
-/* Windows' caption buttons sit flush against the right edge, as they do in
-   every application there. */
-:global(:root[data-platform='windows']) .bar {
+/* Where Beacon draws its own caption buttons they sit flush against the right
+   edge, as they do in every Windows application. macOS, whose traffic lights
+   are the system's and sit on the left, keeps the padding. */
+:global(:root[data-platform='windows']) .bar,
+:global(:root[data-platform='linux']) .bar {
   padding-right: 0;
 }
