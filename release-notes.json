@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.9.0",
+    "date": "2026-10-06",
+    "summary": "Beacon runs on Linux, and it can be told to look at your machine again instead of insisting something is missing after you have installed it.",
+    "changes": [
+      "Beacon runs on Linux, as an AppImage. The window draws its own controls, the install commands it offers are the ones your distribution uses, and the session daemon is kept outside the image — an AppImage is mounted somewhere different on every launch, so a daemon named from inside it would be named somewhere that no longer exists by the next time you opened Beacon, and the hooks that tell a tab what its agent is doing would quietly stop working.",
+      "\"Check again\" in Requirements checks again. It did not: everything Beacon had worked out about your machine — where each program was, what your login shell's PATH is, what each agent can do — was worked out once and kept for as long as Beacon ran. So the common way to meet Beacon was to be told Claude Code was missing, install it, come back, and be told the same thing, with a restart as the only way out and nothing to say so.",
+      "A requirement has four answers now rather than two: ready, missing, not answering, or waiting to be signed in. Only the missing one is offered an install command — being told to install something you are looking at is how a program convinces you it is not listening. Whether you are signed in is asked of the agent itself, by the same question you could type; Beacon never touches a credential.",
+      "An install command can be put straight into a terminal here, on its command line, with the keyboard in it. It stops short of pressing Return: running an installer is a decision, and the command is readable and one key away.",
+      "The first-run guide ends on what Beacon actually found — ready, needing a sign-in, missing, or not answering — rather than telling everybody to sign in to something that might not be there.",
+      "The allowance and the context in the status bar grey out separately, so a figure from two hours ago no longer looks as current as one from ten seconds ago. After the session daemon restarts, an allowance whose age Beacon cannot vouch for says so instead of claiming it was just reported. Contributed by jimy-k4."
+    ]
+  },
+  {
     "version": "0.8.0",
     "date": "2026-10-05",
     "summary": "The status bar says what Codex is spending, the git panel follows the agent you are working in, and the files panel searches a project of any size without quietly missing half of it.",
