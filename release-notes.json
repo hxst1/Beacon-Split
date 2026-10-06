@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.9.1",
+    "date": "2026-10-06",
+    "summary": "Click an image in the files panel and you see it, and anything Beacon will not show opens in whatever this machine opens it with.",
+    "changes": [
+      "Clicking an image in the files panel shows it. It used to say \"logo.png is not a text file\", which is true and useless. What counts as an image is read from the file's own first bytes rather than from its name, so a .png that is not one is described instead of drawn as a broken picture, and a screenshot saved without an extension is shown anyway. PNG, JPEG, GIF, BMP, ICO and WebP. An SVG still opens as text, which is the form you are most likely to want to change.",
+      "An image says its dimensions beside its size, which is usually the reason an asset gets opened at all.",
+      "A picture no longer has to fit the editor's limit. That limit is about what is sensible to put in a text editor, and a screenshot of a large display is routinely past it — \"too large to edit here\" about a picture you were never going to edit reads as something broken. Images go to sixteen megabytes.",
+      "Anything Beacon will not show — a PDF, a video, an archive, a picture past even that — offers to open with whatever this machine opens it with. Beacon does not carry viewers of its own: a PDF drawn in the window would work on macOS and Windows and not on Linux, and your machine already has something that opens all of them properly."
+    ]
+  },
+  {
     "version": "0.9.0",
     "date": "2026-10-06",
     "summary": "Beacon runs on Linux, and it can be told to look at your machine again instead of insisting something is missing after you have installed it.",
