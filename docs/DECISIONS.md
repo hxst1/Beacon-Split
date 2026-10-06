@@ -2036,3 +2036,47 @@ folder: the newest wins, which is the one started last. A hook that has said
 the conversation id removes the guess, which is one more reason to install the
 plugin, and none to require it.
 
+## ADR-089: What Beacon worked out about this machine can be forgotten
+
+**Context.** Beacon asks the user's login shell where each program lives,
+because that is the only shell that reads their profile (ADR-017). On an
+ordinary machine that costs well over a second per program, and on a cold one
+far more — nineteen seconds was measured for the first.
+
+Nothing remembered the answer. `resolve_program` said in its own doc comment
+that it was cached and was not, so checking three requirements asked three
+shells, every time. What *was* remembered for the life of the process was each
+agent's capabilities, which meant a Codex installed or upgraded under a running
+Beacon was never noticed.
+
+Between them they produced the failure that costs a new user: Beacon says
+Claude Code is missing, they install it, they come back, and Beacon says it
+again. The button said "Check again" and asked the same cached question. The
+only way out was restarting Beacon, and nothing told them that.
+
+**Decision.** Where a program was found is remembered, and misses are not —
+the same rule the session manager already keeps. A program that was found does
+not move; a program that was missing is precisely the one somebody is about to
+install. Capabilities are remembered the same way, and both, along with the
+login shell's `PATH`, are thrown away by `requirements::recheck()`, which is
+what "Check again" now calls.
+
+**Why.** Remembering a miss would make the screen fast at the cost of making it
+wrong in the one case the screen exists for. Remembering a success costs
+nothing, because the question has a stable answer.
+
+The `PATH` goes with them because an installer that adds a directory writes it
+into a shell profile, and the profile Beacon read was read before that
+happened. That makes the re-check cost a cold start, which is why it is a
+button somebody presses and not what every check does.
+
+**Consequence.** Opening Settings is fast after the first time. Pressing "Check
+again" is slow, visibly — the button says so while it works, and it runs off
+the thread that answers the window. A machine where something is still missing
+pays a shell per missing program on every check, which is the case where the
+answer can change and has to be true.
+
+Capabilities are leaked rather than handed out by value, so that every caller
+can go on taking a `&'static`. One probe is a few hundred bytes and a person
+presses that button a handful of times in the life of a window.
+

@@ -82,9 +82,54 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 /// may be npm's `.cmd` shim rather than a program, and [`launchable`] looks
 /// through that.
 ///
-/// Runs once per program and is cached; it costs one short subprocess.
+/// Asked once per program and then remembered; it costs a shell, and on a
+/// machine with a slow profile that is well over a second each time.
+///
+/// Successes only, which is the same rule the session manager keeps: a program
+/// that was found does not move, but one that was missing is exactly the one
+/// somebody is about to install — and remembering that it was missing would
+/// mean they installed it and Beacon went on saying otherwise. That costs a
+/// shell on every check while something is missing, which is the case where
+/// the answer can still change and has to be true.
+///
+/// [`forget_programs`] clears it, for when somebody says they have installed
+/// something and wants to be looked at again.
 pub fn resolve_program(name: &str) -> Option<PathBuf> {
-    resolve_anywhere(name).map(launchable)
+    if let Some(known) = found_programs()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(name)
+    {
+        return Some(known.clone());
+    }
+
+    let found = resolve_anywhere(name).map(launchable)?;
+    found_programs()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(name.to_string(), found.clone());
+    Some(found)
+}
+
+fn found_programs() -> &'static std::sync::Mutex<std::collections::HashMap<String, PathBuf>> {
+    static FOUND: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, PathBuf>>,
+    > = std::sync::OnceLock::new();
+    FOUND.get_or_init(Default::default)
+}
+
+/// Forgets where every program was, and what the login shell's `PATH` is.
+///
+/// For the one moment it matters: somebody has just installed what Beacon said
+/// was missing and is asking it to look again. The `PATH` goes too, because an
+/// installer that adds a directory writes it into a shell profile, and the
+/// profile Beacon read was read before that happened.
+pub fn forget_programs() {
+    found_programs()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+    forget_login_path();
 }
 
 fn resolve_anywhere(name: &str) -> Option<PathBuf> {
@@ -560,15 +605,31 @@ pub(crate) use crate::session::STRIPPED_ENV;
 /// briefly busy, and the daemon outlives the window, so one missed answer must
 /// not cripple every session for the rest of the day.
 pub fn login_path() -> Option<std::ffi::OsString> {
-    static CACHED: std::sync::Mutex<Option<std::ffi::OsString>> = std::sync::Mutex::new(None);
-
-    if let Some(path) = CACHED.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+    if let Some(path) = cached_login_path()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+    {
         return Some(path);
     }
 
     let asked = ask_shell_path()?;
-    *CACHED.lock().unwrap_or_else(|e| e.into_inner()) = Some(asked.clone());
+    *cached_login_path()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(asked.clone());
     Some(asked)
+}
+
+fn cached_login_path() -> &'static std::sync::Mutex<Option<std::ffi::OsString>> {
+    static CACHED: std::sync::Mutex<Option<std::ffi::OsString>> = std::sync::Mutex::new(None);
+    &CACHED
+}
+
+/// Forgets it, so the next question is put to the shell as it is now.
+fn forget_login_path() {
+    *cached_login_path()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 /// Asks the login shell what its `PATH` is.

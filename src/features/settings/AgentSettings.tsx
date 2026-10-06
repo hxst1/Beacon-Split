@@ -340,17 +340,28 @@ export function RequirementsSettings(): React.ReactElement {
   const [daemon, setDaemon] = useState<boolean | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
 
-  const look = useCallback(() => {
-    setRequirements(null)
-    void Promise.all([ipc.checkRequirements(), ipc.daemonAvailable()]).then(
-      ([found, hasDaemon]) => {
+  const [looking, setLooking] = useState(false)
+
+  // `again` is the difference between the screen opening and somebody pressing
+  // the button: opening uses what Beacon already worked out, and the button
+  // throws it away first. Without that, installing the missing thing and
+  // coming back shows the same answer, and the only way out is a restart
+  // nothing mentions.
+  const look = useCallback((again: boolean) => {
+    setLooking(true)
+    if (again) setRequirements(null)
+    void Promise.all([
+      again ? ipc.recheckRequirements() : ipc.checkRequirements(),
+      ipc.daemonAvailable(),
+    ])
+      .then(([found, hasDaemon]) => {
         setRequirements(found)
         setDaemon(hasDaemon)
-      },
-    )
+      })
+      .finally(() => setLooking(false))
   }, [])
 
-  useEffect(look, [look])
+  useEffect(() => look(false), [look])
 
   const copy = (command: string): void => {
     void navigator.clipboard.writeText(command)
@@ -430,8 +441,17 @@ export function RequirementsSettings(): React.ReactElement {
         ))
       )}
 
-      <button type="button" className={styles['resetAll']} onClick={look}>
-        Check again
+      {/* It said "Check again" and did not: everything it reports was worked
+          out the first time and kept, so somebody who installed the missing
+          thing and pressed this was shown the same answer. Now it forgets
+          first, which is slow and is the point. */}
+      <button
+        type="button"
+        className={styles['resetAll']}
+        disabled={looking}
+        onClick={() => look(true)}
+      >
+        {looking ? 'Looking…' : 'Check again'}
       </button>
     </section>
   )

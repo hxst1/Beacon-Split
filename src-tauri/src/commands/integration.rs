@@ -5,6 +5,7 @@ use beacon_core::codex;
 use beacon_core::codex_plugin::{self, PluginStatus};
 use beacon_core::requirements::{self, Requirement};
 
+use super::run_off_thread;
 use crate::error::CommandResult;
 
 /// What the machine has, and what is missing.
@@ -14,6 +15,18 @@ use crate::error::CommandResult;
 #[tauri::command]
 pub fn check_requirements() -> Vec<Requirement> {
     requirements::check()
+}
+
+/// The same, after forgetting what Beacon had worked out about this machine.
+///
+/// Asked for by name, because it is slow — a shell and a few short processes —
+/// and because the ordinary check has to stay fast enough to open a screen
+/// with. This is the button somebody presses after installing what was
+/// missing, and the whole point of it is that the answer is not the one Beacon
+/// already had.
+#[tauri::command]
+pub async fn recheck_requirements() -> CommandResult<Vec<Requirement>> {
+    run_off_thread(|| Ok(requirements::recheck())).await
 }
 
 /// Whether the session daemon was found where it should be.
