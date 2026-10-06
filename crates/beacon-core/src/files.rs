@@ -11,6 +11,15 @@ use crate::error::{CoreError, Result};
 /// this is better opened somewhere built for it.
 pub const MAX_EDITABLE_BYTES: u64 = 2 * 1024 * 1024;
 
+/// Largest image Beacon will show.
+///
+/// Higher than the editing limit, and for a reason rather than by accident:
+/// that limit is about what is sensible to put in a text editor, and an image
+/// is looked at rather than edited. A screenshot of a large display is
+/// routinely past two megabytes, and "too large to edit here" about a picture
+/// nobody was going to edit is an answer that reads as a malfunction.
+pub const MAX_VIEWABLE_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
+
 /// How much of a file is inspected before deciding it is not text.
 const SNIFF_BYTES: usize = 8 * 1024;
 
@@ -75,6 +84,20 @@ pub enum FileContents {
     },
     #[serde(rename_all = "camelCase")]
     TooLarge { size: u64 },
+}
+
+/// Enough of the start of a file to recognise what it is.
+///
+/// A whole read would defeat the point: this is asked of files that are too
+/// large to want in memory, in order to find the few that are worth it anyway.
+fn first_bytes(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read;
+
+    let mut head = vec![0u8; 16];
+    let mut file = std::fs::File::open(path).ok()?;
+    let read = file.read(&mut head).ok()?;
+    head.truncate(read);
+    Some(head)
 }
 
 /// What kind of image a file's first bytes say it is, if any.
@@ -236,11 +259,18 @@ pub fn read_file(root: &Path, relative: &str) -> Result<FileRead> {
     let size = metadata.len();
     let revision = revision_of(&metadata);
 
-    if size > MAX_EDITABLE_BYTES {
-        return Ok(FileRead {
-            contents: FileContents::TooLarge { size },
-            revision,
-        });
+    // Asked of the first few bytes before the size is judged, because the two
+    // have different ceilings: a picture is looked at, not edited.
+    let large = size > MAX_EDITABLE_BYTES;
+    if large {
+        let worth_reading = first_bytes(&path).as_deref().and_then(image_type).is_some()
+            && size <= MAX_VIEWABLE_IMAGE_BYTES;
+        if !worth_reading {
+            return Ok(FileRead {
+                contents: FileContents::TooLarge { size },
+                revision,
+            });
+        }
     }
 
     let bytes = std::fs::read(&path).map_err(|err| CoreError::io(&path, err))?;
@@ -1019,6 +1049,47 @@ mod tests {
             }
             other => panic!("a PNG should come back as an image, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_picture_past_the_editing_limit_is_still_shown() {
+        let dir = project();
+
+        // A PNG header followed by enough bytes to pass what a text editor
+        // will take. Nobody was going to edit it, so the editing limit is the
+        // wrong question to ask about it.
+        let mut big = b"\x89PNG\r\n\x1a\n".to_vec();
+        big.resize((MAX_EDITABLE_BYTES + 1024) as usize, 0);
+        std::fs::write(dir.path().join("screenshot.png"), &big).unwrap();
+
+        assert!(matches!(
+            read_file(dir.path(), "screenshot.png").unwrap().contents,
+            FileContents::Image { .. }
+        ));
+
+        // The same size and not an image: still too large, as it was.
+        let mut blob = vec![0u8; (MAX_EDITABLE_BYTES + 1024) as usize];
+        blob[..4].copy_from_slice(b"\x7fELF");
+        std::fs::write(dir.path().join("a.bin"), &blob).unwrap();
+        assert!(matches!(
+            read_file(dir.path(), "a.bin").unwrap().contents,
+            FileContents::TooLarge { .. }
+        ));
+    }
+
+    #[test]
+    fn a_picture_past_even_that_is_left_to_something_else() {
+        let dir = project();
+        let mut enormous = b"\x89PNG\r\n\x1a\n".to_vec();
+        enormous.resize((MAX_VIEWABLE_IMAGE_BYTES + 1024) as usize, 0);
+        std::fs::write(dir.path().join("huge.png"), &enormous).unwrap();
+
+        // Carried whole over the wire as base64, this would be a third larger
+        // again. Past some size the machine's own viewer is the better answer.
+        assert!(matches!(
+            read_file(dir.path(), "huge.png").unwrap().contents,
+            FileContents::TooLarge { .. }
+        ));
     }
 
     #[test]

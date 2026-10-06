@@ -2274,3 +2274,47 @@ A tag's worth of this is unproven until somebody launches an AppImage twice:
 the test here sets `APPIMAGE` and a configuration directory and checks the
 rule, which is as far as a test can go on a machine with no AppImage on it.
 
+## ADR-095: Beacon shows an image and hands everything else to the machine
+
+**Context.** Clicking a screenshot in the files panel said "logo.png is not a
+text file" — true, and useless. An image is one of the few things somebody
+wants out of a file without wanting to change it, and the editor is already
+where a file opens.
+
+The obvious next question is a PDF, and after that a video, and after that an
+archive.
+
+**Decision.** Beacon draws images, from their own first bytes: PNG, JPEG, GIF,
+BMP, ICO and WebP, which is every format a web view takes straight from a
+`data:` URL. SVG is left as text, because it is text and that is the form
+somebody is most likely to want to edit.
+
+Everything else — a PDF, a video, an archive, a picture past the limit — gets a
+way out: open it with whatever this machine opens it with. The permission for
+that was already granted and the plugin already in use for revealing a file in
+the file manager.
+
+**Why.** A PDF in a web view renders on macOS and on Windows and not on Linux,
+where the engine has no viewer at all; Beacon would be shipping a feature that
+works on two platforms of the three it published on the same day. Carrying a
+viewer of its own instead means a megabyte of somebody else's JavaScript for a
+file type this application is not about. The machine already has something that
+opens all of them properly, and saying so is both the honest answer and the
+better one.
+
+The format is read from the bytes and not from the name, in both directions: a
+`.png` that is not one is described rather than drawn, because the alternative
+is a broken picture, and a screenshot saved without an extension is drawn,
+because it is one.
+
+**Consequence.** An image has a ceiling of its own, sixteen megabytes against
+the editor's two. That limit is about what is sensible to put in a text editor,
+and nobody was going to edit a screenshot — "too large to edit here" about a
+picture reads as a malfunction. Past sixteen it is the machine's viewer again,
+because the bytes travel to the window as base64 and that is a third larger
+again.
+
+`base64` moves from the test dependencies to the real ones. It was already in
+the tree, and hand-rolling a codec is where a mistake becomes silent corruption
+rather than a compile error.
+
