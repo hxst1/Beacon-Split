@@ -1846,6 +1846,13 @@ what they are from their names, and four cards in a row saying "this is X" is
 the stretch of a guide people skip — so they are introduced together, a
 sentence each, and the step points at whichever of them is on screen.
 
+The last step says whatever Beacon found rather than installed-or-not: ready,
+needing a sign-in, missing, or there and not answering. Each one ends in the
+Claude panel, because whatever the state, that panel is where it is resolved —
+the install command, the sign-in screen, or the prompt. Telling somebody to
+sign in to something that is not there is the sentence that makes the rest of
+the guide not worth reading.
+
 **Consequence.** Seven steps on the run this is about — a fresh install, where
 there is no project yet and so no panel to point at — eight once there is one,
 with Codex and the editor away as Beacon starts them, and nine with every panel

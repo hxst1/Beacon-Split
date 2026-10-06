@@ -25,7 +25,7 @@ import styles from './WelcomeGuide.module.css'
  */
 export function WelcomeGuide({ onClose }: { onClose: () => void }): React.ReactElement {
   const snapshot = useBeacon((s) => s.snapshot)
-  const missing = useBeacon((s) => s.missing)
+  const requirements = useBeacon((s) => s.requirements)
   const markWelcomed = useBeacon((s) => s.markWelcomed)
   const showPanel = useBeacon((s) => s.showPanel)
   const addProject = useBeacon((s) => s.addProject)
@@ -45,7 +45,7 @@ export function WelcomeGuide({ onClose }: { onClose: () => void }): React.ReactE
       const binding = snapshot?.bindings.find((entry) => entry.action === action)?.binding
       return binding ? describeBinding(binding) : undefined
     },
-    claudeInstalled: !missing.some((requirement) => requirement.id === 'claude'),
+    claude: requirements.find((entry) => entry.id === 'claude')?.state ?? 'ready',
   })
   // Steps can drop out underneath: adding the first project removes the step
   // that asked for it, and the same index is then the step after it.

@@ -70,6 +70,15 @@ interface BeaconState {
    */
   missing: Requirement[]
   /**
+   * Every requirement, in whatever state it is.
+   *
+   * `missing` above is the subset that stands in for a panel. This is the
+   * whole answer, because "there and not signed in" is a thing to say and not
+   * a thing to leave out — and both are set in one place, so they cannot come
+   * to disagree.
+   */
+  requirements: Requirement[]
+  /**
    * Bumped when a session is replaced, keyed `projectId:kind`.
    *
    * Terminal views are keyed on it, so a restart rebuilds the view rather than
@@ -195,6 +204,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     detached: false,
     resolvedTheme: 'dark',
     missing: [],
+    requirements: [],
     sessionEpoch: {},
 
     load: async () => {
@@ -214,6 +224,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
           // between.
           .then((found) =>
             set({
+              requirements: found,
               missing: found.filter(
                 (entry) => entry.state === 'missing' || entry.state === 'broken',
               ),
