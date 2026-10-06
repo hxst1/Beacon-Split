@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { UsageReport } from '@/types/beacon'
+import newerLimitsCases from '../../../crates/beacon-core/fixtures/newer_limits.json'
 import {
   COLD_CACHE_TOKENS,
   adviceFor,
@@ -179,6 +180,33 @@ describe('the numbers a gauge is drawn from', () => {
     expect(leftInWindow(67, NOW / 1000 - 1, NOW)).toBeNull()
     expect(hasReset(NOW / 1000 - 1, NOW)).toBe(true)
     expect(leftInWindow(undefined, NOW / 1000 + 600, NOW)).toBeNull()
+  })
+})
+
+describe('the newer-limits cases shared with beacon-core', () => {
+  // The same file protocol.rs reads: the window and the daemon decide which
+  // limits are newer in two languages, and only this keeps them deciding the
+  // same way.
+  interface Side {
+    used?: number
+    resetsAt?: number
+    seenAt: number
+  }
+  const side = (s: Side) =>
+    reported(
+      report({
+        ...(s.used !== undefined ? { fiveHourUsedPercentage: s.used } : {}),
+        ...(s.resetsAt !== undefined ? { fiveHourResetsAt: s.resetsAt } : {}),
+        reportedAt: s.seenAt,
+        limitsSeenAt: s.seenAt,
+      }),
+      NOW,
+    )
+
+  it.each(newerLimitsCases.cases)('$name', ({ current, incoming, incomingWins }) => {
+    const arriving = side(incoming as Side)
+    const held = current === null ? null : side(current as Side)
+    expect(newerLimits(held, arriving) === arriving).toBe(incomingWins)
   })
 })
 

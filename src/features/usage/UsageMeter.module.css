@@ -46,6 +46,18 @@
   opacity: 0.55;
 }
 
+/* The allowance and the context, each greyed on its own when only it is old.
+   Not inside a meter already greyed whole, or the two would multiply. */
+.part {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.meter:not([data-stale='true']) [data-stale='true'] {
+  opacity: 0.55;
+}
+
 .fill[data-level='unknown'] {
   background: var(--fg-4);
 }
