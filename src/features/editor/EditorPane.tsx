@@ -303,6 +303,21 @@ function ActiveView({
   onChange: (text: string) => void
   onSave: (text: string) => void
 }): React.ReactElement {
+  if (contents.kind === 'image') {
+    // Shown rather than described. The editor is where a file opens, so an
+    // image opening anywhere else would be a second place to look — and a
+    // screenshot somebody just asked an agent about is exactly the file they
+    // want to see rather than read.
+    return (
+      <div className={styles['image']}>
+        <img
+          src={`data:${contents.mediaType};base64,${contents.base64}`}
+          alt={name}
+          draggable={false}
+        />
+      </div>
+    )
+  }
   if (contents.kind === 'binary') {
     return <div className={styles['notice']}>{name} is not a text file.</div>
   }

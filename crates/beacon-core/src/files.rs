@@ -57,8 +57,56 @@ pub enum FileContents {
     /// Not text, so the editor shows what it is rather than mangling it.
     #[serde(rename_all = "camelCase")]
     Binary { size: u64 },
+    /// An image, which the editor can show rather than describe.
+    ///
+    /// Carried inline rather than pointed at: the window has no way to read a
+    /// file except by asking, and a second round trip for the bytes of
+    /// something already read would be a second chance for the file to change
+    /// underneath it. The ceiling is the same `MAX_EDITABLE_BYTES` as text —
+    /// base64 makes it a third larger on the wire, which at two megabytes is
+    /// not worth a second mechanism.
+    #[serde(rename_all = "camelCase")]
+    Image {
+        size: u64,
+        /// What it is, from the bytes themselves.
+        media_type: &'static str,
+        /// The file, base64, ready for a `data:` URL.
+        base64: String,
+    },
     #[serde(rename_all = "camelCase")]
     TooLarge { size: u64 },
+}
+
+/// What kind of image a file's first bytes say it is, if any.
+///
+/// By signature rather than by extension, because the extension is a claim and
+/// the bytes are the thing. Only formats a browser draws from a `data:` URL
+/// without any help: anything else is better described than guessed at.
+///
+/// SVG is deliberately absent. It is text, so it arrives in the editor as text,
+/// which is also the form somebody is most likely to want to change.
+fn image_type(bytes: &[u8]) -> Option<&'static str> {
+    const SIGNATURES: &[(&[u8], &str)] = &[
+        (b"\x89PNG\r\n\x1a\n", "image/png"),
+        (b"\xff\xd8\xff", "image/jpeg"),
+        (b"GIF87a", "image/gif"),
+        (b"GIF89a", "image/gif"),
+        (b"BM", "image/bmp"),
+        (b"\x00\x00\x01\x00", "image/x-icon"),
+    ];
+
+    for (signature, media_type) in SIGNATURES {
+        if bytes.starts_with(signature) {
+            return Some(media_type);
+        }
+    }
+
+    // WebP says so twice, four bytes apart, and the length sits between them.
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+
+    None
 }
 
 /// Resolves a project-relative path, refusing anything that escapes the root.
@@ -196,6 +244,23 @@ pub fn read_file(root: &Path, relative: &str) -> Result<FileRead> {
     }
 
     let bytes = std::fs::read(&path).map_err(|err| CoreError::io(&path, err))?;
+
+    // Asked before `looks_binary`, which an image always is, and asked of the
+    // bytes rather than of the name: a `.png` that is not a PNG should be
+    // described and not drawn, and a screenshot somebody saved without an
+    // extension should still be drawn.
+    if let Some(media_type) = image_type(&bytes) {
+        use base64::Engine;
+        return Ok(FileRead {
+            contents: FileContents::Image {
+                size,
+                media_type,
+                base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+            },
+            revision,
+        });
+    }
+
     if looks_binary(&bytes) {
         return Ok(FileRead {
             contents: FileContents::Binary { size },
@@ -923,6 +988,84 @@ mod tests {
     fn a_folder_cannot_be_pasted_into_itself() {
         let dir = project();
         assert!(copy_into(dir.path(), "src", "src").is_err());
+    }
+
+    #[test]
+    fn an_image_comes_back_as_one_and_is_read_from_its_bytes() {
+        let dir = project();
+
+        // The smallest real PNG: signature, IHDR, one pixel, IEND.
+        let png: &[u8] = &[
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89,
+        ];
+        std::fs::write(dir.path().join("logo.png"), png).unwrap();
+
+        let read = read_file(dir.path(), "logo.png").unwrap();
+        match read.contents {
+            FileContents::Image {
+                media_type,
+                ref base64,
+                size,
+            } => {
+                assert_eq!(media_type, "image/png");
+                assert_eq!(size, png.len() as u64);
+                use base64::Engine;
+                let back = base64::engine::general_purpose::STANDARD
+                    .decode(base64)
+                    .expect("what the window is handed has to decode");
+                assert_eq!(back, png, "the bytes have to survive the trip");
+            }
+            other => panic!("a PNG should come back as an image, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_name_does_not_decide_what_something_is() {
+        let dir = project();
+
+        // A text file wearing an image's extension is described, not drawn —
+        // a browser handed this as an image would show a broken picture.
+        std::fs::write(dir.path().join("notes.png"), "this is not a png at all").unwrap();
+        assert!(matches!(
+            read_file(dir.path(), "notes.png").unwrap().contents,
+            FileContents::Text { .. }
+        ));
+
+        // And the other way round: a screenshot saved without an extension is
+        // still a screenshot.
+        std::fs::write(
+            dir.path().join("screenshot"),
+            b"GIF89a\x01\x00\x01\x00\x00\x00\x00",
+        )
+        .unwrap();
+        assert!(matches!(
+            read_file(dir.path(), "screenshot").unwrap().contents,
+            FileContents::Image {
+                media_type: "image/gif",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn every_signature_is_recognised_and_nothing_else_is() {
+        assert_eq!(image_type(b"\x89PNG\r\n\x1a\n...."), Some("image/png"));
+        assert_eq!(image_type(b"\xff\xd8\xff\xe0"), Some("image/jpeg"));
+        assert_eq!(image_type(b"GIF87a"), Some("image/gif"));
+        assert_eq!(image_type(b"BM...."), Some("image/bmp"));
+        assert_eq!(image_type(b"\x00\x00\x01\x00"), Some("image/x-icon"));
+        assert_eq!(
+            image_type(b"RIFF\x00\x00\x00\x00WEBPVP8 "),
+            Some("image/webp")
+        );
+
+        // A RIFF that is not a WebP — a wav, say — is not an image.
+        assert_eq!(image_type(b"RIFF\x00\x00\x00\x00WAVEfmt "), None);
+        assert_eq!(image_type(b"RIFF"), None, "too short to say");
+        assert_eq!(image_type(b""), None);
+        assert_eq!(image_type(b"<svg xmlns=\"...\">"), None, "SVG is text");
     }
 
     #[test]

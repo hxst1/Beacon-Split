@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+# Already in the tree for the tests before this; a file read as an image is
+# carried to the window as base64, and hand-rolling a codec is where a mistake
+# becomes silent corruption rather than a compile error.
+base64 = "0.22"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -28,4 +32,3 @@ dunce = "1"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }
 
 [dev-dependencies]
-base64 = "0.22"
