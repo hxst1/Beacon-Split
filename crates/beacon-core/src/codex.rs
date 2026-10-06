@@ -250,6 +250,32 @@ fn detect() -> Capabilities {
     interpret(version.as_deref(), &help, &features)
 }
 
+/// Whether somebody has signed in to Codex, as Codex answers it.
+///
+/// `codex login status`, which is the question the user could type. Beacon
+/// never touches the credential — the same rule as Claude Code's (ADR-052) —
+/// and this does not either: it reads the exit status and nothing else. Codex
+/// has no machine-readable form of this answer, so the exit status is what
+/// there is.
+///
+/// Deliberately one-directional. A non-zero exit is read as not signed in; a
+/// zero exit is read as nothing at all. If Codex turns out to exit zero either
+/// way, Beacon simply never says Codex needs signing in — which is where it
+/// was before this existed. The other way round would be telling somebody who
+/// is signed in that they are not, which is worse than saying nothing.
+///
+/// `None` means no answer: a Codex too old for the subcommand, or one that
+/// would not finish.
+pub fn signed_in(codex: &std::path::Path) -> Option<bool> {
+    let mut command = std::process::Command::new(codex);
+    command.args(["login", "status"]);
+    crate::tools::strip_terminal_identity(&mut command);
+    command.env("PATH", crate::tools::session_path(codex));
+
+    let succeeded = crate::tools::succeeded_briefly(&mut command, PROBE_TIMEOUT)?;
+    (!succeeded).then_some(false)
+}
+
 /// Runs Codex for its own description of itself.
 ///
 /// Best effort throughout: a Codex that will not answer is treated as one that

@@ -320,6 +320,16 @@ pub fn capture_briefly_any_exit(
 /// say — and that is not worth waiting on past the deadline.
 const AFTER_EXIT: Duration = Duration::from_millis(250);
 
+/// Whether a program succeeded, for one whose answer is its exit status and
+/// not what it prints.
+///
+/// `None` is "it did not answer" — it would not start, or it ran past the
+/// limit — which is a different thing from failing, and callers that cannot
+/// tell the difference should not be using this.
+pub fn succeeded_briefly(command: &mut std::process::Command, limit: Duration) -> Option<bool> {
+    run_briefly(command, limit, true).map(|(succeeded, _)| succeeded)
+}
+
 /// Runs a program to completion or to the limit, whichever is first, and says
 /// whether it succeeded alongside what it printed.
 ///

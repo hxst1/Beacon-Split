@@ -309,10 +309,20 @@ export interface InstallOption {
 }
 
 /** Something Beacon needs from the machine, and how to get it. */
+/**
+ * Where a requirement stands.
+ *
+ * Four and not two, because "not working" has four answers and only one of
+ * them is "install it". Being told to install something that is already
+ * installed is how somebody decides the program is not listening.
+ */
+export type RequirementState = 'ready' | 'missing' | 'broken' | 'needsAuth'
+
 export interface Requirement {
   id: string
   name: string
   importance: Importance
+  state: RequirementState
   /** Where it was found, resolved the way a session would resolve it. */
   path?: string
   version?: string
