@@ -58,6 +58,21 @@ function audio(): AudioContext | null {
 }
 
 /**
+ * Resumes a context, and never minds if it will not.
+ *
+ * Both call sites go through here because the failure is silent on the two
+ * platforms where it does not happen: `resume` rejects on a webview that
+ * cannot open an audio device, which on Linux is any WebKitGTK whose
+ * GStreamer plugins are not installed — they are an optional dependency of
+ * the package. A sound that cannot play is a sound not heard, which is what
+ * the rest of this module already says; an unhandled rejection in the log is
+ * something else.
+ */
+function resume(ctx: AudioContext | null): void {
+  void ctx?.resume().catch(() => {})
+}
+
+/**
  * Lets the context make sound.
  *
  * WebView2 and WebKit both start a context suspended until the page has seen a
@@ -68,7 +83,7 @@ function audio(): AudioContext | null {
  */
 export function unlockSoundOnFirstGesture(): () => void {
   const unlock = (): void => {
-    void audio()?.resume()
+    resume(audio())
     stop()
   }
   const stop = (): void => {
@@ -84,7 +99,7 @@ export function unlockSoundOnFirstGesture(): () => void {
 export function playChime(chime: Chime): void {
   const ctx = audio()
   if (!ctx) return
-  if (ctx.state === 'suspended') void ctx.resume().catch(() => {})
+  if (ctx.state === 'suspended') resume(ctx)
 
   try {
     const start = ctx.currentTime + 0.01
