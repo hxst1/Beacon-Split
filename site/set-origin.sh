@@ -36,9 +36,9 @@ cd "$here"
   index.html
 
 /usr/bin/sed -i '' \
-  -e "s|<link rel=\"icon\"|<link rel=\"canonical\" href=\"$origin/\">\\
+  -e "s|<link rel=\"icon\" href=\"/favicon.ico\"|<link rel=\"canonical\" href=\"$origin/\">\\
 <meta property=\"og:url\" content=\"$origin/\">\\
-<link rel=\"icon\"|" \
+<link rel=\"icon\" href=\"/favicon.ico\"|" \
   -e "s|content=\"[^\"]*/og\.png\"|content=\"$origin/og.png\"|g" \
   -e "s|^  \"url\": \"[^\"]*\",\$|  \"url\": \"$origin/\",|" \
   -e "s|^  \"image\": \"[^\"]*/og\.png\",\$|  \"image\": \"$origin/og.png\",|" \

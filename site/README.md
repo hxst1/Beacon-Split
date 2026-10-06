@@ -101,6 +101,17 @@ A URL here that points at a domain not serving this page is worse than none —
 it tells a crawler the real copy is somewhere it cannot fetch — so change the
 domain with the script, never by hand in one place.
 
+### The icon
+
+`favicon.svg` is the only one to edit. `./make-icons.sh` draws the rest from it
+— `favicon.ico` with 16, 32 and 48, the two the manifest asks for, and a square
+full-bleed one for iOS, which rounds the corners itself. They are committed, so
+a deploy needs nothing installed; the script needs `librsvg` and Pillow.
+
+The page offered only the SVG for a while, and Google Search does not accept
+one: its formats are BMP, GIF, ICO, PNG, JPEG, PPM and TIFF. The result was
+first for "beacon split" with no icon beside it.
+
 ## Found by machines
 
 Three things exist for that and are easy to break by accident:
