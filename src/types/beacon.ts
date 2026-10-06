@@ -602,6 +602,13 @@ export interface DirEntry {
 export type FileContents =
   | { kind: 'text'; text: string }
   | { kind: 'binary'; size: number }
+  /**
+   * An image, carried whole so the editor can show it.
+   *
+   * `mediaType` comes from the file's own first bytes, not from its name: a
+   * `.png` that is not a PNG is described rather than drawn.
+   */
+  | { kind: 'image'; size: number; mediaType: string; base64: string }
   | { kind: 'tooLarge'; size: number }
 
 /**

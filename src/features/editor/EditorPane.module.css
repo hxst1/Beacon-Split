@@ -124,6 +124,37 @@
   text-align: center;
 }
 
+/* An image fills the panel without ever outgrowing it, and keeps its shape.
+   The chequerboard is what shows through a transparent one — an icon on a flat
+   dark background looks like an icon with a dark background, which is the one
+   thing somebody opening a logo needs to be able to tell. */
+.image {
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  height: 100%;
+  padding: 16px;
+}
+
+.image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-xs);
+  background-color: var(--surface-1);
+  background-image:
+    linear-gradient(45deg, var(--surface-2) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--surface-2) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--surface-2) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--surface-2) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+
 .notice {
   display: grid;
   place-items: center;
