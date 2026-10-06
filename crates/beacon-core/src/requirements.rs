@@ -53,6 +53,25 @@ pub fn check() -> Vec<Requirement> {
     vec![check_claude(), check_codex(), check_git()]
 }
 
+/// The same, after forgetting everything Beacon had worked out about this
+/// machine.
+///
+/// For the one moment it matters, and it is the moment that decides whether
+/// somebody stays: they read that Claude Code was missing, they installed it,
+/// they came back. Everything Beacon knew — where each program was, what the
+/// login shell's `PATH` is, what each agent can do — was worked out before
+/// that happened, and without this they would have to restart Beacon to be
+/// believed. Nothing tells them to.
+///
+/// It costs what a cold start costs, a shell and a few short processes, which
+/// is why it is this and not what every check does.
+pub fn recheck() -> Vec<Requirement> {
+    crate::tools::forget_programs();
+    crate::claude::forget_capabilities();
+    crate::codex::forget_capabilities();
+    check()
+}
+
 /// Whether anything Beacon considers essential is missing.
 pub fn missing_essentials(requirements: &[Requirement]) -> Vec<&Requirement> {
     requirements

@@ -131,6 +131,7 @@ pub fn run() {
             commands::fork_workstream,
             commands::rename_workstream,
             commands::check_requirements,
+            commands::recheck_requirements,
             commands::daemon_available,
             commands::install_claude_status_line,
             commands::remove_claude_status_line,

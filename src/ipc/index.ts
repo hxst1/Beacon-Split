@@ -278,6 +278,15 @@ export const ipc = {
   /** Checked on demand: someone who installs the missing thing looks again. */
   checkRequirements: () => invoke<Requirement[]>('check_requirements'),
 
+  /**
+   * The same, after forgetting where everything was.
+   *
+   * For somebody who has just installed what was missing: without this, Beacon
+   * goes on reporting what it worked out before they did, and the only way out
+   * is a restart nothing tells them about. Slow on purpose.
+   */
+  recheckRequirements: () => invoke<Requirement[]>('recheck_requirements'),
+
   daemonAvailable: () => invoke<boolean>('daemon_available'),
 
   installClaudeStatusLine: () => invoke<Integration>('install_claude_status_line'),

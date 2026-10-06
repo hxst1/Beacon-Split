@@ -18,7 +18,6 @@
 //! ever arrives — which is a fact the daemon holds, not a fact about the
 //! binary.
 
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -159,14 +158,36 @@ pub fn interpret(version: Option<&str>, help: &str, agents_help: &str) -> Capabi
     }
 }
 
-/// What this machine's Claude Code can do, worked out once.
+/// What this machine's Claude Code can do, worked out once and then remembered.
 ///
-/// Cached for the life of the process: it costs three short processes, it
-/// cannot change under a running binary, and it is read on the way to starting
-/// a session — which is not a place to spend a fork.
+/// It costs three short processes, and it is read on the way to starting a session, which is
+/// not a place to spend a fork. What it cannot do is survive the user
+/// upgrading or installing Claude Code underneath a running Beacon — so
+/// [`forget_capabilities`] exists, and the one thing that calls it is somebody
+/// asking Beacon to look at their machine again.
+///
+/// The answer is leaked rather than handed out by value, so that every caller
+/// can keep taking a `&'static` and none of them had to change. One probe is a
+/// few hundred bytes, and a person presses that button a handful of times in
+/// the life of a window.
 pub fn capabilities() -> &'static Capabilities {
-    static CACHED: OnceLock<Capabilities> = OnceLock::new();
-    CACHED.get_or_init(detect)
+    let mut held = cached().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(known) = *held {
+        return known;
+    }
+    let found: &'static Capabilities = Box::leak(Box::new(detect()));
+    *held = Some(found);
+    found
+}
+
+fn cached() -> &'static std::sync::Mutex<Option<&'static Capabilities>> {
+    static CACHED: std::sync::Mutex<Option<&'static Capabilities>> = std::sync::Mutex::new(None);
+    &CACHED
+}
+
+/// Forgets them, so the next question is put to the program as it is now.
+pub fn forget_capabilities() {
+    *cached().lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 fn detect() -> Capabilities {
