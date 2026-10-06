@@ -722,6 +722,31 @@ fn a_hook_outside_beacon_does_nothing_at_all() {
 /// it. The swap is expected, so nothing about it may reach the window as a
 /// connection lost — a window told that on its very first paint shows every
 /// pane the daemon went away, and there is no daemon going away here.
+/// The next connection the stand-in actually gets, waiting through the ones
+/// that never arrive.
+///
+/// `accept` is allowed to fail without anybody having done anything wrong:
+/// Linux returns `ECONNABORTED` for a connection the other side gave up on
+/// between the handshake and the accept, which a loaded CI runner makes far
+/// more likely than a desktop does. Treating that as "no more connections"
+/// ended the stand-in early, and then the client — finding nothing listening —
+/// started a real daemon and reported the connection it had lost. Which is a
+/// test failing, dressed as the product misbehaving.
+fn next_connection(
+    listener: &beacon_core::transport::LocalListener,
+) -> Option<beacon_core::transport::LocalStream> {
+    for connection in listener.incoming() {
+        match connection {
+            Ok(stream) => return Some(stream),
+            Err(err) => {
+                eprintln!("stand-in: ignoring a failed accept: {err}");
+                continue;
+            }
+        }
+    }
+    None
+}
+
 #[test]
 fn a_daemon_from_another_version_is_replaced_without_a_word() {
     use beacon_core::transport::LocalListener;
@@ -743,7 +768,7 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
     ];
     let stand_in = std::thread::spawn(move || {
         for version in versions {
-            let Some(Ok(stream)) = listener.incoming().next() else {
+            let Some(stream) = next_connection(&listener) else {
                 return;
             };
             let mut writer = stream.try_clone().expect("a writable half");
@@ -813,7 +838,7 @@ fn a_replacement_daemon_from_the_old_version_is_reported_not_used() {
         // The daemon found running, then the one started in its place — from
         // the same old file.
         for _ in 0..2 {
-            let Some(Ok(stream)) = listener.incoming().next() else {
+            let Some(stream) = next_connection(&listener) else {
                 return;
             };
             let mut writer = stream.try_clone().expect("a writable half");
