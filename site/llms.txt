@@ -5,9 +5,14 @@
 > an editor, and git — and its tab says what is running, finished, or waiting
 > for you.
 
-Free and open source under AGPL-3.0. macOS, on Apple Silicon and Intel, and
-Windows 10 and 11 on x64. No account, no telemetry in the app, no server,
-nothing to buy later.
+Both agents at once, in one window and on one project: Claude Code and Codex
+each get a panel and a conversation of their own, and a git worktree of their
+own when that is turned on. Beacon runs each as its publisher ships it and is
+not affiliated with either of them.
+
+Free and open source under AGPL-3.0. macOS on Apple Silicon and Intel,
+Windows 10 and 11 on x64, and Linux on x86_64. No account, no telemetry in the
+app, no server, nothing to buy later.
 
 Website: https://beacon-split.com/
 

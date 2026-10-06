@@ -64,14 +64,24 @@ fi
 printf '\nSitemap: %s/sitemap.xml\n' "$origin" >> robots.txt
 
 # ── sitemap.xml ─────────────────────────────────────────────────────────────
-# One page, so one entry. `lastmod` is the day it was stamped, which is the day
-# it was deployed — the only date about this file that is true.
+# One page, so one entry. No `changefreq` and no `priority`: Google has ignored
+# both for years, and a sitemap that pads itself is a sitemap that gets read
+# less carefully.
+#
+# `lastmod` is the day the page itself last changed, taken from git. The deploy
+# date was easier and was a small lie — it moved every time anything was
+# published, so it said "this changed today" on days nothing had, which is how
+# a crawler learns to stop believing the field. Falls back to today where there
+# is no git to ask, which is better than an empty element.
+lastmod=$(git log -1 --format=%cs -- index.html 2>/dev/null || true)
+[ -n "$lastmod" ] || lastmod=$(date -u +%Y-%m-%d)
+
 cat > sitemap.xml <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>$origin/</loc>
-    <lastmod>$(date -u +%Y-%m-%d)</lastmod>
+    <lastmod>$lastmod</lastmod>
   </url>
 </urlset>
 XML
@@ -80,4 +90,4 @@ echo "origin set to $origin"
 echo "  index.html   canonical, og:url, og:image, twitter:image and the JSON-LD @id, url and image"
 echo "  index.html   the version, from package.json"
 echo "  robots.txt   Sitemap line"
-echo "  sitemap.xml  written"
+echo "  sitemap.xml  written, dated $lastmod"
