@@ -1,4 +1,4 @@
-import type { PanelId } from '@/types/beacon'
+import type { PanelId, RequirementState } from '@/types/beacon'
 
 /**
  * What a step points at.
@@ -25,7 +25,15 @@ export interface GuideFacts {
   hidden: readonly PanelId[]
   /** The shortcut an action answers to, as shown to the user, if it has one. */
   hint: (action: string) => string | undefined
-  claudeInstalled: boolean
+  /**
+   * Where Claude Code stands on this machine.
+   *
+   * Four answers rather than installed-or-not, because the last step of the
+   * guide is the one that has to be true: telling somebody to sign in to
+   * something that is not there, or that is there and will not run, is the
+   * sentence that makes the rest of the guide not worth reading.
+   */
+  claude: RequirementState
 }
 
 /**
@@ -208,18 +216,43 @@ export function guideSteps(facts: GuideFacts): GuideStep[] {
     ],
   })
 
+  // Whatever Beacon found, said as it is. Every one of these ends in the same
+  // place — the Claude panel — because whatever the state, that panel is where
+  // it is resolved: the install command, the sign-in screen, or the prompt.
+  const lastStep: Record<RequirementState, { title: string; paragraphs: string[] }> = {
+    ready: {
+      title: 'Last: Claude is ready',
+      paragraphs: [
+        'Claude Code is installed and signed in, so there is nothing left to set up.',
+        'Click into the panel and type. It is the real claude command running in this project’s folder — the same one you would get in your own terminal.',
+      ],
+    },
+    needsAuth: {
+      title: 'Last: sign in to Claude Code',
+      paragraphs: [
+        'Claude Code is installed, and nobody has signed in yet. It asks on its own, with its own screen inside the Claude panel.',
+        'Click into the panel, choose how to sign in and press Enter. A browser page opens to authorise it, and that is all: Claude Code remembers it for every project.',
+      ],
+    },
+    missing: {
+      title: 'Last: install Claude Code',
+      paragraphs: [
+        'Claude Code is not on this machine yet, and the Claude panel needs it. The panel has the command, and can put it in a terminal here for you.',
+        'Once it is installed, the panel asks you to sign in the first time: choose how, press Enter and authorise it in the browser.',
+      ],
+    },
+    broken: {
+      title: 'Last: Claude Code is not answering',
+      paragraphs: [
+        'Claude Code is on this machine, and it did not reply when Beacon asked it for its version. The panel says where it found it; installing it again usually fixes that.',
+        'Once it answers, the panel asks you to sign in the first time: choose how, press Enter and authorise it in the browser.',
+      ],
+    },
+  }
+
   steps.push({
     id: 'signIn',
-    title: 'Last: sign in to Claude Code',
-    paragraphs: facts.claudeInstalled
-      ? [
-          'The first time Claude Code runs, it asks you to sign in, with its own screen inside the Claude panel.',
-          'Click into the panel, choose how to sign in and press Enter. A browser page opens to authorise it, and that is all: Claude Code remembers it for every project.',
-        ]
-      : [
-          'Claude Code is not installed yet, and the Claude panel needs it. The panel shows how to install it.',
-          'Once it is, the panel asks you to sign in the first time: choose how, press Enter and authorise it in the browser.',
-        ],
+    ...lastStep[facts.claude],
     anchor: { panel: 'claude' },
     action: 'signIn',
   })

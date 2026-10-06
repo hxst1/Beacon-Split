@@ -24,7 +24,7 @@ const facts = (overrides: Partial<GuideFacts> = {}): GuideFacts => ({
   hasProject: true,
   hidden: [],
   hint: (action) => HINTS[action],
-  claudeInstalled: true,
+  claude: 'ready',
   ...overrides,
 })
 
@@ -159,9 +159,24 @@ describe('the welcome guide', () => {
     expect(unbound?.paragraphs.join(' ')).not.toContain('undefined')
   })
 
-  it('says how to get Claude Code when it is not installed', () => {
-    const signIn = guideSteps(facts({ claudeInstalled: false })).at(-1)
-    expect(signIn?.paragraphs[0]).toContain('not installed')
+  it('ends on whatever it actually found, and always in the Claude panel', () => {
+    // The last step is the one that has to be true: telling somebody to sign
+    // in to something that is not there is the sentence that makes the rest of
+    // the guide not worth reading.
+    const ending = (claude: 'ready' | 'missing' | 'broken' | 'needsAuth') =>
+      guideSteps(facts({ claude })).at(-1)
+
+    expect(ending('missing')?.paragraphs[0]).toContain('not on this machine')
+    expect(ending('broken')?.paragraphs[0]).toContain('did not reply')
+    expect(ending('needsAuth')?.paragraphs[0]).toContain('nobody has signed in')
+    expect(ending('ready')?.paragraphs[0]).toContain('nothing left to set up')
+
+    // Whatever the state, it is resolved in the same place.
+    for (const state of ['ready', 'missing', 'broken', 'needsAuth'] as const) {
+      const last = ending(state)
+      expect(last?.id).toBe('signIn')
+      expect(last?.anchor).toEqual({ panel: 'claude' })
+    }
   })
 
   it('points at hooks that are really there', () => {
