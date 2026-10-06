@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  drawsOwnWindowControls,
   hasPrimaryModifier,
   isMac,
   isWindows,
@@ -50,6 +51,20 @@ describe('the platform', () => {
       expect(shortcutLabel('K')).toBe('Ctrl+K')
     }
     expect(isWindows()).toBe(false)
+  })
+})
+
+describe('who draws the window controls', () => {
+  it('is the system on macOS, and Beacon everywhere else', () => {
+    // The capability that allows minimise, maximise and close names the same
+    // two platforms; a window that cannot be closed is not a detail.
+    setPlatform('macos')
+    expect(drawsOwnWindowControls()).toBe(false)
+
+    for (const platform of ['windows', 'linux']) {
+      setPlatform(platform)
+      expect(drawsOwnWindowControls()).toBe(true)
+    }
   })
 })
 

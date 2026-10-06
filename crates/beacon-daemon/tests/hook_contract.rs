@@ -89,6 +89,25 @@ fn listening(dir: &std::path::Path) -> (String, std::thread::JoinHandle<String>)
     (path.to_string_lossy().into_owned(), handle)
 }
 
+/// The payload is read even when there is nothing to do with it.
+///
+/// A hook that exits before draining stdin leaves Claude Code writing into a
+/// pipe with no reader. On macOS the hook is slow enough to lose that race and
+/// the write lands in the buffer; on Linux it is not, and the write fails with
+/// `EPIPE` — which is this hook being noticed, the one thing it must never be.
+/// `run_hook` panics on a failed write, so arriving here at all is the
+/// assertion; the rest says what else must still hold.
+#[test]
+fn the_payload_is_read_even_with_nowhere_to_report_it() {
+    // No `BEACON_SOCKET`: a Claude started outside Beacon, which is how this
+    // hook spends most of its life once it is registered.
+    let run = run_hook(&payload("PreToolUse"), &[]);
+
+    assert_eq!(run.stdout, "");
+    assert_eq!(run.stderr, "");
+    assert_eq!(run.code, Some(0));
+}
+
 #[test]
 fn every_registered_event_prints_nothing_and_succeeds() {
     // Nothing on stdout is the strongest possible answer to the contract: there

@@ -1,7 +1,8 @@
 # Sharing Beacon with someone else
 
-Written for handing Beacon to a colleague on macOS. Linux is not covered yet:
-it has never been built there, and saying otherwise would be a guess.
+Written for handing Beacon to a colleague on macOS, which is the one that needs
+explaining. Linux has its own short section at the end; Windows is the
+installer from the release page and nothing more.
 
 ## The short version
 
@@ -69,6 +70,30 @@ pnpm app:build
 Signed and notarised, the DMG opens with no warnings and nobody has to be told
 to run anything.
 
+## On Linux it is an AppImage, and there is nothing to get past
+
+No signing, no quarantine, no warning: an AppImage is an executable file.
+
+```sh
+chmod +x 'Beacon Split_'*'_amd64.AppImage'
+./'Beacon Split_'*'_amd64.AppImage'
+```
+
+It carries its own GTK and WebKit, so nothing has to be installed for Beacon
+itself to run — only the tools it runs, below.
+
+**Build it in CI, not here.** An AppImage carries the GTK and WebKit of the
+machine that made it, and those link against that machine's glibc, so one built
+on Arch runs on Arch. The release workflow builds it on Ubuntu 22.04 for that
+reason, which puts the floor at glibc 2.35. On a rolling distribution
+`pnpm app:build` stops after the executable and says why — linuxdeploy's GTK
+plugin needs a gdk-pixbuf layout that gdk-pixbuf 2.44 no longer produces. See
+ADR-093. `target/release/beacon-split` runs, and is what to open when the
+question is whether a release build works.
+
+To hand someone a build from a machine you control, take the AppImage from the
+release the tag produced rather than from your own `target/`.
+
 ## What they need installed
 
 Beacon runs the tools you already have rather than bundling its own, and checks
@@ -78,7 +103,7 @@ to be without it and what to run.
 | | Needed for | Install |
 | --- | --- | --- |
 | Claude Code | The Claude panel — the point of the application | `curl -fsSL https://claude.ai/install.sh \| bash` |
-| Git | The Git panel, and Quick Open honouring your ignore rules | `xcode-select --install` |
+| Git | The Git panel, and Quick Open honouring your ignore rules | `xcode-select --install`, or on Linux the distribution's own |
 
 Claude Code needs a Pro, Max, Team or Enterprise account, and signing in happens
 by running `claude` once in a terminal. Beacon does not handle signing in — it

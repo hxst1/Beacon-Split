@@ -71,9 +71,9 @@ window, and whether what shows through is frosted.
 
 ## Install
 
-Beacon runs on macOS and Windows. Releases carry an Apple Silicon and an Intel
-build for macOS — Apple Silicon is the one it is developed and tested on — and
-an x64 installer for Windows 10 and 11. Linux is next.
+Beacon runs on macOS, Windows and Linux. Releases carry an Apple Silicon and an
+Intel build for macOS — Apple Silicon is the one it is developed and tested on
+— an x64 installer for Windows 10 and 11, and an x86_64 AppImage for Linux.
 
 **From a release, on macOS** — [download the latest][releases], open the
 `.dmg`, drag Beacon to Applications.
@@ -98,6 +98,20 @@ your PC"* the first time: **More info → Run anyway**. Beacon's window has its
 own minimise, maximise and close buttons at the top right, and frosting uses
 Windows 11's Mica.
 
+**From a release, on Linux** — download the `.AppImage` from the [latest
+release][releases], make it executable and run it:
+
+```sh
+chmod +x 'Beacon Split_'*'_amd64.AppImage'
+./'Beacon Split_'*'_amd64.AppImage'
+```
+
+It carries its own GTK and WebKit and needs nothing installed. It is built on
+Ubuntu 22.04, so it wants glibc 2.35 or newer — every current distribution. As
+on Windows, the window has no system title bar: Beacon draws its own minimise,
+maximise and close buttons at the top right. Translucency needs a compositor;
+without one the window is simply opaque.
+
 **From source** — see [Building it](#building-it). A build made on the machine
 it runs on is never quarantined.
 
@@ -120,6 +134,17 @@ On Windows:
 | [Claude Code][claude] | The Claude panel | `irm https://claude.ai/install.ps1 \| iex` in PowerShell |
 | Git for Windows | The Git panel — and Git Bash, which Claude Code prefers for its commands | `winget install --id Git.Git -e --source winget` |
 | [Codex][codex] *(optional)* | The Codex panel | `npm install -g @openai/codex` |
+
+On Linux:
+
+| | Needed for | Install |
+| --- | --- | --- |
+| [Claude Code][claude] | The Claude panel | `curl -fsSL https://claude.ai/install.sh \| bash` |
+| Git | The Git panel, and Quick Open honouring your ignore rules | your distribution's own — `sudo pacman -S git`, `sudo apt install git` |
+| [Codex][codex] *(optional)* | The Codex panel | `npm install -g @openai/codex` |
+
+Settings → Requirements offers the command for the package manager you actually
+have, rather than guessing at your distribution.
 
 An agent installed with npm works too: Beacon looks through npm's `.cmd` shims
 to the program they start.
@@ -158,6 +183,23 @@ Windows, instead of Xcode: the Rust MSVC toolchain (`winget install
 Rustlang.Rustup`) and Visual Studio's C++ build tools ("Desktop development with
 C++"); the WebView2 runtime ships with Windows 11.
 
+On Linux, instead of Xcode: a C toolchain, and the webview Tauri draws into,
+which the system does not ship. On Arch:
+
+```sh
+sudo pacman -S --needed base-devel rustup webkit2gtk-4.1 patchelf
+rustup default stable
+```
+
+On Debian or Ubuntu the same list is `build-essential libwebkit2gtk-4.1-dev
+libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev patchelf`.
+
+On a rolling distribution `pnpm app:build` stops after the executable and says
+why: the tool Tauri drives to put an AppImage together needs a gdk-pixbuf
+layout that gdk-pixbuf 2.44 no longer produces. The release AppImage is built
+on Ubuntu in CI, which is where it belongs anyway — see
+[ADR-093](docs/DECISIONS.md). `target/release/beacon-split` runs.
+
 ```sh
 git clone https://github.com/hxst1/Beacon-Split.git
 cd Beacon-Split
@@ -168,7 +210,7 @@ pnpm app:dev
 | | |
 | --- | --- |
 | `pnpm app:dev` | Run it, with the frontend hot-reloading |
-| `pnpm app:build` | Produce a `.app` and a `.dmg` — or, on Windows, an installer `.exe` and an `.msi` |
+| `pnpm app:build` | Produce a `.app` and a `.dmg` — on Windows an installer `.exe` and an `.msi`, on Linux an `.AppImage` or, where linuxdeploy cannot run, the executable alone |
 | `pnpm check` | Typecheck, tests, rustfmt, clippy — what CI runs |
 
 ## Where things live

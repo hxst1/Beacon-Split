@@ -33,8 +33,8 @@ measure of the value of a person's work.
 
 ## Requirements
 
-- macOS, or Windows 10 or 11 on x64. A Linux build is being worked on and has
-  never been run, so nothing is claimed about it.
+- macOS, Windows 10 or 11 on x64, or Linux on x86_64. The Linux build is an
+  AppImage made on Ubuntu 22.04, so it wants glibc 2.35 or newer.
 - Claude Code and `git` on the `PATH`. Codex is optional; install it to add its
   panel and conversations. Beacon checks what a session needs the way a session
   finds it — through the login shell, or on Windows the `PATH` itself.

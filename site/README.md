@@ -147,7 +147,8 @@ value of anybody's work.
 
 What is still hand-written and does go stale:
 
-- The **platform section**, which currently says Linux is being built.
+- The **platform section**, which says what each platform ships and what it
+  does not.
 - The **FAQ**, in both places it lives.
 - The **hero illustration**, which draws a version of the product that will
   eventually stop looking like it.

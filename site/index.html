@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Beacon Split — keep your agents moving</title>
-<meta name="description" content="An agent-first development workspace. Run Claude Code and Codex side by side, with real terminals, files and git — and know the moment an agent needs you. Free and open source for macOS and Windows.">
+<meta name="description" content="An agent-first development workspace. Run Claude Code and Codex side by side, with real terminals, files and git — and know the moment an agent needs you. Free and open source for macOS, Windows and Linux.">
 <!-- The .ico first, and it is the one that matters outside a browser:
      Google Search does not accept an SVG favicon, so a page offering only one
      is a page with no icon beside it in the results. All of these are drawn
@@ -17,7 +17,7 @@
 <link rel="manifest" href="/site.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Beacon Split — keep your agents moving">
-<meta property="og:description" content="An agent-first development workspace for running Claude Code and Codex side by side. Free, open source, macOS and Windows.">
+<meta property="og:description" content="An agent-first development workspace for running Claude Code and Codex side by side. Free, open source, macOS, Windows and Linux.">
 <meta property="og:image" content="https://beacon-split.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -26,7 +26,7 @@
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Beacon Split — keep your agents moving">
-<meta name="twitter:description" content="An agent-first development workspace for running Claude Code and Codex side by side. Free, open source, macOS and Windows.">
+<meta name="twitter:description" content="An agent-first development workspace for running Claude Code and Codex side by side. Free, open source, macOS, Windows and Linux.">
 <meta name="twitter:image" content="https://beacon-split.com/og.png">
 <meta name="twitter:image:alt" content="The Beacon Split window: three project tabs, one of them amber because its Claude session is waiting for an answer.">
 <meta name="theme-color" content="#08080b">
@@ -58,8 +58,8 @@
   "image": "https://beacon-split.com/og.png",
   "applicationCategory": "DeveloperApplication",
   "applicationSubCategory": "Integrated development environment",
-  "operatingSystem": "macOS, Windows",
-  "processorRequirements": "Apple Silicon or Intel on macOS; x64 on Windows",
+  "operatingSystem": "macOS, Windows, Linux",
+  "processorRequirements": "Apple Silicon or Intel on macOS; x64 on Windows; x86_64 on Linux",
   "softwareRequirements": "Claude Code and git on the PATH; Codex is optional",
   "description": "An agent-first development workspace. Run Claude Code and Codex side by side, each with real terminals, files and git, and know the moment an agent needs you. Sessions run in a background daemon, so they outlive the window.",
   "license": "https://github.com/hxst1/Beacon-Split/blob/main/LICENSE",
@@ -129,7 +129,7 @@
       "name": "Which platforms does Beacon Split run on?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "macOS, on both Apple Silicon and Intel, and Windows 10 and 11 on x64. A Linux build is being worked on and has never been run, so nothing is claimed about it."
+        "text": "macOS, on both Apple Silicon and Intel; Windows 10 and 11 on x64; and Linux on x86_64, as an AppImage built on Ubuntu 22.04 that needs glibc 2.35 or newer."
       }
     },
     {
@@ -220,7 +220,7 @@
         <a class="btn btn--ghost btn--lg" href="https://github.com/hxst1/Beacon-Split" target="_blank" rel="noopener" data-superveil="click:hero:view-source">View the source</a>
       </div>
       <p class="cta__meta">
-        v<span data-dl-version>0.8.0</span> · macOS &amp; Windows · <strong>Free</strong>, AGPL-3.0 · No account, no server
+        v<span data-dl-version>0.8.0</span> · macOS, Windows &amp; Linux · <strong>Free</strong>, AGPL-3.0 · No account, no server
       </p>
     </div>
 
@@ -498,7 +498,7 @@
   <div class="wrap wrap--tight">
     <h2 class="h2">Where it runs.</h2>
     <p class="body">
-      Beacon runs on macOS and Windows. The rest is said plainly rather than promised.
+      Beacon runs on macOS, Windows and Linux. The rest is said plainly rather than promised.
     </p>
 
     <ul class="plats">
@@ -524,18 +524,19 @@
         </div>
       </li>
       <li class="plat">
-        <i class="st st--lg" data-state="stopped"></i>
+        <i class="st st--lg" data-state="working"></i>
         <div class="plat__b">
-          <h3 class="plat__t">Linux <span class="plat__s plat__s--soon">Being built</span></h3>
+          <h3 class="plat__t">Linux <span class="plat__s plat__s--on">Available now</span></h3>
           <p class="plat__d">
-            Arch first, and it has never been built there, so nothing claims it works yet. The work
-            is real and bounded: condition the window configuration by platform (vibrancy and the
-            overlay title bar are macOS-only), then document the system dependencies. Everything
-            underneath is already portable Rust, and Windows has shown where the differences live.
+            An x86_64 AppImage, carrying its own GTK and WebKit, so there is nothing to install.
+            Built on Ubuntu 22.04 and so wanting glibc 2.35 or newer; built and run on Arch under
+            Hyprland. The window is undecorated and draws its own caption buttons, as on Windows,
+            because no two Linux desktops decorate one the same way. Translucency needs a
+            compositor; frosting is macOS and Windows only.
           </p>
           <p class="plat__help">
-            <strong>This is the single most useful thing to help with.</strong> If you run Linux and
-            want Beacon on it, that contribution is worth more than any other right now.
+            Still to come: an aarch64 build, and native packages — a PKGBUILD, a <code>.deb</code>,
+            an <code>.rpm</code> — for people who would rather their package manager owned it.
             <a href="https://github.com/hxst1/Beacon-Split/issues" target="_blank" rel="noopener">Open an issue →</a>
           </p>
         </div>
@@ -585,6 +586,13 @@
       <a class="dlc" data-superveil="download:windows" data-dl-suffix="_x64-setup.exe" href="https://github.com/hxst1/Beacon-Split/releases/latest">
         <span class="dlc__t">Windows</span>
         <span class="dlc__s">10 and 11 · x64 · installer<span data-dl-size></span></span>
+        <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
+      </a>
+      <!-- Same floor as Windows had: the releases page until a release carries
+           an AppImage, and a direct download from the fetch once one does. -->
+      <a class="dlc" data-superveil="download:linux" data-dl-suffix="_amd64.AppImage" href="https://github.com/hxst1/Beacon-Split/releases/latest">
+        <span class="dlc__t">Linux</span>
+        <span class="dlc__s">x86-64 · AppImage<span data-dl-size></span></span>
         <svg class="dlc__i" viewBox="0 0 14 15" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 1v9m0 0 3.4-3.4M7 10 3.6 6.6M1 12.6v.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-.4"/></svg>
       </a>
     </div>
@@ -672,8 +680,8 @@
 
       <dt class="faq__q">Which platforms does Beacon Split run on?</dt>
       <dd class="faq__a">
-        macOS, on both Apple Silicon and Intel, and Windows 10 and 11 on x64. A Linux build is
-        being worked on and has never been run, so nothing is claimed about it.
+        macOS, on both Apple Silicon and Intel; Windows 10 and 11 on x64; and Linux on x86_64, as
+        an AppImage built on Ubuntu 22.04, so it wants glibc 2.35 or newer.
       </dd>
 
       <dt class="faq__q">Why does macOS say the app is damaged?</dt>
@@ -754,7 +762,7 @@
     <div class="help">
       <h3 class="help__t">Where help goes furthest</h3>
       <ol class="help__l">
-        <li><b>The Linux build.</b> Nobody has run it there yet. Bounded, and the highest value.</li>
+        <li><b>Native Linux packages.</b> A PKGBUILD, a <code>.deb</code>, an <code>.rpm</code>. The AppImage runs everywhere; none of these is needed, and all of them are wanted.</li>
         <li><b>Detached panels.</b> Pop a panel into its own window. The daemon already makes this window management, not a session change.</li>
         <li><b>Per-workspace layouts</b> and rearranging panels by hand.</li>
         <li><b>A dev-server state</b> read honestly from the process tree, rather than guessed from output.</li>

@@ -42,8 +42,9 @@ Two rules are load-bearing and worth knowing before you start:
 ## Getting set up
 
 You need Node 20+, pnpm 10+, Rust 1.85+, and the Xcode command line tools — or,
-on Windows, the Rust MSVC toolchain and Visual Studio's C++ build tools (the
-README's [Building it](README.md#building-it) has the details).
+on Windows, the Rust MSVC toolchain and Visual Studio's C++ build tools, or on
+Linux a C toolchain and `webkit2gtk-4.1` (the README's [Building
+it](README.md#building-it) has the details for each).
 
 ```sh
 pnpm install

@@ -505,10 +505,30 @@ fn install_locations() -> Vec<PathBuf> {
             home.join(".cargo/bin"),
         ]);
 
+        // pnpm keeps its global binaries where the platform says data goes,
+        // which is `~/Library/pnpm` on macOS and `~/.local/share/pnpm` on
+        // Linux. `PNPM_HOME` is how somebody moves it, and is set in the shell
+        // profile we may not have managed to ask.
+        dirs.extend(std::env::var_os("PNPM_HOME").map(PathBuf::from));
+        dirs.push(data_home(&home).join("pnpm"));
+
         // Anything installed globally under a node that nvm manages, which is
         // a different directory for every version of node they have.
         if let Ok(versions) = std::fs::read_dir(home.join(".nvm/versions/node")) {
             dirs.extend(versions.flatten().map(|entry| entry.path().join("bin")));
+        }
+
+        // fnm, the same, plus the alias it keeps pointing at the default
+        // version — which is the one a new shell would have picked.
+        for root in fnm_roots(&home) {
+            dirs.push(root.join("aliases/default/bin"));
+            if let Ok(versions) = std::fs::read_dir(root.join("node-versions")) {
+                dirs.extend(
+                    versions
+                        .flatten()
+                        .map(|entry| entry.path().join("installation/bin")),
+                );
+            }
         }
     }
 
@@ -520,6 +540,34 @@ fn install_locations() -> Vec<PathBuf> {
     ]);
 
     dirs
+}
+
+/// Where the platform says a program's own data goes.
+///
+/// `XDG_DATA_HOME` first, because that is how somebody moves it, and the
+/// default each platform's tools actually use otherwise.
+fn data_home(home: &Path) -> PathBuf {
+    if let Some(dir) = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from) {
+        return dir;
+    }
+    if cfg!(target_os = "macos") {
+        home.join("Library/Application Support")
+    } else {
+        home.join(".local/share")
+    }
+}
+
+/// Where fnm keeps the versions of node it manages.
+///
+/// `FNM_DIR` when it is set, and both places fnm has defaulted to otherwise:
+/// the data directory on a current fnm, `~/.fnm` on an older one. Looking in a
+/// directory that is not there costs a failed `is_file`, and getting this
+/// wrong costs somebody their `claude`.
+fn fnm_roots(home: &Path) -> Vec<PathBuf> {
+    if let Some(dir) = std::env::var_os("FNM_DIR").map(PathBuf::from) {
+        return vec![dir];
+    }
+    vec![data_home(home).join("fnm"), home.join(".fnm")]
 }
 
 /// The same, for Windows.
@@ -885,11 +933,17 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_program_is_found_where_installers_put_it() {
-        // /bin is one of the places we look, and every machine that runs this
-        // has sh in it.
-        assert_eq!(
-            find_in(install_locations(), "sh"),
-            Some(PathBuf::from("/bin/sh"))
+        // Every machine that runs this has sh in one of the places we look.
+        // Which one is not the point, and is not the same everywhere: a
+        // distribution that has merged /bin into /usr/bin answers with the
+        // one listed first, so naming a path here would fail on Arch for a
+        // lookup that worked perfectly.
+        let found = find_in(install_locations(), "sh").expect("every unix has sh where we look");
+        assert_eq!(found.file_name().unwrap(), "sh");
+        assert!(
+            install_locations().contains(&found.parent().unwrap().to_path_buf()),
+            "{} is not one of the directories we look in",
+            found.display()
         );
     }
 

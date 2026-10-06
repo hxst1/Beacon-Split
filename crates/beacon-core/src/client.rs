@@ -851,10 +851,75 @@ fn complaint(directory: &Path) -> Option<String> {
 /// file that does not exist.
 pub fn daemon_binary_path() -> PathBuf {
     let name = format!("beacon-daemon{}", std::env::consts::EXE_SUFFIX);
-    std::env::current_exe()
+    let beside = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.join(&name)))
-        .unwrap_or_else(|| PathBuf::from(name))
+        .unwrap_or_else(|| PathBuf::from(&name));
+
+    kept_copy(&beside, &name).unwrap_or(beside)
+}
+
+/// A copy of the daemon somewhere that will still be there tomorrow.
+///
+/// An AppImage is mounted at `/tmp/.mount_XXXXXX`, under a name that is
+/// different on every launch, and two of the things Beacon does outlive a
+/// launch: the daemon itself, which is meant to survive the window, and the
+/// command it writes into Claude Code's `settings.json` and Codex's plugin,
+/// which are files on the user's own disk. Both would name a directory that no
+/// longer exists — and nothing would say so, because a hook that cannot be run
+/// fails quietly. The tabs would simply stop saying what the agent is doing.
+///
+/// Codex is worse than quiet: it trusts a hook by the hash of its command
+/// (ADR-074), so a command that changes every launch would have to be trusted
+/// again every launch.
+///
+/// So under an AppImage the daemon is kept beside Beacon's own configuration,
+/// and that copy is what runs and what gets named. `None` everywhere else, and
+/// also when the copy cannot be made: a path that works today is a better
+/// answer than one that does not exist at all.
+fn kept_copy(beside: &Path, name: &str) -> Option<PathBuf> {
+    // The variable AppImage's own runtime sets, and the only honest way to
+    // know we are inside one.
+    std::env::var_os("APPIMAGE")?;
+
+    let at = crate::paths::default_config_dir().join("bin").join(name);
+    if same_file(beside, &at) {
+        return Some(at);
+    }
+
+    std::fs::create_dir_all(at.parent()?).ok()?;
+
+    // Written beside and renamed over, never copied onto. The daemon from the
+    // last launch may still be running out of this very file, and Linux
+    // refuses to open a running program for writing — while a rename leaves it
+    // with the inode it already has and gives the new one the name.
+    let pending = at.with_extension("incoming");
+    std::fs::copy(beside, &pending).ok()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&pending, std::fs::Permissions::from_mode(0o755)).ok()?;
+    }
+    std::fs::rename(&pending, &at).ok()?;
+
+    tracing::info!(at = %at.display(), "kept a copy of the daemon outside the AppImage");
+    Some(at)
+}
+
+/// Whether two paths hold the same build, by the two things a copy preserves.
+///
+/// Length and modification time, which an updated AppImage changes and a
+/// re-launch of the same one does not. Cheap enough to ask on every call,
+/// which is what lets this live inside `daemon_binary_path`.
+fn same_file(one: &Path, other: &Path) -> bool {
+    let read = |path: &Path| {
+        let data = std::fs::metadata(path).ok()?;
+        Some((data.len(), data.modified().ok()?))
+    };
+    match (read(one), read(other)) {
+        (Some(one), Some(other)) => one == other,
+        _ => false,
+    }
 }
 
 trait LockOrRecover<T> {

@@ -206,7 +206,13 @@ fn run_delegate(command: &str, payload: &str) -> Option<String> {
         .spawn()
         .ok()?;
 
-    child.stdin.as_mut()?.write_all(payload.as_bytes()).ok()?;
+    // A failed write is not a failed delegate. A status line that is a bare
+    // `printf` never reads its input and is gone before we write, which on
+    // Linux makes this `EPIPE` rather than a buffered write nobody drains —
+    // and treating that as failure threw away the line we exist to print and
+    // showed Beacon's own instead. What the delegate does with the payload is
+    // its business; what it prints is the contract.
+    let _ = child.stdin.as_mut()?.write_all(payload.as_bytes());
     drop(child.stdin.take());
 
     let output = child.wait_with_output().ok()?;

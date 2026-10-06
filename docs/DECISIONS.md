@@ -2165,3 +2165,112 @@ to manage.
 project open still gets the command to copy and nothing else, which is the
 behaviour that was there before.
 
+## ADR-092: On Linux the window draws its own controls
+
+**Context.** macOS puts Beacon's title bar under the system's, with the traffic
+lights over it; Windows has no such overlay, so there the window is undecorated
+and Beacon draws minimise, maximise and close itself (ADR-075). Linux offered a
+third answer and a choice: keep the window manager's decorations, and accept a
+title bar above Beacon's own wherever the desktop draws one, or go undecorated
+as on Windows.
+
+There is no convention to follow. GNOME gives a client-side title bar, KDE a
+server-side one, and a tiling compositor often gives neither — so a decorated
+Beacon looks like three different applications on three desktops, and on one of
+them has two rows of chrome where it meant to have one.
+
+**Decision.** `tauri.linux.conf.json` sets `decorations: false`, and the
+buttons Windows already had are shown on Linux too. What gated them was renamed
+from "is this Windows" to "does Beacon draw its own window controls", which is
+everywhere but macOS; the capability that allows minimise, maximise and close
+names the same two platforms, and is no longer called `windows`.
+
+**Why.** The alternative was a window whose top edge is somebody else's
+decision. Beacon's title bar carries the workspace, the project tabs and the
+settings button — it is not decoration that a system title bar could sit above
+without the two reading as a mistake.
+
+**Consequence.** A Linux window has no system close button, so the capability
+is load-bearing: were it to be withheld the window could not be closed from
+inside at all. The same transparency and corner radius as elsewhere depend on a
+compositor; without one the window is opaque, which is the same outcome Linux
+already had for frosting, and it still works.
+
+## ADR-093: The AppImage is built on Ubuntu, never on the developer's machine
+
+**Context.** Linux has no single package format, and Beacon needs one thing to
+put on a release page. The AppImage is the only format that runs on any
+distribution without being rebuilt for each, which is what a release page is
+for. Tauri builds one by driving linuxdeploy.
+
+Two things make that fail on a current rolling distribution. linuxdeploy
+carries its own `strip`, older than the binutils that linked the distribution's
+libraries, and it stops on a section it does not recognise — `.relr.dyn` — once
+per library, and then the whole bundle fails. And its GTK plugin copies
+gdk-pixbuf's loader directory into the AppDir; gdk-pixbuf 2.44 builds the
+loaders into the library and stops creating that directory, so on Arch the
+plugin fails on a path that is not there, and on the next one if you make that
+one exist.
+
+**Decision.** The released AppImage is built in CI on Ubuntu 22.04. Locally,
+`pnpm app:build` goes through `scripts/bundle-app.mjs`, which sets `NO_STRIP`
+and, where gdk-pixbuf says its loader directory is somewhere that does not
+exist, builds the release executable and skips the bundle, saying so.
+
+**Why.** Even without those two, an AppImage should not be built here. It
+carries the GTK and WebKit of the machine that made it, and those link against
+that machine's glibc — so a bundle made on Arch runs on Arch, and the oldest
+base we are willing to build on is the newest glibc anybody needs in order to
+run it. 22.04 rather than the newest Ubuntu for exactly that reason.
+
+What `pnpm app:build` is for in a checkout is proving that a *release build*
+runs — the bug that made it worth doing (ADR-040) was in the release build,
+not in the bundler. That still happens.
+
+**Consequence.** Nobody on a rolling distribution can produce the artefact that
+gets released, only the executable it contains. The skip is conditional rather
+than permanent: a distribution that still has the directory bundles normally,
+and so does the day linuxdeploy's plugin stops needing it.
+
+## ADR-094: Inside an AppImage the daemon is kept outside it
+
+**Context.** An AppImage is mounted at `/tmp/.mount_XXXXXX`, under a name that
+is different on every launch. Beacon takes the daemon's path from where the
+application itself is running, which inside one is that mount — and two things
+Beacon does outlive a launch.
+
+The daemon is meant to survive the window; that is the whole point of it. And
+the path is written into files on the user's own disk: Claude Code's
+`settings.json`, as the command for every hook and the status line, and Codex's
+plugin under `CODEX_HOME`. Read on the next launch, both name a directory that
+is no longer there.
+
+Nothing would say so. A hook that cannot be run fails quietly: the tabs would
+simply stop saying what the agent is doing and the usage meter would stay
+empty, with no error anywhere. Codex is worse than quiet, because it trusts a
+hook by the hash of its command (ADR-074) — a command that changes every launch
+would have to be trusted again every launch.
+
+**Decision.** When `APPIMAGE` is set, the daemon is copied to `bin/` under
+Beacon's own configuration directory, and that copy is what runs and what gets
+named. It is refreshed whenever the one in the image differs, compared by
+length and modification time.
+
+The copy is written beside its destination and renamed over it, never copied
+onto it: the daemon from the last launch may still be running out of that very
+file, and Linux refuses to open a running program for writing. A rename leaves
+it with the inode it already has.
+
+**Why.** `APPIMAGE` is the variable the AppImage runtime sets, which makes this
+the thing itself rather than a guess about it. And when the copy cannot be
+made, the original path is still returned: one that works today is a better
+answer than one that does not exist at all.
+
+**Consequence.** On Linux, Beacon keeps a few megabytes beside its
+configuration. Every other platform is unchanged — the check is one environment
+variable, and nothing else sets it.
+
+A tag's worth of this is unproven until somebody launches an AppImage twice:
+the test here sets `APPIMAGE` and a configuration directory and checks the
+rule, which is as far as a test can go on a machine with no AppImage on it.
+
