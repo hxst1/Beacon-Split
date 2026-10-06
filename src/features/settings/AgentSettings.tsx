@@ -10,6 +10,7 @@ import type {
   Requirement,
   RequirementState,
 } from '@/types/beacon'
+import { useTypeInTerminal } from './typeInTerminal'
 import styles from './SettingsScreen.module.css'
 
 /**
@@ -359,6 +360,7 @@ export function RequirementsSettings(): React.ReactElement {
   const [copied, setCopied] = useState<string | null>(null)
 
   const [looking, setLooking] = useState(false)
+  const { type } = useTypeInTerminal()
 
   // `again` is the difference between the screen opening and somebody pressing
   // the button: opening uses what Beacon already worked out, and the button
@@ -453,6 +455,19 @@ export function RequirementsSettings(): React.ReactElement {
                     >
                       {copied === option.command ? 'Copied' : option.command}
                     </button>
+                    {/* Beacon is the terminal here, so the command can go
+                        where it belongs instead of through the clipboard and
+                        a window somewhere else. It stops at typing it. */}
+                    {type ? (
+                      <button
+                        type="button"
+                        className={styles['installLabel']}
+                        title="Put it on the command line in a terminal here, ready to run"
+                        onClick={() => type(option.command)}
+                      >
+                        Type it in
+                      </button>
+                    ) : null}
                   </div>
                 ))}
                 {requirement.note ? (

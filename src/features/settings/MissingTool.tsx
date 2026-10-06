@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { useBeacon } from '@/app/store'
+import { useTypeInTerminal } from './typeInTerminal'
 import type { Requirement } from '@/types/beacon'
 import styles from './MissingTool.module.css'
 
@@ -13,6 +14,7 @@ import styles from './MissingTool.module.css'
  */
 export function MissingTool({ requirement }: { requirement: Requirement }): React.ReactElement {
   const setOverlay = useBeacon((s) => s.setOverlay)
+  const { type } = useTypeInTerminal()
   const [copied, setCopied] = useState(false)
   const first = requirement.install[0]
 
@@ -44,6 +46,20 @@ export function MissingTool({ requirement }: { requirement: Requirement }): Reac
           }}
         >
           {copied ? 'Copied' : first.command}
+        </button>
+      ) : null}
+
+      {/* Beacon is the terminal here, so the command can go where it belongs
+          rather than through the clipboard and a window somewhere else. It
+          stops at typing it: running an installer is a decision, and this
+          leaves it to the person making it. */}
+      {first && type ? (
+        <button
+          type="button"
+          className={styles['more']}
+          onClick={() => type(first.command)}
+        >
+          Type it into a terminal here, ready to run
         </button>
       ) : null}
 
