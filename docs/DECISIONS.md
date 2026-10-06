@@ -2122,3 +2122,39 @@ at 249 ms and 174 ms here, and only for programs that are otherwise ready.
 The agent is there, and what it shows in the terminal is its own sign-in
 screen, which is the one thing Beacon must not get between the user and.
 
+## ADR-091: Beacon types the install command and does not press Return
+
+**Context.** Being shown a command and told to go and run it is where somebody
+with little patience for terminals stops. They have to find a terminal, paste
+it, and come back — and Beacon *is* a terminal, with the project's own shell
+already in it.
+
+**Decision.** The install command can be put on the command line of a terminal
+in Beacon, focused, with the keyboard in it. Beacon does not press Return.
+
+Offered from both places a missing program is reported: the panel that stands
+in for it, which is where somebody actually is, and Settings. Only when there
+is a project, because a terminal belongs to one.
+
+**Why.** Running it is the part worth leaving alone. An installer is a program
+somebody else wrote, usually fetched over the network as it runs, and a Beacon
+that ran it would own every way it can fail on a machine it cannot see: half
+installed, a `sudo` prompt nobody expected, a PATH that will not take effect
+until the next shell, a Homebrew that is not there. When that happens the
+person is left looking at a failure inside an application that promised to
+handle it.
+
+Typing it removes the tedious part and leaves the part that is a decision. The
+command is readable, in front of them, one key away — and if it goes wrong they
+are looking at the same output they would have had in their own terminal, which
+is a situation the internet can help them with.
+
+It also keeps a rule the project already holds elsewhere: Beacon runs the tools
+you already have, and it does not install things for you (ADR-054, ADR-069).
+The exception is Beacon's own plugin inside Codex (ADR-078), which is Beacon's
+to manage.
+
+**Consequence.** One keystroke of friction, deliberately. Somebody with no
+project open still gets the command to copy and nothing else, which is the
+behaviour that was there before.
+
