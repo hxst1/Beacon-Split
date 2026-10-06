@@ -2080,3 +2080,45 @@ Capabilities are leaked rather than handed out by value, so that every caller
 can go on taking a `&'static`. One probe is a few hundred bytes and a person
 presses that button a handful of times in the life of a window.
 
+## ADR-090: A requirement has four answers, not two
+
+**Context.** A requirement was found or it was not, and anything that was not
+found was shown the command that installs it. That is right for one of the ways
+a tool fails to work and wrong for the others. A program that is installed and
+will not run gets told to install it again, as does one that runs perfectly and
+has nobody signed in — and being told to install what you are looking at is how
+somebody decides the program is not listening to them.
+
+**Decision.** `ready`, `missing`, `broken`, `needsAuth`.
+
+- `missing` is the only one that offers an install command.
+- `broken` is a program that resolves and will not say what version it is. The
+  version was already being asked for, so this costs nothing, and the panel
+  says where it found it and what it did instead.
+- `needsAuth` is asked only of something otherwise ready, and only by the
+  question the user could type themselves: `claude auth status --json`, which
+  Beacon already asks elsewhere, and `codex login status`.
+
+Beacon never touches a credential (ADR-052) and this does not either. It reads
+`loggedIn` from Claude Code's JSON, and from Codex — which has no
+machine-readable answer — only the exit status.
+
+**Why.** Codex's reading is deliberately one-directional: a non-zero exit is
+read as not signed in, and a zero exit is read as nothing at all. If Codex
+turns out to exit zero either way, Beacon simply never says Codex needs signing
+in, which is where it was before. The other way round would be telling somebody
+who is signed in that they are not, and a warning that cannot be acted on is
+worse than no warning.
+
+A `None` answer — a version too old to have the subcommand, one that would not
+finish — reads as ready, for the same reason: Beacon says nothing rather than
+guessing, and a change on the tool's side switches the feature off instead of
+turning the screen into a liar.
+
+**Consequence.** A check costs two short processes more than it did, measured
+at 249 ms and 174 ms here, and only for programs that are otherwise ready.
+
+`needsAuth` does not stand in for the panel the way `missing` and `broken` do.
+The agent is there, and what it shows in the terminal is its own sign-in
+screen, which is the one thing Beacon must not get between the user and.
+

@@ -18,8 +18,19 @@ export function MissingTool({ requirement }: { requirement: Requirement }): Reac
 
   return (
     <div className={styles['root']}>
-      <div className={styles['title']}>{requirement.name} is not installed</div>
-      <p className={styles['body']}>{requirement.whatBreaks}</p>
+      <div className={styles['title']}>
+        {requirement.state === 'broken'
+          ? `${requirement.name} is installed, but it did not answer`
+          : `${requirement.name} is not installed`}
+      </div>
+      <p className={styles['body']}>
+        {requirement.state === 'broken'
+          ? // Telling somebody to install what they are looking at is how a
+            // program convinces them it is not listening. Where it is and what
+            // it did instead is the useful thing to say.
+            `Beacon found it at ${requirement.path} and asked it for its version, and it did not reply. Installing it again usually fixes that.`
+          : requirement.whatBreaks}
+      </p>
 
       {first ? (
         <button

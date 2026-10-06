@@ -4,7 +4,12 @@ import { useBeacon } from '@/app/store'
 import { errorMessage, ipc } from '@/ipc'
 import { isWindows } from '@/lib/platform'
 import { useWorkstreamsSupported } from '@/features/workstreams/capabilities'
-import type { CodexIntegration, Integration, Requirement } from '@/types/beacon'
+import type {
+  CodexIntegration,
+  Integration,
+  Requirement,
+  RequirementState,
+} from '@/types/beacon'
 import styles from './SettingsScreen.module.css'
 
 /**
@@ -335,6 +340,19 @@ export function CodexSettings(): React.ReactElement {
  * up. A check that only reports "missing" leaves them exactly as stuck, so each
  * one says what it costs, where it was looked for, and what to run.
  */
+/**
+ * Which dot a state draws.
+ *
+ * `stale` already exists and is the amber one, which is what both of these
+ * are: something is there and is not working, rather than absent.
+ */
+const DOT: Record<RequirementState, string | undefined> = {
+  ready: 'installed',
+  missing: undefined,
+  broken: 'stale',
+  needsAuth: 'stale',
+}
+
 export function RequirementsSettings(): React.ReactElement {
   const [requirements, setRequirements] = useState<Requirement[] | null>(null)
   const [daemon, setDaemon] = useState<boolean | null>(null)
@@ -392,14 +410,21 @@ export function RequirementsSettings(): React.ReactElement {
         requirements.map((requirement) => (
           <div className={styles['requirement']} key={requirement.id}>
             <div className={styles['requirementHead']}>
-              <span
-                className={styles['stateDot']}
-                data-state={requirement.path ? 'installed' : undefined}
-              />
+              <span className={styles['stateDot']} data-state={DOT[requirement.state]} />
               <span className={styles['requirementName']}>{requirement.name}</span>
-              {!requirement.path ? (
+              {requirement.state === 'missing' ? (
                 <span className={styles['tag']} data-importance={requirement.importance}>
                   {requirement.importance === 'required' ? 'Needed' : 'Optional'}
+                </span>
+              ) : null}
+              {requirement.state === 'broken' ? (
+                <span className={styles['tag']} data-importance="required">
+                  Not answering
+                </span>
+              ) : null}
+              {requirement.state === 'needsAuth' ? (
+                <span className={styles['tag']} data-importance="recommended">
+                  Sign in
                 </span>
               ) : null}
               <span style={{ flex: 1 }} />

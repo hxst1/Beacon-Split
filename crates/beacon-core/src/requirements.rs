@@ -14,6 +14,30 @@ pub enum Importance {
     Recommended,
 }
 
+/// Where a requirement stands, in the terms somebody reading the screen cares
+/// about.
+///
+/// Four states and not two, because "not working" has four different answers
+/// and only one of them is "install it". Being told to install something that
+/// is already installed is how a person decides the program is lying to them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum State {
+    /// Found, and it answered when asked what it was.
+    Ready,
+    /// Not on this machine, as far as the login shell knows.
+    Missing,
+    /// There, and it would not say what version it is. Something is wrong with
+    /// the installation rather than with its absence, and the command that
+    /// installs it again is usually the fix — but saying "not installed" to
+    /// somebody looking at the binary is not.
+    Broken,
+    /// There and working, and nobody has signed in. Beacon never touches the
+    /// credential; it asked the program, which is the same question the user
+    /// could type.
+    NeedsAuth,
+}
+
 /// One way to get a missing program.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +52,7 @@ pub struct Requirement {
     pub id: &'static str,
     pub name: &'static str,
     pub importance: Importance,
+    pub state: State,
     /// Where it was found, resolved the same way a session would resolve it.
     pub path: Option<String>,
     pub version: Option<String>,
@@ -42,6 +67,38 @@ impl Requirement {
     pub fn found(&self) -> bool {
         self.path.is_some()
     }
+}
+
+/// What a program's state is, given where it was found.
+///
+/// The version is already asked for and shown, so `Broken` costs nothing: a
+/// program that resolves and will not say what it is has something wrong with
+/// it, and that is worth telling apart from not being there.
+///
+/// `signed_in` is asked only of something that is otherwise ready, and only
+/// where there is an official way to ask. `None` from it means the question
+/// had no answer — a version too old to have the subcommand, or one that would
+/// not finish — and then Beacon says nothing rather than guessing.
+fn state_of(
+    path: Option<&Path>,
+    version: Option<&str>,
+    signed_in: impl Fn(&Path) -> Option<bool>,
+) -> State {
+    let Some(path) = path else {
+        return State::Missing;
+    };
+    if version.is_none() {
+        return State::Broken;
+    }
+    match signed_in(path) {
+        Some(false) => State::NeedsAuth,
+        _ => State::Ready,
+    }
+}
+
+/// For a program nobody signs in to.
+fn no_sign_in(_: &Path) -> Option<bool> {
+    None
 }
 
 /// Everything Beacon needs from the machine it is running on.
@@ -84,13 +141,20 @@ pub fn missing_essentials(requirements: &[Requirement]) -> Vec<&Requirement> {
 
 fn check_claude() -> Requirement {
     let path = resolve_program("claude");
+    let version = path
+        .as_deref()
+        .and_then(|path| version_of(path, "--version"));
+    let state = state_of(
+        path.as_deref(),
+        version.as_deref(),
+        crate::claude::signed_in,
+    );
     Requirement {
         id: "claude",
         name: "Claude Code",
         importance: Importance::Required,
-        version: path
-            .as_deref()
-            .and_then(|path| version_of(path, "--version")),
+        state,
+        version,
         path: path.map(|path| path.to_string_lossy().into_owned()),
         what_breaks: "Beacon runs the real claude command in each project. \
                       Without it, the Claude panel has nothing to run — everything else works.",
@@ -133,13 +197,16 @@ fn check_claude() -> Requirement {
 /// present itself as something wrong with the installation.
 fn check_codex() -> Requirement {
     let path = resolve_program("codex");
+    let version = path
+        .as_deref()
+        .and_then(|path| version_of(path, "--version"));
+    let state = state_of(path.as_deref(), version.as_deref(), crate::codex::signed_in);
     Requirement {
         id: "codex",
         name: "Codex",
         importance: Importance::Recommended,
-        version: path
-            .as_deref()
-            .and_then(|path| version_of(path, "--version")),
+        state,
+        version,
         path: path.map(|path| path.to_string_lossy().into_owned()),
         what_breaks: "Beacon can run Codex beside Claude Code, in its own \
                       conversation. Without it, the Codex panel has nothing to \
@@ -164,13 +231,16 @@ fn check_codex() -> Requirement {
 
 fn check_git() -> Requirement {
     let path = resolve_program("git");
+    let version = path
+        .as_deref()
+        .and_then(|path| version_of(path, "--version"));
+    let state = state_of(path.as_deref(), version.as_deref(), no_sign_in);
     Requirement {
         id: "git",
         name: "Git",
         importance: Importance::Recommended,
-        version: path
-            .as_deref()
-            .and_then(|path| version_of(path, "--version")),
+        state,
+        version,
         path: path.map(|path| path.to_string_lossy().into_owned()),
         what_breaks: "The Git panel needs it, and Quick Open uses it to respect \
                       your ignore rules. Without it those fall back or go quiet; \
@@ -231,6 +301,61 @@ pub fn daemon_present(binary: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_state_is_worked_out_from_what_was_already_asked() {
+        let somewhere = Path::new("/usr/local/bin/claude");
+
+        // Not there at all.
+        assert_eq!(state_of(None, None, no_sign_in), State::Missing);
+
+        // There, and it would not say what it is. "Not installed" would be a
+        // lie to somebody looking straight at the binary.
+        assert_eq!(state_of(Some(somewhere), None, no_sign_in), State::Broken);
+
+        // There, working, and nobody signed in.
+        assert_eq!(
+            state_of(Some(somewhere), Some("1.0"), |_| Some(false)),
+            State::NeedsAuth
+        );
+
+        // There, working, signed in.
+        assert_eq!(
+            state_of(Some(somewhere), Some("1.0"), |_| Some(true)),
+            State::Ready
+        );
+
+        // And the one that matters most: the question had no answer, because
+        // this version has no way to ask. Saying nothing is the only honest
+        // move, so it reads as ready rather than as a warning nobody can act
+        // on.
+        assert_eq!(
+            state_of(Some(somewhere), Some("1.0"), |_| None),
+            State::Ready
+        );
+    }
+
+    #[test]
+    fn missing_is_the_only_state_that_asks_somebody_to_install_something() {
+        // The point of having four: a broken install and an unsigned-in one
+        // are not fixed by the install command, and showing it is how a
+        // program convinces somebody it is not listening.
+        for requirement in check() {
+            if requirement.state == State::Missing {
+                assert!(
+                    !requirement.install.is_empty(),
+                    "{} is missing and offers no way to get it",
+                    requirement.name
+                );
+            }
+            assert_eq!(
+                requirement.state == State::Missing,
+                !requirement.found(),
+                "{} disagrees with itself about whether it is there",
+                requirement.name
+            );
+        }
+    }
 
     #[test]
     fn every_requirement_says_what_breaks_and_how_to_fix_it() {

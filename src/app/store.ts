@@ -208,7 +208,17 @@ export const useBeacon = create<BeaconState>((set, get) => {
         // Best-effort: not knowing what is missing must not stop Beacon opening.
         ipc
           .checkRequirements()
-          .then((found) => set({ missing: found.filter((entry) => !entry.path) }))
+          // Missing and broken both mean the panel has nothing to run. Needing
+          // a sign-in does not: the agent is there and shows its own sign-in
+          // screen in the terminal, which is the one Beacon must not get
+          // between.
+          .then((found) =>
+            set({
+              missing: found.filter(
+                (entry) => entry.state === 'missing' || entry.state === 'broken',
+              ),
+            }),
+          )
           .catch(() => undefined)
       } catch (error) {
         set({ status: 'error', fatal: errorMessage(error) })
