@@ -2224,3 +2224,46 @@ not in the bundler. That still happens.
 gets released, only the executable it contains. The skip is conditional rather
 than permanent: a distribution that still has the directory bundles normally,
 and so does the day linuxdeploy's plugin stops needing it.
+
+## ADR-094: Inside an AppImage the daemon is kept outside it
+
+**Context.** An AppImage is mounted at `/tmp/.mount_XXXXXX`, under a name that
+is different on every launch. Beacon takes the daemon's path from where the
+application itself is running, which inside one is that mount — and two things
+Beacon does outlive a launch.
+
+The daemon is meant to survive the window; that is the whole point of it. And
+the path is written into files on the user's own disk: Claude Code's
+`settings.json`, as the command for every hook and the status line, and Codex's
+plugin under `CODEX_HOME`. Read on the next launch, both name a directory that
+is no longer there.
+
+Nothing would say so. A hook that cannot be run fails quietly: the tabs would
+simply stop saying what the agent is doing and the usage meter would stay
+empty, with no error anywhere. Codex is worse than quiet, because it trusts a
+hook by the hash of its command (ADR-074) — a command that changes every launch
+would have to be trusted again every launch.
+
+**Decision.** When `APPIMAGE` is set, the daemon is copied to `bin/` under
+Beacon's own configuration directory, and that copy is what runs and what gets
+named. It is refreshed whenever the one in the image differs, compared by
+length and modification time.
+
+The copy is written beside its destination and renamed over it, never copied
+onto it: the daemon from the last launch may still be running out of that very
+file, and Linux refuses to open a running program for writing. A rename leaves
+it with the inode it already has.
+
+**Why.** `APPIMAGE` is the variable the AppImage runtime sets, which makes this
+the thing itself rather than a guess about it. And when the copy cannot be
+made, the original path is still returned: one that works today is a better
+answer than one that does not exist at all.
+
+**Consequence.** On Linux, Beacon keeps a few megabytes beside its
+configuration. Every other platform is unchanged — the check is one environment
+variable, and nothing else sets it.
+
+A tag's worth of this is unproven until somebody launches an AppImage twice:
+the test here sets `APPIMAGE` and a configuration directory and checks the
+rule, which is as far as a test can go on a machine with no AppImage on it.
+
