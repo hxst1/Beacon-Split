@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Beacon Split — keep your agents moving</title>
+<!-- The headline on the page is the promise; this is the sentence somebody
+     types into a search box. Different jobs, so they are allowed to differ:
+     "keep your agents moving" is what Beacon is for, and "Claude Code and
+     Codex side by side" is what somebody is looking for when they do not yet
+     know Beacon exists. The og: title below stays the promise, because a
+     shared link is read by a person and not by a search. -->
+<title>Beacon Split — run Claude Code and Codex side by side</title>
 <meta name="description" content="An agent-first development workspace. Run Claude Code and Codex side by side, with real terminals, files and git — and know the moment an agent needs you. Free and open source for macOS, Windows and Linux.">
 <!-- The .ico first, and it is the one that matters outside a browser:
      Google Search does not accept an SVG favicon, so a page offering only one
@@ -118,10 +124,18 @@
     },
     {
       "@type": "Question",
-      "name": "Does Beacon Split work with Codex?",
+      "name": "Can I run Claude Code and Codex at the same time?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Codex is a second agent in Beacon, with its own panel and conversations. It can run beside Claude Code in the same project, and each agent can have a git worktree of its own when you turn that on."
+        "text": "Yes, in the same window and in the same project. Each is a panel of its own with its own conversation, and each can have a git worktree of its own when you turn that on, so they do not write over each other. Beacon runs both as they are published; it is not a wrapper around either."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Beacon Split an open source alternative to a Claude Code desktop app?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It is free and open source under AGPL-3.0, and it is not affiliated with Anthropic or OpenAI, who both publish their own tools. What Beacon does that a single-vendor application will not is run them together: Claude Code and Codex in one window, on the same project, each in its own conversation. Sessions live in a background process rather than in the window, so closing it does not end them."
       }
     },
     {
@@ -671,11 +685,21 @@
         your own agreement with Anthropic. Beacon is not affiliated with or endorsed by Anthropic.
       </dd>
 
-      <dt class="faq__q">Does Beacon Split work with Codex?</dt>
+      <dt class="faq__q">Can I run Claude Code and Codex at the same time?</dt>
       <dd class="faq__a">
-        Yes. Codex is a second agent in Beacon, with its own panel and conversations. It can run
-        beside Claude Code in the same project, and each agent can have a git worktree of its own
-        when you turn that on.
+        Yes, in the same window and in the same project. Each is a panel of its own with its own
+        conversation, and each can have a git worktree of its own when you turn that on, so they
+        do not write over each other. Beacon runs both as they are published; it is not a wrapper
+        around either.
+      </dd>
+
+      <dt class="faq__q">Is Beacon Split an open source alternative to a Claude Code desktop app?</dt>
+      <dd class="faq__a">
+        It is free and open source under AGPL-3.0, and it is not affiliated with Anthropic or
+        OpenAI, who both publish their own tools. What Beacon does that a single-vendor
+        application will not is run them together: Claude Code and Codex in one window, on the
+        same project, each in its own conversation. Sessions live in a background process rather
+        than in the window, so closing it does not end them.
       </dd>
 
       <dt class="faq__q">Which platforms does Beacon Split run on?</dt>
