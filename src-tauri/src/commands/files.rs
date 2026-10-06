@@ -161,6 +161,34 @@ pub fn reveal_path(
         .map_err(|err| crate::error::CommandError::from(err.to_string()))
 }
 
+/// Opens a file with whatever this machine opens it with.
+///
+/// For everything Beacon will not show: a PDF, a video, an archive, an image
+/// too large to carry. Beacon could learn to draw some of those, and the
+/// honest reckoning is that it would learn each one badly and differently on
+/// each platform — a PDF in a web view renders on macOS and on Windows and not
+/// on Linux, where the engine has no viewer at all. The machine already has
+/// something that opens every one of them properly.
+///
+/// The same resolution as every other file operation, so this cannot be asked
+/// to open something outside the project.
+#[tauri::command]
+pub fn open_path(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: WorkspaceId,
+    project_id: ProjectId,
+    path: String,
+) -> CommandResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let root = project_root!(state, workspace_id, project_id);
+    let target = beacon_core::files::resolve_within(&root, &path)?;
+    app.opener()
+        .open_path(target.to_string_lossy(), None::<&str>)
+        .map_err(|err| crate::error::CommandError::from(err.to_string()))
+}
+
 /// Every file in a project, for quick open and the files panel's search.
 ///
 /// Listed on demand rather than kept in memory: a project's file list changes

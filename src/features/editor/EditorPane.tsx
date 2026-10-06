@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 
 import { useBeacon } from '@/app/store'
+import { errorMessage, ipc } from '@/ipc'
 import { EnvView } from '@/features/env/EnvView'
 import type { FileContents } from '@/types/beacon'
 import { CodeEditor } from './CodeEditor'
@@ -309,22 +310,28 @@ function ActiveView({
     // screenshot somebody just asked an agent about is exactly the file they
     // want to see rather than read.
     return (
-      <div className={styles['image']}>
-        <img
-          src={`data:${contents.mediaType};base64,${contents.base64}`}
-          alt={name}
-          draggable={false}
-        />
-      </div>
+      <ImageView
+        workspaceId={workspaceId}
+        projectId={projectId}
+        path={path}
+        name={name}
+        contents={contents}
+      />
     )
   }
   if (contents.kind === 'binary') {
-    return <div className={styles['notice']}>{name} is not a text file.</div>
+    return (
+      <div className={styles['notice']}>
+        {name} is not a text file.
+        <OpenWithSystem workspaceId={workspaceId} projectId={projectId} path={path} />
+      </div>
+    )
   }
   if (contents.kind === 'tooLarge') {
     return (
       <div className={styles['notice']}>
-        {name} is {Math.round(contents.size / 1024 / 1024)} MB — too large to edit here.
+        {name} is {megabytes(contents.size)} — too large to open here.
+        <OpenWithSystem workspaceId={workspaceId} projectId={projectId} path={path} />
       </div>
     )
   }
@@ -344,5 +351,95 @@ function ActiveView({
       onChange={onChange}
       onSave={onSave}
     />
+  )
+}
+
+/** A size somebody can read, rather than a number of bytes. */
+function megabytes(size: number): string {
+  const mb = size / 1024 / 1024
+  return mb >= 10 ? `${Math.round(mb)} MB` : `${mb.toFixed(1)} MB`
+}
+
+/**
+ * The way out of everything Beacon will not draw.
+ *
+ * A PDF, a video, an archive, a picture too large to carry. Beacon could learn
+ * to show some of them, and it would learn each one badly and differently on
+ * each platform — a web view draws a PDF on macOS and on Windows and not on
+ * Linux, where the engine has no viewer at all. The machine already has
+ * something that opens every one of them properly, and this hands it over.
+ */
+function OpenWithSystem({
+  workspaceId,
+  projectId,
+  path,
+}: {
+  workspaceId: string
+  projectId: string
+  path: string
+}): React.ReactElement {
+  const [failed, setFailed] = useState<string | null>(null)
+
+  return (
+    <>
+      <button
+        type="button"
+        className={styles['openWith']}
+        onClick={() => {
+          setFailed(null)
+          ipc.openPath(workspaceId, projectId, path).catch((err: unknown) => {
+            setFailed(errorMessage(err))
+          })
+        }}
+      >
+        Open it with this machine's app for it
+      </button>
+      {failed ? <span className={styles['openFailed']}>{failed}</span> : null}
+    </>
+  )
+}
+
+/**
+ * An image, with the two things somebody checking one wants to know.
+ *
+ * Its size on disk is already known; its dimensions are not, and nothing but
+ * the browser that drew it can say. An asset an agent has just produced is
+ * usually opened to find out exactly that.
+ */
+function ImageView({
+  workspaceId,
+  projectId,
+  path,
+  name,
+  contents,
+}: {
+  workspaceId: string
+  projectId: string
+  path: string
+  name: string
+  contents: Extract<FileContents, { kind: 'image' }>
+}): React.ReactElement {
+  const [grid, setGrid] = useState<{ width: number; height: number } | null>(null)
+
+  return (
+    <div className={styles['image']}>
+      <img
+        src={`data:${contents.mediaType};base64,${contents.base64}`}
+        alt={name}
+        draggable={false}
+        onLoad={(event) =>
+          setGrid({
+            width: event.currentTarget.naturalWidth,
+            height: event.currentTarget.naturalHeight,
+          })
+        }
+      />
+      <div className={styles['imageFacts']}>
+        {grid ? `${grid.width} × ${grid.height}` : null}
+        {grid ? ' · ' : null}
+        {megabytes(contents.size)}
+        <OpenWithSystem workspaceId={workspaceId} projectId={projectId} path={path} />
+      </div>
+    </div>
   )
 }

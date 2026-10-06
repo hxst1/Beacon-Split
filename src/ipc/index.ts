@@ -345,6 +345,17 @@ export const ipc = {
   trashPath: (workspaceId: string, projectId: string, path: string) =>
     invoke<void>('trash_path', { workspaceId, projectId, path }),
 
+  /**
+   * Opens a file with whatever this machine opens it with.
+   *
+   * For everything Beacon will not show. It could learn to draw a PDF, and it
+   * would learn it badly and differently on each platform — a web view renders
+   * one on macOS and Windows and not on Linux. The machine already has
+   * something that opens it properly.
+   */
+  openPath: (workspaceId: string, projectId: string, path: string) =>
+    invoke<void>('open_path', { workspaceId, projectId, path }),
+
   revealPath: (workspaceId: string, projectId: string, path: string) =>
     invoke<void>('reveal_path', { workspaceId, projectId, path }),
 
