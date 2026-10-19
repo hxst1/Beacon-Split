@@ -81,6 +81,17 @@ by default because a release is the one build nobody gets to try again.
 Publishing the release makes `latest.json` reachable, and every running Beacon
 finds it the next time it starts.
 
+Then, on an Arch machine, point the Arch package at it:
+
+```sh
+packaging/aur/beacon-split-bin/update.sh 0.2.0
+```
+
+That sets the version, takes the checksums of the `.deb` the release now
+serves, and regenerates `.SRCINFO`. Commit both files. An Arch install is
+updated by `pacman`, not by Beacon: on Linux the updater only runs inside an
+AppImage, which is the one file it knows how to replace.
+
 ## What a user sees
 
 - On start, if their version is newer than the last one they were shown, the

@@ -26,6 +26,10 @@ jobs:
             target: x86_64-apple-darwin
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
+          # Linux gets an AppImage and a `.deb`. The `.deb` links against the
+          # system's GTK and WebKitGTK instead of carrying them, which is what
+          # the Arch package (packaging/aur) repackages.
+          #
           # 22.04 rather than the newest Ubuntu on purpose. An AppImage carries
           # the GTK and WebKit of the machine that made it, and those link
           # against that machine's glibc — so the oldest base we are willing to

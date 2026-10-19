@@ -2318,3 +2318,77 @@ again.
 the tree, and hand-rolling a codec is where a mistake becomes silent corruption
 rather than a compile error.
 
+
+## ADR-096: With NVIDIA's driver the webview renders without DMA-BUF
+
+**Context.** On Arch with Hyprland and NVIDIA's proprietary driver, a Beacon
+built against the system's WebKitGTK (2.52) opened a transparent window that
+never filled in and then exited. GDK said why in one line: `Error 71 (Protocol
+error) dispatching to Wayland display`. WebKitGTK's DMA-BUF renderer hands the
+compositor buffers that NVIDIA's driver and the compositor disagree about, and
+the compositor answers by closing the connection.
+
+The released AppImage did not show it, but only by accident: linuxdeploy's GTK
+hook forces `GDK_BACKEND=x11`, so it runs through XWayland and never meets the
+Wayland path at all.
+
+**Decision.** Before anything else starts, `graphics::prepare` sets
+`WEBKIT_DISABLE_DMABUF_RENDERER=1` when NVIDIA's driver is loaded
+(`/sys/module/nvidia_drm` or `/proc/driver/nvidia/version`) and the variable is
+not already set either way. It logs that it did, once tracing is up.
+
+**Why.** It is the narrowest switch that works on every driver version: the
+renderer falls back to shared memory, which costs a copy per frame and is
+nothing a window of text notices. `__NV_DISABLE_EXPLICIT_SYNC=1` also cured it
+on the machine it was found on, but it is a driver workaround that a driver
+release can retire, and turning the whole window over to software rendering
+(`LIBGL_ALWAYS_SOFTWARE`) gives up far more than the bug asked for.
+
+A variable the user already set — to `1` or to `0` — is left alone. They know
+something about their machine that a kernel module does not.
+
+**Consequence.** Sessions inherit the variable, since the daemon inherits
+Beacon's environment. That is wanted: a WebKitGTK program started from a Beacon
+terminal on the same machine would otherwise fail the same way. Mesa and
+nouveau machines see no change.
+
+## ADR-097: The terminal font is the user's to name
+
+**Context.** The terminal's font list was fixed, and macOS-first: `SF Mono`,
+`JetBrains Mono`, Menlo. On a typical Linux machine none of those names exists —
+a Nerd Font installs as `JetBrainsMono Nerd Font Mono`, not `JetBrains Mono` —
+so fontconfig resolved the whole list to the generic monospace, which has none
+of the icons Powerlevel10k, starship or eza draw. WebKit then found each icon
+glyph by glyph in whatever font had it, at the wrong width, and the prompt
+broke the grid.
+
+**Decision.** Settings → Terminal has a font family and a size, stored in
+`settings.json` as `terminalFont` and applied to running terminals at once,
+each refitting its grid. On Linux the family field suggests what
+`fc-list :spacing=mono` reports. A chosen family goes in front of Beacon's own
+list rather than replacing it. Beacon's list now starts with the common Nerd
+Font families, `Mono` variants first, and ends with `Symbols Nerd Font Mono`
+before the generic.
+
+**Why.** Every terminal has this setting, and the font somebody wants is the
+one their other terminal already uses — Beacon cannot guess it. The name is
+refused if it carries a quote, comma or semicolon, because it is quoted into a
+CSS font list.
+
+## ADR-098: On Linux, accents typed through the input method are Beacon's
+
+**Context.** A dead key on WebKitGTK (`´` then `a`) arrives as a composition
+that ends empty, followed by a 229 keydown, an `input` with `á`, and a
+`compositionend` that was never started. xterm reads its hidden textarea from
+three places with positions left over from earlier keys, so what reached the
+shell depended on timer order: `pingüino` arrived as `pingó ñ üino`.
+
+**Decision.** `accentGuard` sits in front of xterm on Linux only. A 229 keydown
+outside a composition is kept from xterm, its text is delivered from the
+`input` event that carries it (Backspace as DEL), an orphaned `compositionend`
+never reaches xterm, and the textarea is emptied. A composition that begins
+with `compositionstart` — Japanese, Chinese, Korean — is still xterm's.
+
+**Why.** It is the narrowest change that makes the event shape WebKitGTK
+produces into one xterm handles correctly; on macOS every composition is
+announced and nothing changes there.

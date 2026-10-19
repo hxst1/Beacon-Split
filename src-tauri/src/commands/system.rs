@@ -31,6 +31,42 @@ pub fn report_frontend_error(details: String) {
     tracing::error!(target: "frontend", "{details}");
 }
 
+/// The monospaced families installed here, to suggest for the terminal.
+///
+/// Asked of fontconfig, which is what the webview resolves a name through on
+/// Linux, so every name offered is one that will be found. Elsewhere there is
+/// nothing as cheap to ask, and the field takes a typed name the same way.
+#[tauri::command]
+pub async fn monospace_fonts() -> Vec<String> {
+    #[cfg(target_os = "linux")]
+    {
+        tauri::async_runtime::spawn_blocking(installed_monospace_fonts)
+            .await
+            .unwrap_or_default()
+    }
+    #[cfg(not(target_os = "linux"))]
+    Vec::new()
+}
+
+#[cfg(target_os = "linux")]
+fn installed_monospace_fonts() -> Vec<String> {
+    let Ok(output) = std::process::Command::new("fc-list")
+        .args(["-f", "%{family[0]}\\n", ":spacing=mono"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    let mut families: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|family| !family.is_empty())
+        .map(String::from)
+        .collect();
+    families.sort_unstable();
+    families.dedup();
+    families
+}
+
 /// Which platform we are on, so the frontend can label shortcuts `⌘` or `Ctrl`
 /// without sniffing the user agent.
 #[tauri::command]

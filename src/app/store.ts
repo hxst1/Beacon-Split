@@ -10,6 +10,7 @@ import {
   disposeFor,
   disposeProject,
   refreshAccent,
+  setTerminalFont,
 } from '@/features/terminal/terminalHost'
 import { errorMessage, ipc } from '@/ipc'
 import { AGENT_PANELS } from '@/lib/layout'
@@ -28,6 +29,7 @@ import type {
   SessionKind,
   Snapshot,
   Sounds,
+  TerminalFont,
   Workspace,
 } from '@/types/beacon'
 
@@ -145,6 +147,7 @@ interface BeaconState {
   setShell: (shell: ShellSpec | null) => Promise<void>
   setNotifications: (enabled: boolean) => Promise<void>
   setSounds: (sounds: Sounds) => Promise<void>
+  setTerminalFont: (font: TerminalFont) => Promise<void>
   markReleasesSeen: () => Promise<void>
   setReleaseNotices: (enabled: boolean) => Promise<void>
   /** Records that the welcome guide has been through, so it stops opening on its own. */
@@ -174,6 +177,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     if (active) applyAccent(active.accent)
     // Terminals draw to a canvas and cannot read CSS, so they are told.
     refreshAccent()
+    setTerminalFont(snapshot.terminalFont)
 
     set({ snapshot, status: 'ready', resolvedTheme })
   }
@@ -371,6 +375,8 @@ export const useBeacon = create<BeaconState>((set, get) => {
     setNotifications: (enabled) => run(() => ipc.setNotifications(enabled)),
 
     setSounds: (sounds) => run(() => ipc.setSounds(sounds)),
+
+    setTerminalFont: (font) => run(() => ipc.setTerminalFont(font)),
 
     markReleasesSeen: () => run(() => ipc.markReleasesSeen()),
 

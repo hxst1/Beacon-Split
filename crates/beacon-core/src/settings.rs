@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::appearance::Appearance;
+use crate::error::{CoreError, Result};
 use crate::paths::default_projects_home;
 
 fn yes() -> bool {
@@ -104,6 +105,9 @@ pub struct Settings {
     /// a shortcut, every field here is always in effect.
     #[serde(default)]
     pub appearance: Appearance,
+    /// The typeface every terminal draws in.
+    #[serde(default)]
+    pub terminal_font: TerminalFont,
 }
 
 impl Settings {
@@ -131,6 +135,74 @@ pub struct Sounds {
     pub done: bool,
 }
 
+/// The typeface every terminal draws in.
+///
+/// A family is a name the system resolves, not a file Beacon ships: what
+/// somebody wants here is the font their other terminal already uses, and a
+/// Nerd Font's icons only line up in the grid when the font that has them is
+/// the one being drawn.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalFont {
+    /// `None` is Beacon's own list of likely monospace fonts. A family chosen
+    /// here goes in front of that list rather than replacing it, so a name
+    /// this machine does not have still lands on something monospaced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    /// Points, as the CSS pixel the webview draws in.
+    #[serde(default = "default_font_size")]
+    pub size: u8,
+}
+
+fn default_font_size() -> u8 {
+    TerminalFont::DEFAULT_SIZE
+}
+
+impl Default for TerminalFont {
+    fn default() -> Self {
+        Self {
+            family: None,
+            size: Self::DEFAULT_SIZE,
+        }
+    }
+}
+
+impl TerminalFont {
+    pub const DEFAULT_SIZE: u8 = 12;
+    pub const MIN_SIZE: u8 = 8;
+    pub const MAX_SIZE: u8 = 32;
+    /// Longer than any family name anybody has installed.
+    const MAX_FAMILY: usize = 120;
+
+    /// Refuses a family that would not survive being quoted into a CSS font
+    /// list, and pulls the size into a range that still makes a terminal.
+    pub fn validated(&self) -> Result<Self> {
+        let family = match self.family.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(name) if name.chars().count() > Self::MAX_FAMILY => {
+                return Err(CoreError::invalid("that font name is too long"));
+            }
+            // The name is quoted into the list xterm hands the canvas, so a
+            // quote or a separator in it would end it early and start
+            // something else.
+            Some(name)
+                if name
+                    .chars()
+                    .any(|c| c.is_control() || matches!(c, '"' | '\'' | '\\' | ',' | ';')) =>
+            {
+                return Err(CoreError::invalid(
+                    "a font name cannot contain quotes, commas or semicolons",
+                ));
+            }
+            Some(name) => Some(name.to_string()),
+        };
+        Ok(Self {
+            family,
+            size: self.size.clamp(Self::MIN_SIZE, Self::MAX_SIZE),
+        })
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -146,6 +218,7 @@ impl Default for Settings {
             show_hidden_files: false,
             claude_agents: true,
             appearance: Appearance::default(),
+            terminal_font: TerminalFont::default(),
         }
     }
 }
@@ -223,5 +296,59 @@ mod tests {
                 done: false
             }
         );
+    }
+
+    #[test]
+    fn a_settings_file_from_before_the_terminal_font_keeps_the_default() {
+        let old: Settings = serde_json::from_str(r#"{ "schemaVersion": 1 }"#).unwrap();
+        assert_eq!(old.terminal_font, TerminalFont::default());
+    }
+
+    #[test]
+    fn a_blank_font_name_means_beacons_own_list() {
+        let font = TerminalFont {
+            family: Some("   ".into()),
+            size: 12,
+        };
+        assert_eq!(font.validated().unwrap().family, None);
+    }
+
+    #[test]
+    fn a_font_name_is_kept_trimmed() {
+        let font = TerminalFont {
+            family: Some(" JetBrainsMono Nerd Font Mono ".into()),
+            size: 13,
+        };
+        assert_eq!(
+            font.validated().unwrap().family.as_deref(),
+            Some("JetBrainsMono Nerd Font Mono")
+        );
+    }
+
+    /// The name is quoted into a CSS font list; one that closes the quote
+    /// would hand the canvas whatever came after it.
+    #[test]
+    fn a_font_name_that_would_break_out_of_its_quotes_is_refused() {
+        for name in ["Mono', serif", "A\"B", "Mono; color: red", "Back\\slash"] {
+            let font = TerminalFont {
+                family: Some(name.into()),
+                size: 12,
+            };
+            assert!(font.validated().is_err(), "accepted {name:?}");
+        }
+    }
+
+    #[test]
+    fn a_terminal_font_size_stays_readable() {
+        let tiny = TerminalFont {
+            family: None,
+            size: 1,
+        };
+        let huge = TerminalFont {
+            family: None,
+            size: 200,
+        };
+        assert_eq!(tiny.validated().unwrap().size, TerminalFont::MIN_SIZE);
+        assert_eq!(huge.validated().unwrap().size, TerminalFont::MAX_SIZE);
     }
 }

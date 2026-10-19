@@ -40,6 +40,7 @@ import type {
   SessionKind,
   Snapshot,
   Sounds,
+  TerminalFont,
 } from '@/types/beacon'
 
 export const ipc = {
@@ -106,6 +107,11 @@ export const ipc = {
   setNotifications: (enabled: boolean) => invoke<Snapshot>('set_notifications', { enabled }),
 
   setSounds: (sounds: Sounds) => invoke<Snapshot>('set_sounds', { sounds }),
+
+  setTerminalFont: (font: TerminalFont) => invoke<Snapshot>('set_terminal_font', { font }),
+
+  /** Monospaced families installed here; empty where the system cannot say. */
+  monospaceFonts: () => invoke<string[]>('monospace_fonts'),
 
   /** Records that the user has been shown what is new in this version. */
   markReleasesSeen: () => invoke<Snapshot>('mark_releases_seen'),

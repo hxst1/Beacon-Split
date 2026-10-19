@@ -2,12 +2,14 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal, type ITheme } from '@xterm/xterm'
 
 import { cssValue } from '@/lib/appearance'
-import { windowsPty } from '@/lib/platform'
+import { isLinux, windowsPty } from '@/lib/platform'
 import { ipc } from '@/ipc'
-import type { SessionKind } from '@/types/beacon'
+import type { SessionKind, TerminalFont } from '@/types/beacon'
+import { installAccentGuard, type AccentGuard } from './accentGuard'
 import { clipboardKey } from './clipboardKeys'
 import { newlineKey } from './newlineKeys'
 import { attach, replayed } from './sessionBridge'
+import { fontStack } from './terminalFont'
 import { MINIMUM_CONTRAST, terminalTheme } from './terminalTheme'
 
 export interface HostedTerminal {
@@ -30,6 +32,12 @@ export interface HostedTerminal {
  * while you are looking at something else.
  */
 const hosted = new Map<string, HostedTerminal>()
+
+/** The font new terminals are built with; follows the setting. */
+let font: TerminalFont = { size: 12 }
+
+/** Called when the font changes, so each view can refit its grid. */
+const fontListeners = new Set<() => void>()
 
 /** The terminal's theme for whichever palette and accent are showing now. */
 function currentTheme(): ITheme {
@@ -66,8 +74,8 @@ function create(
     allowTransparency: true,
     theme: currentTheme(),
     minimumContrastRatio: MINIMUM_CONTRAST,
-    fontFamily: "'SF Mono', 'JetBrains Mono', Menlo, 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace",
-    fontSize: 12,
+    fontFamily: fontStack(font),
+    fontSize: font.size,
     lineHeight: 1.35,
     letterSpacing: 0,
     cursorBlink: true,
@@ -84,11 +92,14 @@ function create(
     // xterm has to know about to resize it without losing lines.
     ...(pty ? { windowsPty: pty } : {}),
   })
-  term.attachCustomKeyEventHandler((event) => beaconKeys(term, event, kind))
-
   const fit = new FitAddon()
   term.loadAddon(fit)
   term.open(element)
+
+  // Linux only: the shape it fixes is WebKitGTK's, and macOS's input method
+  // already announces every composition xterm is handed.
+  const accents = isLinux() ? installAccentGuard(term, element) : null
+  term.attachCustomKeyEventHandler((event) => beaconKeys(term, event, kind, accents))
 
   return { term, fit, element, project, kind, slot }
 }
@@ -98,7 +109,13 @@ function create(
  *
  * Returning `false` keeps xterm from sending the key on as it would have.
  */
-function beaconKeys(term: Terminal, event: KeyboardEvent, kind: SessionKind): boolean {
+function beaconKeys(
+  term: Terminal,
+  event: KeyboardEvent,
+  kind: SessionKind,
+  accents: AccentGuard | null,
+): boolean {
+  if (event.type === 'keydown' && accents && !accents.keydown(event)) return false
   const newline = newlineKey(event, kind)
   if (newline !== null) {
     // xterm would send a carriage return here and the agent would take the
@@ -208,6 +225,29 @@ export function disposeProject(project: string): void {
  */
 export function disposeAll(): void {
   for (const sessionId of [...hosted.keys()]) dispose(sessionId)
+}
+
+/**
+ * Draws every terminal in a new font, and has each view refit its grid.
+ *
+ * The panel has not changed size, so nothing else would tell it to: a bigger
+ * font in the same grid runs off the edge, a smaller one leaves a margin.
+ */
+export function setTerminalFont(next: TerminalFont): void {
+  if (next.family === font.family && next.size === font.size) return
+  font = next
+  const family = fontStack(font)
+  for (const { term } of hosted.values()) {
+    term.options.fontFamily = family
+    term.options.fontSize = font.size
+  }
+  for (const listener of fontListeners) listener()
+}
+
+/** Calls back after the terminal font changes; returns the unsubscribe. */
+export function onFontChange(listener: () => void): () => void {
+  fontListeners.add(listener)
+  return () => fontListeners.delete(listener)
 }
 
 /** Repaints every terminal after the palette or the accent changes. */

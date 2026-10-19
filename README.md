@@ -112,6 +112,20 @@ on Windows, the window has no system title bar: Beacon draws its own minimise,
 maximise and close buttons at the top right. Translucency needs a compositor;
 without one the window is simply opaque.
 
+**From a release, on Arch Linux** — install `beacon-split-bin`, which
+repackages the release's `.deb` against Arch's own GTK and WebKitGTK:
+
+```sh
+git clone https://github.com/hxst1/Beacon-Split.git
+cd Beacon-Split/packaging/aur/beacon-split-bin
+makepkg -si
+```
+
+Unlike the AppImage, it runs natively on Wayland, and it is updated by
+`pacman` rather than by Beacon itself. With NVIDIA's driver Beacon turns off
+WebKitGTK's DMA-BUF renderer on its own (ADR-096); set
+`WEBKIT_DISABLE_DMABUF_RENDERER=0` to keep it if your driver handles it.
+
 The notification sounds go through the webview, which on Linux plays audio
 through GStreamer — an optional dependency of `webkit2gtk` that distributions
 do not install by default. Without `gst-plugins-good` the sounds are silent and

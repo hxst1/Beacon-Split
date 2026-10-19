@@ -172,6 +172,17 @@ pub fn set_sounds(
     Ok(beacon.snapshot())
 }
 
+/// The typeface every terminal draws in.
+#[tauri::command]
+pub fn set_terminal_font(
+    state: State<'_, AppState>,
+    font: beacon_core::settings::TerminalFont,
+) -> CommandResult<Snapshot> {
+    let mut beacon = state.beacon();
+    beacon.set_terminal_font(font)?;
+    Ok(beacon.snapshot())
+}
+
 /// Binds an action to a shortcut, or clears it back to the default.
 #[tauri::command]
 pub fn set_binding(
