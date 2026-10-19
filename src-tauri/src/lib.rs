@@ -7,6 +7,7 @@
 mod appearance;
 mod commands;
 mod error;
+mod graphics;
 mod notifications;
 mod state;
 
@@ -16,7 +17,11 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let webview_adjusted = graphics::prepare();
     init_tracing();
+    if webview_adjusted {
+        tracing::info!("NVIDIA driver found; the webview renders without DMA-BUF");
+    }
 
     // Registered only when this build was configured to update itself.
     //
