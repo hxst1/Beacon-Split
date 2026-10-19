@@ -1,0 +1,76 @@
+# Maintainer: hxst1 <repo@mediosyproyectos.com>
+#
+# Repackages the `.deb` the release workflow builds on Ubuntu 22.04. That build
+# links against the system's GTK and WebKitGTK rather than carrying its own, so
+# on Arch it runs on Arch's — natively on Wayland, which the AppImage does not.
+# See docs/PUBLISHING.md for how a release updates this file.
+
+pkgname=beacon-split-bin
+_pkgname=beacon-split
+pkgver=0.9.1
+pkgrel=1
+pkgdesc='An agent-first development workspace: Claude Code, Codex, a terminal, files and Git in one window'
+arch=('x86_64')
+url='https://github.com/hxst1/Beacon-Split'
+license=('AGPL-3.0-only')
+depends=(
+  'cairo'
+  'dbus'
+  'gcc-libs'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libsoup3'
+  'webkit2gtk-4.1'
+)
+optdepends=(
+  'git: the Git panel, and Quick Open honouring ignore rules'
+  'gst-plugins-good: notification sounds'
+  'ttf-jetbrains-mono-nerd: Nerd Font icons in the terminal'
+)
+provides=("${_pkgname}")
+conflicts=("${_pkgname}")
+# The release binary is already stripped; a debug package would be empty.
+options=('!strip' '!debug')
+source=(
+  "${_pkgname}-${pkgver}.deb::${url}/releases/download/v${pkgver}/Beacon.Split_${pkgver}_amd64.deb"
+  "LICENSE-${pkgver}::https://raw.githubusercontent.com/hxst1/Beacon-Split/v${pkgver}/LICENSE"
+)
+noextract=("${_pkgname}-${pkgver}.deb")
+sha256sums=('SKIP'
+            'SKIP')
+
+prepare() {
+  mkdir -p deb
+  bsdtar -xf "${_pkgname}-${pkgver}.deb" -C deb
+  bsdtar -xf deb/data.tar.* -C deb
+}
+
+package() {
+  # Both binaries in one directory: Beacon starts the daemon from beside its
+  # own executable, which it resolves through the symlink below. Keeping the
+  # daemon off PATH also keeps it out of everybody's tab completion.
+  install -Dm755 "deb/usr/bin/${_pkgname}" "${pkgdir}/usr/lib/${_pkgname}/${_pkgname}"
+  install -Dm755 deb/usr/bin/beacon-daemon "${pkgdir}/usr/lib/${_pkgname}/beacon-daemon"
+  install -dm755 "${pkgdir}/usr/bin"
+  ln -s "/usr/lib/${_pkgname}/${_pkgname}" "${pkgdir}/usr/bin/${_pkgname}"
+
+  # Named after the executable, as desktop files are expected to be, rather
+  # than the product name with a space in it.
+  install -Dm644 "deb/usr/share/applications/Beacon Split.desktop" \
+    "${pkgdir}/usr/share/applications/${_pkgname}.desktop"
+
+  local icon
+  for icon in deb/usr/share/icons/hicolor/*/apps/${_pkgname}.png; do
+    local size
+    size=$(basename "$(dirname "$(dirname "${icon}")")")
+    # Tauri names its @2x icon's directory `256x256@2`, which no icon theme
+    # looks in.
+    size=${size%@2}
+    install -Dm644 "${icon}" "${pkgdir}/usr/share/icons/hicolor/${size}/apps/${_pkgname}.png"
+  done
+
+  install -Dm644 "LICENSE-${pkgver}" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

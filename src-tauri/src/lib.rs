@@ -36,9 +36,17 @@ pub fn run() {
     // behind, and accepting would have installed that release over the
     // installed Beacon — not over the build being worked on, which updates by
     // pulling like any other checkout.
+    //
+    // Nor on Linux outside an AppImage. The plugin replaces the AppImage it is
+    // running from; installed by a package manager there is no such file, the
+    // executable belongs to that package manager, and it is the one that
+    // updates it. Offering an update there would be a button that fails.
     let context = tauri::generate_context!();
-    let updates_itself =
-        !cfg!(debug_assertions) && context.config().plugins.0.contains_key("updater");
+    let packaged_by_the_system =
+        cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_none();
+    let updates_itself = !cfg!(debug_assertions)
+        && !packaged_by_the_system
+        && context.config().plugins.0.contains_key("updater");
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -162,7 +170,7 @@ pub fn run() {
         builder.plugin(tauri_plugin_updater::Builder::new().build())
     } else {
         tracing::info!(
-            "not updating itself: a development build, or no update key; it updates by pulling"
+            "not updating itself: a development build, no update key, or installed by a package manager"
         );
         builder
     };
