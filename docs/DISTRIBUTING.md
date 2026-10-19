@@ -94,6 +94,31 @@ question is whether a release build works.
 To hand someone a build from a machine you control, take the AppImage from the
 release the tag produced rather than from your own `target/`.
 
+### On Arch, a package that pacman owns
+
+The same release carries a `.deb`, built on the same Ubuntu 22.04 runner but
+linked against the system's GTK and WebKitGTK instead of carrying them.
+`packaging/aur/beacon-split-bin` repackages it:
+
+```sh
+cd packaging/aur/beacon-split-bin
+makepkg -si
+```
+
+It installs to `/usr/lib/beacon-split`, with the daemon beside the executable
+and `beacon-split` on the PATH. Against the AppImage it differs in three ways
+that matter:
+
+- It runs on Arch's own WebKitGTK, natively on Wayland. The AppImage's GTK hook
+  forces XWayland.
+- `pacman` updates it, not Beacon. On Linux the updater only runs inside an
+  AppImage, the one file it knows how to replace.
+- The daemon sits at a path that does not change between versions, so the
+  hooks Beacon writes for Claude Code and Codex never go stale on an upgrade.
+
+After a release is published, `update.sh <version>` in that directory moves the
+PKGBUILD to it — see [PUBLISHING.md](PUBLISHING.md).
+
 ## What they need installed
 
 Beacon runs the tools you already have rather than bundling its own, and checks

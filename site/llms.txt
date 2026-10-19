@@ -38,8 +38,9 @@ measure of the value of a person's work.
 
 ## Requirements
 
-- macOS, Windows 10 or 11 on x64, or Linux on x86_64. The Linux build is an
-  AppImage made on Ubuntu 22.04, so it wants glibc 2.35 or newer.
+- macOS, Windows 10 or 11 on x64, or Linux on x86_64. Linux gets an AppImage
+  and a `.deb`, both made on Ubuntu 22.04, so they want glibc 2.35 or newer; on
+  Arch, `packaging/aur/beacon-split-bin` packages the `.deb` for pacman.
 - Claude Code and `git` on the `PATH`. Codex is optional; install it to add its
   panel and conversations. Beacon checks what a session needs the way a session
   finds it — through the login shell, or on Windows the `PATH` itself.

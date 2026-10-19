@@ -143,7 +143,7 @@
       "name": "Which platforms does Beacon Split run on?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "macOS, on both Apple Silicon and Intel; Windows 10 and 11 on x64; and Linux on x86_64, as an AppImage built on Ubuntu 22.04 that needs glibc 2.35 or newer."
+        "text": "macOS, on both Apple Silicon and Intel; Windows 10 and 11 on x64; and Linux on x86_64, as an AppImage or a .deb built on Ubuntu 22.04 that need glibc 2.35 or newer, and as a package for Arch."
       }
     },
     {
@@ -542,15 +542,15 @@
         <div class="plat__b">
           <h3 class="plat__t">Linux <span class="plat__s plat__s--on">Available now</span></h3>
           <p class="plat__d">
-            An x86_64 AppImage, carrying its own GTK and WebKit, so there is nothing to install.
-            Built on Ubuntu 22.04 and so wanting glibc 2.35 or newer; built and run on Arch under
-            Hyprland. The window is undecorated and draws its own caption buttons, as on Windows,
+            An x86_64 AppImage, carrying its own GTK and WebKit, so there is nothing to install;
+            a <code>.deb</code> that uses the system's; and a PKGBUILD for Arch, which runs natively
+            on Wayland and is updated by pacman. Built on Ubuntu 22.04 and so wanting glibc 2.35 or
+            newer; built and run on Arch under Hyprland, NVIDIA included. The window is undecorated and draws its own caption buttons, as on Windows,
             because no two Linux desktops decorate one the same way. Translucency needs a
             compositor; frosting is macOS and Windows only.
           </p>
           <p class="plat__help">
-            Still to come: an aarch64 build, and native packages — a PKGBUILD, a <code>.deb</code>,
-            an <code>.rpm</code> — for people who would rather their package manager owned it.
+            Still to come: an aarch64 build, an <code>.rpm</code>, and the Arch package on the AUR.
             <a href="https://github.com/hxst1/Beacon-Split/issues" target="_blank" rel="noopener">Open an issue →</a>
           </p>
         </div>
@@ -705,7 +705,8 @@
       <dt class="faq__q">Which platforms does Beacon Split run on?</dt>
       <dd class="faq__a">
         macOS, on both Apple Silicon and Intel; Windows 10 and 11 on x64; and Linux on x86_64, as
-        an AppImage built on Ubuntu 22.04, so it wants glibc 2.35 or newer.
+        an AppImage or a <code>.deb</code> built on Ubuntu 22.04, so they want glibc 2.35 or newer,
+        and as a package for Arch.
       </dd>
 
       <dt class="faq__q">Why does macOS say the app is damaged?</dt>
@@ -786,7 +787,7 @@
     <div class="help">
       <h3 class="help__t">Where help goes furthest</h3>
       <ol class="help__l">
-        <li><b>Native Linux packages.</b> A PKGBUILD, a <code>.deb</code>, an <code>.rpm</code>. The AppImage runs everywhere; none of these is needed, and all of them are wanted.</li>
+        <li><b>More Linux packages.</b> An <code>.rpm</code>, and keeping the Arch package on the AUR. The AppImage runs everywhere; none of these is needed, and all of them are wanted.</li>
         <li><b>Detached panels.</b> Pop a panel into its own window. The daemon already makes this window management, not a session change.</li>
         <li><b>Per-workspace layouts</b> and rearranging panels by hand.</li>
         <li><b>A dev-server state</b> read honestly from the process tree, rather than guessed from output.</li>
