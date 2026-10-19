@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.9.2",
+    "date": "2026-10-19",
+    "summary": "Beacon opens on Linux with an NVIDIA card, types accents in the terminal, draws your terminal font's icons, and can be installed on Arch as a package.",
+    "changes": [
+      "On Linux with NVIDIA's driver, Beacon opened a transparent window that never filled in and then quit. WebKitGTK's DMA-BUF renderer was having the connection to the compositor closed on its first frame. Beacon now turns that renderer off before the window starts when the driver is loaded, unless you have set WEBKIT_DISABLE_DMABUF_RENDERER yourself.",
+      "Accents typed in a Linux terminal arrive once. A dead key — ´ then a, as a Spanish layout types every accent — used to bring older characters with it, so pingüino arrived as pingó ñ üino. Input methods that compose Japanese, Chinese or Korean are left exactly as they were.",
+      "The terminal's font is yours to choose, in Settings → Terminal: a family and a size, applied as you change them. On Linux it suggests the monospace fonts you have installed. With nothing chosen, Beacon now tries the common Nerd Fonts first, so a Powerlevel10k or starship prompt draws its icons instead of boxes.",
+      "Beacon can be installed on Arch Linux as a package, beacon-split-bin, which runs on Arch's own WebKitGTK and natively on Wayland. The release now carries a .deb, which is what that package is made from. Installed by a package manager, Beacon leaves updating to it rather than offering an update it cannot install."
+    ]
+  },
+  {
     "version": "0.9.1",
     "date": "2026-10-06",
     "summary": "Click an image in the files panel and you see it, and anything Beacon will not show opens in whatever this machine opens it with.",

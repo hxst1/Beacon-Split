@@ -73,7 +73,8 @@ window, and whether what shows through is frosted.
 
 Beacon runs on macOS, Windows and Linux. Releases carry an Apple Silicon and an
 Intel build for macOS — Apple Silicon is the one it is developed and tested on
-— an x64 installer for Windows 10 and 11, and an x86_64 AppImage for Linux.
+— an x64 installer for Windows 10 and 11, and for Linux an x86_64 AppImage and a
+`.deb`, which the Arch package is made from.
 
 **From a release, on macOS** — [download the latest][releases], open the
 `.dmg`, drag Beacon to Applications.

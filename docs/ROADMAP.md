@@ -267,9 +267,9 @@ Remaining:
 - Signing and notarisation, which needs an Apple Developer membership
 - A universal build; today's is Apple Silicon only
 - Code-signing the Windows installer, so SmartScreen stops warning about it
-- An aarch64 Linux build; today's AppImage is x86_64 only
-- A native package for Arch — a PKGBUILD — and `.deb` and `.rpm`, none of which
-  the AppImage needs but all of which somebody will want
+- An aarch64 Linux build; today's AppImage and `.deb` are x86_64 only
+- An `.rpm`. The `.deb` and a PKGBUILD for Arch (`packaging/aur`) shipped in
+  0.9.2; the package is not on the AUR yet
 
 ## Milestone 10 — Appearance ✅
 
