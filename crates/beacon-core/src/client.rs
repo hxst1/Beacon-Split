@@ -498,8 +498,12 @@ impl Shared {
 
     /// Drops the current connection and retires its reader.
     fn forget_connection(&self) {
+        // Under the stream's lock, like every change of generation, so a
+        // reader deciding whether its connection is still current cannot see
+        // one without the other.
+        let mut stream = self.stream.lock_or_recover();
         self.generation.fetch_add(1, Ordering::SeqCst);
-        *self.stream.lock_or_recover() = None;
+        *stream = None;
     }
 
     /// Takes over a connection and starts reading from it.
@@ -510,8 +514,12 @@ impl Shared {
 
         // Claimed before the reader starts, so it can tell its own connection
         // from the one that outlives it.
-        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        *self.stream.lock_or_recover() = Some(stream);
+        let generation = {
+            let mut current = self.stream.lock_or_recover();
+            let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+            *current = Some(stream);
+            generation
+        };
 
         let shared = Arc::clone(self);
         std::thread::Builder::new()
@@ -546,22 +554,35 @@ impl Shared {
     }
 
     fn handle_disconnect(self: &Arc<Self>, generation: u64) {
-        // A newer connection is already in place; this reader is reporting the
-        // end of a stream nobody is using any more.
-        if self.generation.load(Ordering::SeqCst) != generation {
-            return;
-        }
+        // All of it under the stream's lock, which is also where a connection
+        // is swapped. Unlocked, a replacement could land between the check and
+        // the clearing, and this reader would hang up the new connection.
+        let quiet = {
+            let mut stream = self.stream.lock_or_recover();
 
-        *self.stream.lock_or_recover() = None;
+            // A newer connection is already in place; this reader is reporting
+            // the end of a stream nobody is using any more.
+            if self.generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            *stream = None;
 
-        // Wake anything still waiting rather than leaving it to time out.
-        for (_, waiting) in self.pending.lock_or_recover().drain() {
-            let _ = waiting.send(Outcome::Err("the daemon went away".into()));
-        }
+            // A daemon we are deliberately swapping out, or a client on its
+            // way out: neither is a connection anybody needs to hear about
+            // losing. Read before the waiters are woken: the one waiting is
+            // usually the swap itself, which finishes — and clears the flag —
+            // as soon as it wakes, and reading it afterwards reported every
+            // such swap to the window as a daemon lost.
+            let quiet =
+                self.replacing.load(Ordering::SeqCst) || self.stopped.load(Ordering::SeqCst);
 
-        // A daemon we are deliberately swapping out, or a client on its way
-        // out: neither is a connection anybody needs to hear about losing.
-        if self.replacing.load(Ordering::SeqCst) || self.stopped.load(Ordering::SeqCst) {
+            // Wake anything still waiting rather than leaving it to time out.
+            for (_, waiting) in self.pending.lock_or_recover().drain() {
+                let _ = waiting.send(Outcome::Err("the daemon went away".into()));
+            }
+            quiet
+        };
+        if quiet {
             return;
         }
 
