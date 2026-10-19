@@ -2,9 +2,10 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal, type ITheme } from '@xterm/xterm'
 
 import { cssValue } from '@/lib/appearance'
-import { windowsPty } from '@/lib/platform'
+import { isLinux, windowsPty } from '@/lib/platform'
 import { ipc } from '@/ipc'
 import type { SessionKind, TerminalFont } from '@/types/beacon'
+import { installAccentGuard, type AccentGuard } from './accentGuard'
 import { clipboardKey } from './clipboardKeys'
 import { newlineKey } from './newlineKeys'
 import { attach, replayed } from './sessionBridge'
@@ -91,11 +92,14 @@ function create(
     // xterm has to know about to resize it without losing lines.
     ...(pty ? { windowsPty: pty } : {}),
   })
-  term.attachCustomKeyEventHandler((event) => beaconKeys(term, event, kind))
-
   const fit = new FitAddon()
   term.loadAddon(fit)
   term.open(element)
+
+  // Linux only: the shape it fixes is WebKitGTK's, and macOS's input method
+  // already announces every composition xterm is handed.
+  const accents = isLinux() ? installAccentGuard(term, element) : null
+  term.attachCustomKeyEventHandler((event) => beaconKeys(term, event, kind, accents))
 
   return { term, fit, element, project, kind, slot }
 }
@@ -105,7 +109,13 @@ function create(
  *
  * Returning `false` keeps xterm from sending the key on as it would have.
  */
-function beaconKeys(term: Terminal, event: KeyboardEvent, kind: SessionKind): boolean {
+function beaconKeys(
+  term: Terminal,
+  event: KeyboardEvent,
+  kind: SessionKind,
+  accents: AccentGuard | null,
+): boolean {
+  if (event.type === 'keydown' && accents && !accents.keydown(event)) return false
   const newline = newlineKey(event, kind)
   if (newline !== null) {
     // xterm would send a carriage return here and the agent would take the

@@ -2375,3 +2375,20 @@ one their other terminal already uses — Beacon cannot guess it. The name is
 refused if it carries a quote, comma or semicolon, because it is quoted into a
 CSS font list.
 
+## ADR-098: On Linux, accents typed through the input method are Beacon's
+
+**Context.** A dead key on WebKitGTK (`´` then `a`) arrives as a composition
+that ends empty, followed by a 229 keydown, an `input` with `á`, and a
+`compositionend` that was never started. xterm reads its hidden textarea from
+three places with positions left over from earlier keys, so what reached the
+shell depended on timer order: `pingüino` arrived as `pingó ñ üino`.
+
+**Decision.** `accentGuard` sits in front of xterm on Linux only. A 229 keydown
+outside a composition is kept from xterm, its text is delivered from the
+`input` event that carries it (Backspace as DEL), an orphaned `compositionend`
+never reaches xterm, and the textarea is emptied. A composition that begins
+with `compositionstart` — Japanese, Chinese, Korean — is still xterm's.
+
+**Why.** It is the narrowest change that makes the event shape WebKitGTK
+produces into one xterm handles correctly; on macOS every composition is
+announced and nothing changes there.

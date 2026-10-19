@@ -27,6 +27,11 @@ export function isMac(): boolean {
   return platform === 'macos'
 }
 
+/** Linux, whose webview is WebKitGTK and has input-method habits of its own. */
+export function isLinux(): boolean {
+  return platform === 'linux'
+}
+
 /** Windows, which differs from Linux in the terminal and in the pseudo-console. */
 export function isWindows(): boolean {
   return platform === 'windows'
