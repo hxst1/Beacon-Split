@@ -1,0 +1,7 @@
+# What makepkg and updpkgsums leave behind
+/src/
+/pkg/
+/deb/
+*.deb
+LICENSE-*
+*.pkg.tar.*

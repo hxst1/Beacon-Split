@@ -7,7 +7,7 @@
 
 pkgname=beacon-split-bin
 _pkgname=beacon-split
-pkgver=0.9.1
+pkgver=0.9.2
 pkgrel=1
 pkgdesc='An agent-first development workspace: Claude Code, Codex, a terminal, files and Git in one window'
 arch=('x86_64')
@@ -39,8 +39,8 @@ source=(
   "LICENSE-${pkgver}::https://raw.githubusercontent.com/hxst1/Beacon-Split/v${pkgver}/LICENSE"
 )
 noextract=("${_pkgname}-${pkgver}.deb")
-sha256sums=('SKIP'
-            'SKIP')
+sha256sums=('800969ea4c44c57bfcd9cdd4f85ee4459403b33bea71ad80fc546b55414fc152'
+            '0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0')
 
 prepare() {
   mkdir -p deb
