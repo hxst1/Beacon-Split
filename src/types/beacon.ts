@@ -99,6 +99,8 @@ export interface Snapshot {
   notifications: boolean
   /** Which moments make a sound. */
   sounds: Sounds
+  /** The typeface every terminal draws in. */
+  terminalFont: TerminalFont
   /** What this build is. */
   version: string
   /** Releases the user has not been shown, newest first. */
@@ -209,6 +211,13 @@ export interface SessionActivity {
 export interface Sounds {
   waiting: boolean
   done: boolean
+}
+
+export interface TerminalFont {
+  /** Absent means Beacon's own list. A chosen one goes in front of it. */
+  family?: string
+  /** 8..32. */
+  size: number
 }
 
 /**

@@ -2351,3 +2351,27 @@ something about their machine that a kernel module does not.
 Beacon's environment. That is wanted: a WebKitGTK program started from a Beacon
 terminal on the same machine would otherwise fail the same way. Mesa and
 nouveau machines see no change.
+
+## ADR-097: The terminal font is the user's to name
+
+**Context.** The terminal's font list was fixed, and macOS-first: `SF Mono`,
+`JetBrains Mono`, Menlo. On a typical Linux machine none of those names exists —
+a Nerd Font installs as `JetBrainsMono Nerd Font Mono`, not `JetBrains Mono` —
+so fontconfig resolved the whole list to the generic monospace, which has none
+of the icons Powerlevel10k, starship or eza draw. WebKit then found each icon
+glyph by glyph in whatever font had it, at the wrong width, and the prompt
+broke the grid.
+
+**Decision.** Settings → Terminal has a font family and a size, stored in
+`settings.json` as `terminalFont` and applied to running terminals at once,
+each refitting its grid. On Linux the family field suggests what
+`fc-list :spacing=mono` reports. A chosen family goes in front of Beacon's own
+list rather than replacing it. Beacon's list now starts with the common Nerd
+Font families, `Mono` variants first, and ends with `Symbols Nerd Font Mono`
+before the generic.
+
+**Why.** Every terminal has this setting, and the font somebody wants is the
+one their other terminal already uses — Beacon cannot guess it. The name is
+refused if it carries a quote, comma or semicolon, because it is quoted into a
+CSS font list.
+

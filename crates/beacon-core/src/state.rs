@@ -59,6 +59,7 @@ pub struct Snapshot {
     pub shell: Option<crate::settings::ShellSpec>,
     pub notifications: bool,
     pub sounds: crate::settings::Sounds,
+    pub terminal_font: crate::settings::TerminalFont,
     /// What this build is.
     pub version: String,
     /// Releases the user has not been shown, newest first.
@@ -208,6 +209,7 @@ impl Beacon {
             shell: self.settings.shell.clone(),
             notifications: self.settings.notifications,
             sounds: self.settings.sounds,
+            terminal_font: self.settings.terminal_font.clone(),
             version: crate::releases::current_version().to_string(),
             // Best effort: notes that will not parse are a broken build, not a
             // reason to refuse to open.
@@ -687,6 +689,12 @@ impl Beacon {
 
     pub fn set_sounds(&mut self, sounds: crate::settings::Sounds) -> Result<()> {
         self.settings.sounds = sounds;
+        self.save_settings()
+    }
+
+    /// The typeface every terminal draws in.
+    pub fn set_terminal_font(&mut self, font: crate::settings::TerminalFont) -> Result<()> {
+        self.settings.terminal_font = font.validated()?;
         self.save_settings()
     }
 

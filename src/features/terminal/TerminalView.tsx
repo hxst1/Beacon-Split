@@ -4,7 +4,7 @@ import { errorMessage, ipc } from '@/ipc'
 import type { SessionKind } from '@/types/beacon'
 import { useActivity } from './activity'
 import { estimateGrid, nextGrid } from './grid'
-import { acquire } from './terminalHost'
+import { acquire, onFontChange } from './terminalHost'
 import styles from './TerminalView.module.css'
 import '@xterm/xterm/css/xterm.css'
 
@@ -104,10 +104,17 @@ export function TerminalView({
 
       const observer = new ResizeObserver(() => apply())
       observer.observe(container)
+      // A family that has to load first would be measured as its fallback.
+      const stopFollowingFont = onFontChange(() => {
+        void document.fonts.ready.then(() => {
+          if (!cancelled) apply()
+        })
+      })
 
       cleanup = () => {
         cancelAnimationFrame(frame)
         observer.disconnect()
+        stopFollowingFont()
         // Detach the element but keep the terminal alive for the next mount.
         terminal.element.remove()
       }

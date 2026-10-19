@@ -77,6 +77,8 @@ pub fn run() {
             commands::set_shell,
             commands::set_notifications,
             commands::set_sounds,
+            commands::set_terminal_font,
+            commands::monospace_fonts,
             commands::notification_permission,
             commands::request_notification_permission,
             commands::send_notification,

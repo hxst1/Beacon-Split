@@ -7,6 +7,8 @@ import { isMac, isWindows, modifierLabel } from '@/lib/platform'
 import { describePermission } from '@/features/notifications/copy'
 import { useNotificationPermission } from '@/features/notifications/permission'
 import { playChime, type Chime } from '@/features/notifications/sound'
+import { setTerminalFont as previewTerminalFont } from '@/features/terminal/terminalHost'
+import type { TerminalFont } from '@/types/beacon'
 import { formatShell, parseShell } from './shell'
 import styles from './SettingsScreen.module.css'
 
@@ -100,6 +102,15 @@ export function GeneralSettings(): React.ReactElement {
  * people want from that question is fish instead of zsh, which is this.
  */
 export function TerminalSettings(): React.ReactElement {
+  return (
+    <>
+      <ShellSection />
+      <FontSection />
+    </>
+  )
+}
+
+function ShellSection(): React.ReactElement {
   const shell = useBeacon((s) => s.snapshot?.shell ?? null)
   const setShell = useBeacon((s) => s.setShell)
   const [draft, setDraft] = useState<string | null>(null)
@@ -148,6 +159,114 @@ export function TerminalSettings(): React.ReactElement {
         available here, and will not be: those belong to the emulator, which is the part Beacon
         replaces. Terminals already running keep the shell they started with.
       </p>
+    </section>
+  )
+}
+
+const DEFAULT_FONT: TerminalFont = { size: 12 }
+
+/**
+ * The typeface terminals draw in.
+ *
+ * A prompt with Nerd Font icons is only drawn right in the font that has them,
+ * which is the one somebody's other terminal is already set to — so this is a
+ * name to type or pick, not a list Beacon decided on. The size previews as you
+ * drag, like the window's opacity, and is saved when you let go.
+ */
+function FontSection(): React.ReactElement {
+  const saved = useBeacon((s) => s.snapshot?.terminalFont ?? DEFAULT_FONT)
+  const setTerminalFont = useBeacon((s) => s.setTerminalFont)
+  const [family, setFamily] = useState<string | null>(null)
+  const [size, setSize] = useState<number | null>(null)
+  const [installed, setInstalled] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void ipc
+      .monospaceFonts()
+      .then((families) => {
+        if (!cancelled) setInstalled(families)
+      })
+      .catch(() => {
+        // Only suggestions; a typed name works the same.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const currentFamily = family ?? saved.family ?? ''
+  const currentSize = size ?? saved.size
+
+  const commit = (next: TerminalFont): void => {
+    void setTerminalFont(next).finally(() => {
+      setFamily(null)
+      setSize(null)
+    })
+  }
+
+  const withFamily = (name: string): TerminalFont => {
+    const trimmed = name.trim()
+    return trimmed ? { family: trimmed, size: currentSize } : { size: currentSize }
+  }
+
+  return (
+    <section className={styles['section']}>
+      <h2 className={styles['sectionTitle']}>Font</h2>
+      <p className={styles['sectionNote']}>
+        The family your other terminal uses, as the system names it — for a Nerd Font that is its
+        own name, such as <code>JetBrainsMono Nerd Font Mono</code>, and the <code>Mono</code>{' '}
+        variant keeps its icons one cell wide. Leave it empty for Beacon&apos;s own list, which
+        already tries the common Nerd Fonts first.
+      </p>
+
+      <input
+        className={styles['command']}
+        style={{ width: '100%' }}
+        placeholder="Default: Beacon's list"
+        spellCheck={false}
+        list="beacon-monospace-fonts"
+        value={currentFamily}
+        onChange={(event) => setFamily(event.target.value)}
+        onBlur={() => {
+          if (family !== null) commit(withFamily(family))
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit(withFamily(currentFamily))
+          if (event.key === 'Escape') setFamily(null)
+        }}
+      />
+      <datalist id="beacon-monospace-fonts">
+        {installed.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+
+      <div className={styles['rows']} style={{ marginTop: 10 }}>
+        <div className={styles['slider']}>
+          <span className={styles['sliderLabel']}>Size</span>
+          <input
+            type="range"
+            className={styles['sliderInput']}
+            min={8}
+            max={32}
+            step={1}
+            value={currentSize}
+            onChange={(event) => {
+              const next = Number(event.target.value)
+              setSize(next)
+              previewTerminalFont({ ...withFamily(currentFamily), size: next })
+            }}
+            onPointerUp={() => commit(withFamily(currentFamily))}
+            onKeyUp={() => commit(withFamily(currentFamily))}
+          />
+          <span className={styles['sliderValue']}>{currentSize}px</span>
+        </div>
+      </div>
+
+      <button type="button" className={styles['resetAll']} onClick={() => commit(DEFAULT_FONT)}>
+        Back to the default
+      </button>
     </section>
   )
 }
