@@ -59,8 +59,9 @@ itself, so there is nothing to install and nothing to connect.
 
 **Files, editor and git, at the size they deserve.** A file tree with the
 operations you expect, a light editor, a `.env` view that keeps values hidden
-until asked, and git status, diff, stage and commit. Deleting moves to the
-trash. Nothing here is trying to become an IDE.
+until asked and adds or edits variables in place, and git status, diff, stage
+and commit. Deleting moves to the trash. Nothing here is trying to become an
+IDE.
 
 **Keyboard first.** A command palette, quick open, and shortcuts you can
 rebind. Layouts are a tree of splits with four presets, and every divider
