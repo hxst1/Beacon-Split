@@ -20,6 +20,9 @@ pub struct EnvEntry {
 /// validating it, so anything unrecognisable is skipped rather than failing the
 /// whole view.
 pub fn parse(text: &str) -> Vec<EnvEntry> {
+    // Editors on Windows like to start a file with a byte-order mark, and
+    // `trim` does not count it as whitespace: the first variable would vanish.
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     text.lines()
         .enumerate()
         .filter_map(|(index, raw)| {
@@ -50,11 +53,44 @@ fn parse_line(raw: &str) -> Option<(String, String)> {
     Some((key.to_string(), parse_value(rest.trim())))
 }
 
+/// `"a value" # a note` → `"a value"`.
+///
+/// Only when the value is quoted and the quote that closes it — the first one,
+/// so a note can have quotes of its own — is followed by a comment.
+fn without_comment_after_quotes(raw: &str) -> &str {
+    let Some(quote) = raw.chars().next().filter(|c| *c == '"' || *c == '\'') else {
+        return raw;
+    };
+    let Some(close) = closing_quote(&raw[1..], quote).map(|at| at + 2) else {
+        return raw;
+    };
+    let rest = &raw[close..];
+    if rest.starts_with(char::is_whitespace) && rest.trim_start().starts_with('#') {
+        &raw[..close]
+    } else {
+        raw
+    }
+}
+
+/// Where a quoted value ends. `\"` does not end a double-quoted one, the same
+/// as it is unescaped below; nothing escapes inside single quotes.
+fn closing_quote(inner: &str, quote: char) -> Option<usize> {
+    let mut escaped = false;
+    for (at, c) in inner.char_indices() {
+        if c == quote && !escaped {
+            return Some(at);
+        }
+        escaped = quote == '"' && c == '\\';
+    }
+    None
+}
+
 fn is_key_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '.'
 }
 
 fn parse_value(raw: &str) -> String {
+    let raw = without_comment_after_quotes(raw);
     for quote in ['"', '\''] {
         if let Some(inner) = raw.strip_prefix(quote)
             && let Some(inner) = inner.strip_suffix(quote)
@@ -141,6 +177,49 @@ mod tests {
             parsed(r##"KEY="value # not a comment""##),
             vec![("KEY".into(), "value # not a comment".into())]
         );
+    }
+
+    #[test]
+    fn a_comment_after_a_quoted_value_is_dropped() {
+        assert_eq!(
+            parsed(r#"A="two words" # a note"#),
+            vec![("A".into(), "two words".into())]
+        );
+        assert_eq!(
+            parsed("B='single' # a note"),
+            vec![("B".into(), "single".into())]
+        );
+    }
+
+    #[test]
+    fn a_note_can_have_quotes_of_its_own() {
+        assert_eq!(
+            parsed("A='x' # don't commit"),
+            vec![("A".into(), "x".into())]
+        );
+        assert_eq!(
+            parsed(r#"B="x" # say "hi""#),
+            vec![("B".into(), "x".into())]
+        );
+        assert_eq!(
+            parsed(r#"C="a \"b\"" # note"#),
+            vec![("C".into(), r#"a "b""#.into())]
+        );
+    }
+
+    #[test]
+    fn a_quote_that_does_not_close_before_a_comment_is_part_of_the_value() {
+        assert_eq!(
+            parsed(r#"A="half # open"#),
+            vec![("A".into(), r#""half"#.into())]
+        );
+    }
+
+    #[test]
+    fn a_byte_order_mark_does_not_hide_the_first_variable() {
+        let entries = parse("\u{feff}FIRST=1\nSECOND=2\n");
+        assert_eq!(entries[0].key, "FIRST");
+        assert_eq!(entries[0].line, 1);
     }
 
     #[test]
