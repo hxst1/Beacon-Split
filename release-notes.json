@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.9.3",
+    "date": "2026-10-21",
+    "summary": "Variables can be added to a .env and changed from its view, and the editor panel has one close button.",
+    "changes": [
+      "The .env view adds variables. Add variable opens a row for a name and a value; typing = in the name moves on to the value, pasting a KEY=value line fills in both, and pasting several lists them so they can be added at once. Each row has Edit, which changes the value where it stands and keeps an export or a comment at the end of the line. Edit as text opens the whole file in the editor, with a way back to the variables.",
+      "What the view writes is read back exactly as it was typed: quoted where it has to be, a private key keeping its line breaks, and a value that cannot be written faithfully refused rather than changed. It saves the way the editor does, so a file Claude changed in the meantime is not written over.",
+      "A .env saved by a Windows editor showed every variable but its first, and a comment after a quoted value — A=\"x\" # note — made the quotes part of the value. Both read correctly now.",
+      "The editor panel's header showed two close buttons. It shows one. Contributed by jimy-k4."
+    ]
+  },
+  {
     "version": "0.9.2",
     "date": "2026-10-19",
     "summary": "Beacon opens on Linux with an NVIDIA card, types accents in the terminal, draws your terminal font's icons, and can be installed on Arch as a package.",
