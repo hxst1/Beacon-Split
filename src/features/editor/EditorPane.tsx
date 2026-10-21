@@ -37,6 +37,7 @@ export function EditorPane({
   const save = useEditor((s) => s.save)
   const overwrite = useEditor((s) => s.overwrite)
   const reload = useEditor((s) => s.reload)
+  const showAsText = useEditor((s) => s.showAsText)
   const dismissError = useEditor((s) => s.dismissError)
   const checkForChanges = useEditor((s) => s.checkForChanges)
   const theme = useBeacon((s) => s.resolvedTheme)
@@ -234,7 +235,11 @@ export function EditorPane({
             // deliberately does not bump it — rebuilding there would throw away
             // the undo history, the cursor and the scroll position on every
             // Cmd+S.
-            key={`${active.path}:${active.epoch}`}
+            //
+            // The variables view is the exception: it re-reads the file on its
+            // own whenever it changes, and rebuilding it would throw away a
+            // variable somebody was halfway through typing.
+            key={`${active.path}:${showsVariables(active) ? 'variables' : active.epoch}`}
             theme={theme}
             workspaceId={workspaceId}
             projectId={projectId}
@@ -242,6 +247,8 @@ export function EditorPane({
             name={active.name}
             contents={active.contents}
             draft={active.draft}
+            asText={active.asText === true}
+            onAsText={(asText) => showAsText(projectId, active.path, asText)}
             onChange={onChange}
             onSave={onSave}
           />
@@ -249,6 +256,11 @@ export function EditorPane({
       </div>
     </div>
   )
+}
+
+/** Whether a tab is showing the `.env` variables view rather than an editor. */
+function showsVariables(file: OpenFile): boolean {
+  return isEnvFile(file.name) && file.asText !== true && file.contents.kind === 'text'
 }
 
 /** Whether a file still has work that is not on disk. */
@@ -291,6 +303,8 @@ function ActiveView({
   theme,
   contents,
   draft,
+  asText,
+  onAsText,
   onChange,
   onSave,
 }: {
@@ -301,6 +315,8 @@ function ActiveView({
   theme: 'dark' | 'light'
   contents: FileContents
   draft: string
+  asText: boolean
+  onAsText: (asText: boolean) => void
   onChange: (text: string) => void
   onSave: (text: string) => void
 }): React.ReactElement {
@@ -336,11 +352,18 @@ function ActiveView({
     )
   }
 
-  if (isEnvFile(name)) {
-    return <EnvView workspaceId={workspaceId} projectId={projectId} path={path} />
+  if (isEnvFile(name) && !asText) {
+    return (
+      <EnvView
+        workspaceId={workspaceId}
+        projectId={projectId}
+        path={path}
+        onShowAsText={() => onAsText(true)}
+      />
+    )
   }
 
-  return (
+  const editor = (
     <CodeEditor
       path={path}
       theme={theme}
@@ -352,6 +375,26 @@ function ActiveView({
       onSave={onSave}
     />
   )
+
+  // The way back has to be on screen: without it, a `.env` opened as text
+  // would stay text, values and all, until the tab was closed.
+  if (isEnvFile(name)) {
+    return (
+      <div className={styles['asText']}>
+        <div className={styles['asTextBar']}>
+          <span className={styles['asTextNote']}>
+            {name} as plain text — every value is visible.
+          </span>
+          <button type="button" className={styles['asTextAction']} onClick={() => onAsText(false)}>
+            Back to variables
+          </button>
+        </div>
+        {editor}
+      </div>
+    )
+  }
+
+  return editor
 }
 
 /** A size somebody can read, rather than a number of bytes. */

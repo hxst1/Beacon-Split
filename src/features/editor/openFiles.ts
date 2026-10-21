@@ -39,6 +39,12 @@ export interface OpenFile {
    * and the scroll position.
    */
   epoch: number
+  /**
+   * Set when a file that has a view of its own — a `.env` — was asked to be
+   * shown as plain text instead. Kept with the tab so it survives switching
+   * away and a reload, and goes when the tab does.
+   */
+  asText?: true | undefined
 }
 
 interface EditorState {
@@ -53,6 +59,8 @@ interface EditorState {
   activate: (projectId: string, path: string) => void
   /** Records what is on screen. */
   edit: (projectId: string, path: string, text: string) => void
+  /** Shows a file with a view of its own as plain text, or back in that view. */
+  showAsText: (projectId: string, path: string, asText: boolean) => void
   /** Writes the draft back, refusing if the file moved since it was read. */
   save: (workspaceId: string, projectId: string, path: string) => Promise<void>
   /** Saves the draft over whatever is on disk, having been asked to. */
@@ -139,6 +147,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   edit: (projectId, path, text) =>
     set((state) => ({
       byProject: mapFile(state.byProject, projectId, path, (file) => ({ ...file, draft: text })),
+    })),
+
+  showAsText: (projectId, path, asText) =>
+    set((state) => ({
+      byProject: mapFile(state.byProject, projectId, path, (file) => ({
+        ...file,
+        asText: asText ? (true as const) : undefined,
+      })),
     })),
 
   save: (workspaceId, projectId, path) => write(set, get, workspaceId, projectId, path, true),

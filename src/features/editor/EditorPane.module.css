@@ -253,3 +253,38 @@
 .tab[data-changed='true'] {
   color: var(--warn);
 }
+
+/* A `.env` opened as text: the editor, under a line that says how to hide it again. */
+.asText {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+
+.asTextBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--line-1);
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+}
+
+.asTextNote {
+  flex: 1;
+  min-width: 0;
+}
+
+.asTextAction {
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.asTextAction:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+}

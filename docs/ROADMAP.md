@@ -105,7 +105,9 @@ reading output and guessing.
   a theme built from Beacon's own tokens, syntax highlighting loaded on demand,
   history, search and replace, line numbers, `⌘S`
 - A `.env` view: values masked, show or copy one at a time, copy `KEY=value`.
-  Read fresh each time and kept nowhere else
+  Read fresh each time and kept nowhere else. Variables can be added — typed,
+  or pasted as `KEY=value` lines — and edited in place, and the file can be
+  opened as plain text from the view
 
 An open buffer notices when its file changes underneath it — which, in this
 application, usually means Claude — and refuses to overwrite it. A clean buffer

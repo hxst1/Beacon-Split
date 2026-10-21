@@ -92,9 +92,124 @@
   font-size: var(--text-xs);
 }
 
-.toggleAll:hover {
+.toggleAll:hover:not(:disabled) {
   background: var(--surface-2);
   color: var(--fg-1);
+}
+
+.toggleAll:disabled {
+  opacity: 0.45;
+}
+
+/* The form takes a row's place and shape, so adding reads as filling one in. */
+.form,
+.form:hover {
+  background: var(--surface-1);
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xs);
+  background: var(--field);
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  outline: none;
+  user-select: text;
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+
+.input:focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+.valueInput {
+  display: block;
+  resize: none;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: hidden;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.formActions {
+  display: flex;
+  gap: 3px;
+}
+
+.primary {
+  padding: 2px 9px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease);
+}
+
+.primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 28%, transparent);
+}
+
+.hint {
+  grid-column: 1 / -1;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+}
+
+.problem {
+  color: var(--danger);
+}
+
+.note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 6px;
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--warn) 14%, transparent);
+  color: var(--warn);
+  font-size: var(--text-xs);
+}
+
+.noteAction {
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent);
+  color: var(--warn);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.noteAction:hover {
+  background: color-mix(in oklab, var(--warn) 18%, transparent);
+}
+
+/* Several variables pasted at once: named, so it is clear what Add all adds. */
+.pasted {
+  grid-column: 1 / 3;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  user-select: text;
+}
+
+.pastedKey {
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+}
+
+.none {
+  padding: 5px 12px;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
 }
 
 .copied {
