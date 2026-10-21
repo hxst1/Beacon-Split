@@ -388,6 +388,12 @@ turns one secret into two.
 shows a stale value. Nothing derived from a value is stored, so there is no
 search or filter over them.
 
+Adding or editing a variable writes through the open tab — whose buffer already
+holds the file's text, in memory and unpersisted — and its guarded save, so the
+values gain no new home and a file Claude changed is not written over. What is
+written has to read back through the backend parser unchanged; a value that
+cannot is refused rather than written as something else.
+
 ## ADR-023: Git is read through `--porcelain=v1 -z`
 
 **Context.** The Git panel needs status, and status output has to be parsed.

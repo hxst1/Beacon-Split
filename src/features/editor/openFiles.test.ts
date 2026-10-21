@@ -278,3 +278,26 @@ describe('following what happens to files', () => {
     expect(useEditor.getState().active[PJ]).toBe('c.ts')
   })
 })
+
+describe('showing a file as text', () => {
+  it('stays as text through a reload, and goes back when asked', async () => {
+    await openFile('A=1\n')
+    useEditor.getState().showAsText(PJ, path, true)
+
+    readFile.mockResolvedValue({ kind: 'text', text: 'A=2\n', revision: 2 })
+    await useEditor.getState().reload(WS, PJ, path)
+    expect(fileNow()?.asText).toBe(true)
+
+    useEditor.getState().showAsText(PJ, path, false)
+    expect(fileNow()?.asText).toBeUndefined()
+  })
+
+  it('is forgotten with the tab, so reopening shows the variables again', async () => {
+    await openFile('A=1\n')
+    useEditor.getState().showAsText(PJ, path, true)
+    useEditor.getState().close(PJ, path)
+
+    await openFile('A=1\n')
+    expect(fileNow()?.asText).toBeUndefined()
+  })
+})
