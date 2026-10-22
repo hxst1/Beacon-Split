@@ -1,3 +1,4 @@
+import { AccountChip } from '@/features/accounts/AccountChip'
 import { LastReply } from '@/features/terminal/LastReply'
 import { TerminalView } from '@/features/terminal/TerminalView'
 import { MissingTool } from '@/features/settings/MissingTool'
@@ -85,6 +86,9 @@ export function AgentPanel({
       subtitle={subtitle}
       actions={
         <>
+          {/* Which account, before which conversation: both agents answer this
+              one, each as far as it will. */}
+          <AccountChip agent={agent} />
           {/* Both of these read what Claude Code's hooks and status line
               report, and nothing reports for Codex yet. Absent is better than
               a chip showing the wrong conversation. */}

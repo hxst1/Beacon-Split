@@ -327,6 +327,26 @@ export interface InstallOption {
  */
 export type RequirementState = 'ready' | 'missing' | 'broken' | 'needsAuth'
 
+/**
+ * Which account an agent is signed in to, as the agent itself reports it.
+ *
+ * Beacon never touches a credential (ADR-052): every field here was printed by
+ * the agent when asked the question its user could have typed. The agents
+ * answer unequally — Claude Code names the account, Codex names only how it
+ * signed in — so everything is optional and the chip says only what it was
+ * told.
+ */
+export interface Account {
+  /** Absent where the question had no answer, which is not the same as false. */
+  signedIn?: boolean
+  /** Claude Code gives this. Codex has no way to say it at all. */
+  email?: string
+  /** `claude.ai`, `ChatGPT`, an API key — in the agent's own words. */
+  method?: string
+  /** `max`, `pro`, `team`, where the agent says. */
+  plan?: string
+}
+
 export interface Requirement {
   id: string
   name: string
@@ -338,6 +358,8 @@ export interface Requirement {
   whatBreaks: string
   install: InstallOption[]
   note?: string
+  /** Only for a program somebody signs in to, and only when it said something. */
+  account?: Account
 }
 
 export interface Integration {

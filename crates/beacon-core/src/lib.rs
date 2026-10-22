@@ -6,6 +6,7 @@
 //! not kill live Claude sessions, and everything here is meant to move there
 //! unchanged.
 
+pub mod account;
 pub mod agent;
 pub mod agents;
 pub mod appearance;

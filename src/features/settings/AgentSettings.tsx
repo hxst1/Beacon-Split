@@ -4,12 +4,7 @@ import { useBeacon } from '@/app/store'
 import { errorMessage, ipc } from '@/ipc'
 import { isWindows } from '@/lib/platform'
 import { useWorkstreamsSupported } from '@/features/workstreams/capabilities'
-import type {
-  CodexIntegration,
-  Integration,
-  Requirement,
-  RequirementState,
-} from '@/types/beacon'
+import type { CodexIntegration, Integration, RequirementState } from '@/types/beacon'
 import { useTypeInTerminal } from './typeInTerminal'
 import styles from './SettingsScreen.module.css'
 
@@ -355,11 +350,20 @@ const DOT: Record<RequirementState, string | undefined> = {
 }
 
 export function RequirementsSettings(): React.ReactElement {
-  const [requirements, setRequirements] = useState<Requirement[] | null>(null)
+  // From the store rather than from here: the same answer decides whether a
+  // panel shows a terminal or an install command, and which account its header
+  // names. A private copy is how this screen and that panel come to disagree —
+  // somebody installs Claude Code, presses the button, reads "installed" here,
+  // and still finds the install screen in the panel behind.
+  const requirements = useBeacon((state) => state.requirements)
+  const refresh = useBeacon((state) => state.refreshRequirements)
   const [daemon, setDaemon] = useState<boolean | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
 
   const [looking, setLooking] = useState(false)
+  // Whether a look has finished at all, which is the only way to tell an
+  // empty list that is still being worked out from one that failed.
+  const [looked, setLooked] = useState(false)
   const { type } = useTypeInTerminal()
 
   // `again` is the difference between the screen opening and somebody pressing
@@ -367,19 +371,22 @@ export function RequirementsSettings(): React.ReactElement {
   // throws it away first. Without that, installing the missing thing and
   // coming back shows the same answer, and the only way out is a restart
   // nothing mentions.
-  const look = useCallback((again: boolean) => {
-    setLooking(true)
-    if (again) setRequirements(null)
-    void Promise.all([
-      again ? ipc.recheckRequirements() : ipc.checkRequirements(),
-      ipc.daemonAvailable(),
-    ])
-      .then(([found, hasDaemon]) => {
-        setRequirements(found)
-        setDaemon(hasDaemon)
-      })
-      .finally(() => setLooking(false))
-  }, [])
+  //
+  // Whatever was known stays on screen while the new answer is worked out, and
+  // the button is what says "Looking…" — a list that empties and refills moves
+  // everything under the reader's cursor for a second and a half.
+  const look = useCallback(
+    (again: boolean) => {
+      setLooking(true)
+      void Promise.all([refresh(again), ipc.daemonAvailable()])
+        .then(([, hasDaemon]) => setDaemon(hasDaemon))
+        .finally(() => {
+          setLooking(false)
+          setLooked(true)
+        })
+    },
+    [refresh],
+  )
 
   useEffect(() => look(false), [look])
 
@@ -406,8 +413,13 @@ export function RequirementsSettings(): React.ReactElement {
         </div>
       ) : null}
 
-      {requirements === null ? (
-        <p className={styles['sectionNote']}>Looking…</p>
+      {requirements.length === 0 ? (
+        // There are always three of these, so an empty list after a look that
+        // finished means the look itself failed. Saying "Looking…" forever is
+        // how a screen stops being believed.
+        <p className={styles['sectionNote']}>
+          {looked ? 'Beacon could not look at this machine just now. Check again.' : 'Looking…'}
+        </p>
       ) : (
         requirements.map((requirement) => (
           <div className={styles['requirement']} key={requirement.id}>

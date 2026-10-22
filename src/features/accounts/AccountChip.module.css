@@ -1,0 +1,37 @@
+/*
+ * The account, at the weight of a caption.
+ *
+ * It sits beside the workstream chip and must not compete with it: no border,
+ * no background, no icon. Which conversation you are in changes every few
+ * minutes; which account you are on changes rarely and matters enormously, so
+ * it earns a place in the header and nothing more than a place.
+ */
+.chip {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 200px;
+  padding: 1px 2px;
+  flex: none;
+  color: var(--fg-4);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+/* An email is long and the header is not. The front of it is the part that
+   tells two accounts apart, so the end is what goes. */
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The plan, quieter again — it qualifies the name rather than standing beside
+   it as a second fact. */
+.detail {
+  flex: none;
+  opacity: 0.75;
+}

@@ -3,7 +3,12 @@ import { useEffect } from 'react'
 import { AppShell } from '@/app/AppShell'
 import { Boot } from '@/app/Boot'
 import { Welcome } from '@/features/workspaces/Welcome'
-import { startConnectionTracking, startSystemThemeTracking, useBeacon } from '@/app/store'
+import {
+  startConnectionTracking,
+  startRequirementTracking,
+  startSystemThemeTracking,
+  useBeacon,
+} from '@/app/store'
 import { startClipTracking } from '@/features/clips/clips'
 import { startActivityTracking } from '@/features/terminal/activity'
 import { checkForUpdate } from '@/features/releases/updates'
@@ -29,6 +34,7 @@ export function App(): React.ReactElement {
       startAgentTracking(),
       startClipTracking(),
       startSystemThemeTracking(),
+      startRequirementTracking(),
       startNotifications(),
       startReplyTracking(),
       unlockSoundOnFirstGesture(),

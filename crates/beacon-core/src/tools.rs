@@ -297,7 +297,7 @@ fn ask_shell(name: &str, args: &[&str]) -> Option<PathBuf> {
 /// that waits for exit while the pipe is full waits forever on a child that is
 /// waiting to be read.
 pub fn capture_briefly(command: &mut std::process::Command, limit: Duration) -> Option<String> {
-    let (succeeded, output) = run_briefly(command, limit, false)?;
+    let (succeeded, output) = run_briefly(command, limit, Reading::ON_SUCCESS)?;
     succeeded.then_some(output)
 }
 
@@ -310,7 +310,7 @@ pub fn capture_briefly_any_exit(
     command: &mut std::process::Command,
     limit: Duration,
 ) -> Option<String> {
-    run_briefly(command, limit, true).map(|(_, output)| output)
+    run_briefly(command, limit, Reading::WHATEVER_IT_EXITS_WITH).map(|(_, output)| output)
 }
 
 /// How long to wait for the output of a program that has already exited.
@@ -327,7 +327,58 @@ const AFTER_EXIT: Duration = Duration::from_millis(250);
 /// limit — which is a different thing from failing, and callers that cannot
 /// tell the difference should not be using this.
 pub fn succeeded_briefly(command: &mut std::process::Command, limit: Duration) -> Option<bool> {
-    run_briefly(command, limit, true).map(|(succeeded, _)| succeeded)
+    run_briefly(command, limit, Reading::WHATEVER_IT_EXITS_WITH).map(|(succeeded, _)| succeeded)
+}
+
+/// Both halves at once, for a status command whose exit code and whose output
+/// answer different questions.
+///
+/// `codex login status` is the case it exists for: the exit code is the only
+/// thing trusted for whether anybody is signed in, and the line it prints is
+/// the only place the method is named. It prints that line on **standard
+/// error**, with nothing at all on standard output, so this reads both — a
+/// probe that took stdout alone saw an empty string and concluded Codex had
+/// said nothing.
+pub fn outcome_briefly(
+    command: &mut std::process::Command,
+    limit: Duration,
+) -> Option<(bool, String)> {
+    run_briefly(command, limit, Reading::EVERYTHING_IT_PRINTS)
+}
+
+/// What to read of a program Beacon asks a question of.
+///
+/// Named rather than a pair of bare booleans at the call site: `(true, false)`
+/// in an argument list is a thing to go and look up every time.
+#[derive(Debug, Clone, Copy)]
+struct Reading {
+    /// Whether what it printed is worth reading when it failed.
+    on_failure: bool,
+    /// Whether the answer might be on standard error.
+    ///
+    /// Off for everything that does not need it, because stderr is where
+    /// warnings and progress go, and a parser handed those alongside the
+    /// answer is a parser being handed noise.
+    stderr: bool,
+}
+
+impl Reading {
+    /// For a program whose failure says nothing worth having.
+    const ON_SUCCESS: Self = Self {
+        on_failure: false,
+        stderr: false,
+    };
+    /// For a status command, which is entitled to exit non-zero while
+    /// answering perfectly well.
+    const WHATEVER_IT_EXITS_WITH: Self = Self {
+        on_failure: true,
+        stderr: false,
+    };
+    /// The same, for one that answers on standard error.
+    const EVERYTHING_IT_PRINTS: Self = Self {
+        on_failure: true,
+        stderr: true,
+    };
 }
 
 /// Runs a program to completion or to the limit, whichever is first, and says
@@ -339,25 +390,22 @@ pub fn succeeded_briefly(command: &mut std::process::Command, limit: Duration) -
 fn run_briefly(
     command: &mut std::process::Command,
     limit: Duration,
-    read_failure: bool,
+    reading: Reading,
 ) -> Option<(bool, String)> {
     hide_console_window(command);
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(if reading.stderr {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .spawn()
         .ok()?;
 
-    let stdout = child.stdout.take()?;
-    let (sender, output) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let mut buffer = String::new();
-        use std::io::Read;
-        let mut stdout = stdout;
-        let _ = stdout.read_to_string(&mut buffer);
-        let _ = sender.send(buffer);
-    });
+    let output = drain(child.stdout.take()?);
+    let errors = child.stderr.take().map(drain);
 
     let deadline = Instant::now() + limit;
     let status = loop {
@@ -378,7 +426,7 @@ fn run_briefly(
         std::thread::sleep(Duration::from_millis(10));
     };
 
-    if !status.success() && !read_failure {
+    if !status.success() && !reading.on_failure {
         return Some((false, String::new()));
     }
     // Abandoned rather than waited on if it does not arrive, for the reason
@@ -386,8 +434,33 @@ fn run_briefly(
     let wait = deadline
         .saturating_duration_since(Instant::now())
         .max(AFTER_EXIT);
-    let output = output.recv_timeout(wait).ok()?;
-    Some((status.success(), output))
+    let mut text = output.recv_timeout(wait).ok()?;
+
+    // Appended rather than preferred: a program is free to put part of its
+    // answer on each, and by here it has already exited, so this is only
+    // waiting for a pipe to close.
+    if let Some(errors) = errors {
+        if let Ok(printed) = errors.recv_timeout(AFTER_EXIT) {
+            text.push_str(&printed);
+        }
+    }
+    Some((status.success(), text))
+}
+
+/// Reads a stream to the end on a thread of its own.
+///
+/// On a thread because a parent that waits for exit while a pipe is full waits
+/// forever on a child that is waiting to be read — and with two pipes, reading
+/// one to the end before starting on the other is that same deadlock.
+fn drain(stream: impl std::io::Read + Send + 'static) -> std::sync::mpsc::Receiver<String> {
+    let (sender, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buffer = String::new();
+        let mut stream = stream;
+        let _ = stream.read_to_string(&mut buffer);
+        let _ = sender.send(buffer);
+    });
+    received
 }
 
 /// Waits for a probe, then stops waiting.
@@ -785,6 +858,74 @@ pub fn session_path(program: &Path) -> std::ffi::OsString {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The bug this is here for cost a feature and looked like nothing.
+    ///
+    /// `codex login status` prints "Logged in using ChatGPT" on standard
+    /// error and nothing whatever on standard output. A probe that read stdout
+    /// alone got an empty string, which is indistinguishable from a program
+    /// that said nothing — so Beacon showed no account for Codex and had no
+    /// way to know it had asked wrongly.
+    #[test]
+    fn a_program_that_answers_on_standard_error_is_still_heard() {
+        let mut command = script("echo answer 1>&2");
+        let (succeeded, text) = outcome_briefly(&mut command, Duration::from_secs(5)).unwrap();
+
+        assert!(succeeded);
+        assert!(text.contains("answer"), "heard {text:?}");
+    }
+
+    /// Two pipes, both past what a pipe will hold.
+    ///
+    /// A pipe buffers about 64KB, and a child writing past that blocks until
+    /// somebody reads. Reading one stream to the end before starting on the
+    /// other is therefore a deadlock, and it is a deadlock on the path that
+    /// starts a session — so each is drained on a thread of its own, and this
+    /// is what says so. It finishes in well under the limit or not at all.
+    #[cfg(unix)]
+    #[test]
+    fn a_program_that_fills_both_pipes_is_not_a_deadlock() {
+        // 100,000 lines of two bytes on each, which is 200KB a side.
+        let mut command = script("yes out | head -n 100000; yes err | head -n 100000 1>&2");
+        let (succeeded, text) = outcome_briefly(&mut command, Duration::from_secs(20)).unwrap();
+
+        assert!(succeeded);
+        assert!(text.len() > 300_000, "read only {} bytes", text.len());
+        assert!(text.contains("out"));
+        assert!(text.contains("err"));
+    }
+
+    /// Because "you are signed out" is an answer, and some programs exit
+    /// non-zero while giving it on standard error.
+    #[test]
+    fn a_failure_that_explains_itself_on_standard_error_is_read() {
+        let mut command = script(&format!("echo why 1>&2{}exit 1", and_then()));
+        let (succeeded, text) = outcome_briefly(&mut command, Duration::from_secs(5)).unwrap();
+
+        assert!(!succeeded);
+        assert!(text.contains("why"), "heard {text:?}");
+    }
+
+    /// And the probes that did not ask for it are not handed it: stderr is
+    /// where warnings go, and a parser given those alongside the answer is a
+    /// parser given noise.
+    #[test]
+    fn standard_error_stays_out_of_the_answer_unless_it_is_asked_for() {
+        let mut command = script(&format!("echo noise 1>&2{}echo answer", and_then()));
+        let text = capture_briefly(&mut command, Duration::from_secs(5)).unwrap();
+
+        assert!(text.contains("answer"), "heard {text:?}");
+        assert!(!text.contains("noise"), "heard {text:?}");
+    }
+
+    /// Two commands in a row, on either platform.
+    ///
+    /// `cmd` has no `;`: it reads the rest of the line as the first command's
+    /// own arguments, which is a test that passes for the wrong reason rather
+    /// than one that fails.
+    fn and_then() -> &'static str {
+        if cfg!(windows) { " & " } else { "; " }
+    }
 
     /// A shell running one line, on either platform.
     fn script(line: &str) -> std::process::Command {
