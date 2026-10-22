@@ -58,6 +58,7 @@ fn placement(
         SessionPrefs {
             shell: beacon.shell(),
             agents: beacon.claude_agents(),
+            accounts: beacon.account_homes(),
         },
     ))
 }

@@ -27,6 +27,7 @@ pub fn open_session(
             SessionPrefs {
                 shell: beacon.shell(),
                 agents: beacon.claude_agents(),
+                accounts: beacon.account_homes(),
             },
         )
     };
@@ -97,6 +98,7 @@ pub fn restart_session(
             SessionPrefs {
                 shell: beacon.shell(),
                 agents: beacon.claude_agents(),
+                accounts: beacon.account_homes(),
             },
         )
     };

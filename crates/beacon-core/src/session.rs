@@ -9,6 +9,7 @@ use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system}
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::account::AccountHomes;
 use crate::agent::AgentKind;
 use crate::domain::ProjectId;
 use crate::error::{CoreError, Result};
@@ -102,6 +103,9 @@ pub struct SessionPrefs {
     pub shell: Option<ShellSpec>,
     /// Whether Beacon's own subagents are offered. Ignored for a shell.
     pub agents: bool,
+    /// Which configuration home each agent uses, where it is not the
+    /// machine's own. Empty for anybody who has not added an account.
+    pub accounts: AccountHomes,
 }
 
 /// How an agent session should be started.
@@ -360,6 +364,24 @@ fn write_mcp_config(dir: &Path) -> std::io::Result<PathBuf> {
     std::fs::write(&temporary, serde_json::to_vec(&config)?)?;
     std::fs::rename(&temporary, &path)?;
     Ok(path)
+}
+
+/// Which agents a session is told the chosen account for.
+///
+/// An agent session hears about its own and not the other's: there is no
+/// reason for a Claude to be told where Codex keeps its configuration, and a
+/// variable a program has no use for is a variable that can only confuse
+/// whatever reads it next.
+///
+/// A shell hears about both. Somebody who types `claude` in Beacon's terminal,
+/// in a window whose panel header names an account, is entitled to get that
+/// account — and it is how signing a new one in works at all.
+fn told_the_account(kind: SessionKind) -> &'static [AgentKind] {
+    match kind.agent() {
+        Some(AgentKind::Claude) => &[AgentKind::Claude],
+        Some(AgentKind::Codex) => &[AgentKind::Codex],
+        None => &AgentKind::ALL,
+    }
 }
 
 /// Gives the session a clean, honest environment.
@@ -668,6 +690,31 @@ pub struct SessionManager {
     /// Keyed by the agent as well as the project, so a project running both
     /// does not have one launch standing in for the other.
     agent_launch: Mutex<HashMap<(ProjectId, AgentKind), AgentLaunch>>,
+    /// Which account each project's next session should be started with.
+    ///
+    /// Here for the same reason the launch is: the client says it with every
+    /// session, and the daemon reads no settings of its own.
+    wanted_accounts: Mutex<HashMap<ProjectId, AccountHomes>>,
+    /// Which account each project's sessions were actually started with.
+    ///
+    /// A different question from the one above, and the difference bites.
+    /// `Ensure` is an ensure: a panel that re-mounts asks for a session that
+    /// is already running and gets it back without anything being spawned —
+    /// while still saying which account it would like. Reading the wanted one
+    /// afterwards would mean a session running under one account being looked
+    /// up under another: its transcript reported as never written, which
+    /// Claude Code answers with `Session ID … is already in use`, and another
+    /// account's usage in its status line.
+    ///
+    /// So this is written at the spawn and nowhere else, and everything that
+    /// goes looking for what an agent wrote reads it.
+    ///
+    /// Keyed by the session and not the project, because a project's sessions
+    /// do not have to agree: switch Codex's account, leave Codex running, open
+    /// a shell, and the shell starts on the new account while Codex is still
+    /// on the old one. One entry per project would have the shell's spawn
+    /// answer for Codex.
+    started_accounts: Mutex<HashMap<(ProjectId, SessionKind), AccountHomes>>,
 }
 
 impl SessionManager {
@@ -677,6 +724,8 @@ impl SessionManager {
             sessions: Mutex::new(HashMap::new()),
             by_project: Mutex::new(HashMap::new()),
             program_paths: Mutex::new(HashMap::new()),
+            wanted_accounts: Mutex::new(HashMap::new()),
+            started_accounts: Mutex::new(HashMap::new()),
             hook_socket: Mutex::new(None),
             mcp_config: Mutex::new(None),
             agent_launch: Mutex::new(HashMap::new()),
@@ -691,6 +740,84 @@ impl SessionManager {
     /// opened and never typed into leaves nothing to resume.
     /// The agent is taken from the launch itself rather than passed beside it:
     /// two arguments that have to agree are two chances to disagree.
+    /// Points a session at the account it should use, if it is not the
+    /// machine's own.
+    ///
+    /// The agent's own variable and nothing else — Beacon decides which
+    /// directory, the agent does everything else (ADR-099). An agent session
+    /// is told about its own account; a shell is told about both, because a
+    /// `claude` run in Beacon's terminal, beside a panel that names an
+    /// account, had better be the same account.
+    ///
+    /// Nothing is set where nobody chose an account, which is almost
+    /// everybody. That is what keeps this invisible to anyone who does not
+    /// want it: their session's environment is byte for byte what it was.
+    fn name_the_account(
+        &self,
+        command: &mut CommandBuilder,
+        project: &ProjectId,
+        kind: SessionKind,
+    ) {
+        let homes = self
+            .wanted_accounts
+            .lock_or_recover()
+            .get(project)
+            .cloned()
+            .unwrap_or_default();
+
+        // Recorded even when it is empty, which is the common case. "This
+        // project's sessions are on the machine's own account" is an answer
+        // the lookups need, and leaving the previous one in place would hand
+        // them the account this session was deliberately moved off.
+        self.started_accounts
+            .lock_or_recover()
+            .insert((project.clone(), kind), homes.clone());
+
+        for agent in told_the_account(kind).iter().copied() {
+            let Some(home) = homes.of(agent) else {
+                continue;
+            };
+            command.env(crate::account::home_variable(agent), home);
+        }
+    }
+
+    /// Says which account a project's next session should be started with.
+    ///
+    /// Held in the process and never written down, like [`AgentLaunch`]: it is
+    /// what the client last said, which is a fact about now. The client sends
+    /// it with every session for the reason the shell is sent that way — the
+    /// preference belongs to the person, and the daemon reads no settings.
+    ///
+    /// Saying it does not change a session that is already running. Nothing
+    /// can: the home is in that process's environment.
+    pub fn set_account_homes(&self, project: ProjectId, homes: AccountHomes) {
+        self.wanted_accounts
+            .lock_or_recover()
+            .insert(project, homes);
+    }
+
+    /// Which accounts one session was started with, for the places that have
+    /// to read back what it wrote there.
+    ///
+    /// By session and not by agent, because the caller always knows which
+    /// session it is asking about and a shell's answer is not an agent's. An
+    /// empty answer means that session is on the machine's own account, which
+    /// is also what a session Beacon has not started yet reads as.
+    pub fn started_with(&self, project: &ProjectId, kind: SessionKind) -> AccountHomes {
+        self.started_accounts
+            .lock_or_recover()
+            .get(&(project.clone(), kind))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// The home one of a project's agents was started with.
+    pub fn account_home(&self, project: &ProjectId, agent: AgentKind) -> Option<PathBuf> {
+        self.started_with(project, agent.session_kind())
+            .of(agent)
+            .map(Path::to_path_buf)
+    }
+
     pub fn set_agent_launch(&self, project: ProjectId, launch: AgentLaunch) {
         self.agent_launch
             .lock_or_recover()
@@ -983,6 +1110,8 @@ impl SessionManager {
             command.env("BEACON_PROJECT", project.as_str());
             command.env("BEACON_AGENT", agent.as_str());
         }
+
+        self.name_the_account(&mut command, &project, kind);
 
         let child = pair
             .slave
@@ -1321,6 +1450,16 @@ impl<T> LockOrRecover<T> for Mutex<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_agent_is_told_its_own_account_and_a_shell_is_told_both() {
+        assert_eq!(told_the_account(SessionKind::Claude), [AgentKind::Claude]);
+        assert_eq!(told_the_account(SessionKind::Codex), [AgentKind::Codex]);
+
+        // A shell gets both, so `claude` and `codex` typed into Beacon's own
+        // terminal are the accounts the panels beside it name.
+        assert_eq!(told_the_account(SessionKind::Shell), AgentKind::ALL);
+    }
 
     /// A name somebody could have put in their own shell profile belongs in
     /// the list that only applies under `CLAUDECODE`. In `STRIPPED_ENV` it

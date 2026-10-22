@@ -260,8 +260,8 @@ fn detect() -> Capabilities {
 /// Deliberately one-directional, for the reason in [`parse_login_status`], and
 /// `None` is no answer: a Codex too old for the subcommand, or one that would
 /// not finish.
-pub fn signed_in(codex: &std::path::Path) -> Option<bool> {
-    account(codex)?.signed_in
+pub fn signed_in(codex: &std::path::Path, home: Option<&std::path::Path>) -> Option<bool> {
+    account(codex, home)?.signed_in
 }
 
 /// Which account Codex is using, as far as Codex will say.
@@ -279,11 +279,20 @@ pub fn signed_in(codex: &std::path::Path) -> Option<bool> {
 ///
 /// That one line goes to **standard error**, with nothing on standard output,
 /// which is why the whole of what it prints is read and not just stdout.
-pub fn account(codex: &std::path::Path) -> Option<Account> {
+pub fn account(codex: &std::path::Path, home: Option<&std::path::Path>) -> Option<Account> {
     let mut command = std::process::Command::new(codex);
     command.args(["login", "status"]);
     crate::tools::strip_terminal_identity(&mut command);
     command.env("PATH", crate::tools::session_path(codex));
+    // The account a session would be started with, for the reason Claude
+    // Code's is: otherwise this answers for whichever one the machine is
+    // signed in to, under another account's name.
+    if let Some(home) = home {
+        command.env(
+            crate::account::home_variable(crate::agent::AgentKind::Codex),
+            home,
+        );
+    }
 
     let (succeeded, text) = crate::tools::outcome_briefly(&mut command, PROBE_TIMEOUT)?;
     Some(parse_login_status(&text, succeeded))

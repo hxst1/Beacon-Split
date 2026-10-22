@@ -2,10 +2,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::account::{AccountBook, AccountHomes, Profile};
 use crate::agent::AgentKind;
 use crate::appearance::Appearance;
 use crate::detect::{ProjectKind, detect_kinds, suggest_name};
-use crate::domain::{Project, ProjectId, Workspace, WorkspaceId, WorkspacesFile, normalize_accent};
+use crate::domain::{
+    AccountId, Project, ProjectId, Workspace, WorkspaceId, WorkspacesFile, normalize_accent,
+};
 use crate::error::{CoreError, Result};
 use crate::keymap::{self, ActionBinding};
 use crate::layout::{LayoutNode, LayoutPreset, PanelId};
@@ -73,6 +76,8 @@ pub struct Snapshot {
     /// Whether Beacon offers its own subagents to the sessions it starts.
     pub claude_agents: bool,
     pub projects_home: String,
+    /// The accounts each agent can use, and which one it is using.
+    pub accounts: AccountBook,
 }
 
 /// Owns Beacon's persisted state and every operation on it.
@@ -220,6 +225,7 @@ impl Beacon {
             show_hidden_files: self.settings.show_hidden_files,
             claude_agents: self.settings.claude_agents,
             projects_home: home.to_string_lossy().into_owned(),
+            accounts: self.settings.accounts.clone(),
         }
     }
 
@@ -678,6 +684,89 @@ impl Beacon {
     /// started, and there is no way to hand an agent to one already running.
     pub fn set_claude_agents(&mut self, enabled: bool) -> Result<()> {
         self.settings.claude_agents = enabled;
+        self.save_settings()
+    }
+
+    pub fn accounts(&self) -> &AccountBook {
+        &self.settings.accounts
+    }
+
+    /// Which configuration home each agent's sessions should start with.
+    pub fn account_homes(&self) -> AccountHomes {
+        self.settings.accounts.homes()
+    }
+
+    /// Adds an account and makes the directory it will live in.
+    ///
+    /// The directory and nothing else: Beacon does not sign anybody in, and a
+    /// home that exists but is empty is exactly what the agent's own `login`
+    /// command expects to be pointed at. Until that happens the account
+    /// reports itself as not signed in, which is the truth.
+    ///
+    /// Created rather than only recorded, because the agents differ on what
+    /// they do with a directory that is not there — and a path that appears in
+    /// a menu should be a path that exists.
+    pub fn add_account(&mut self, agent: AgentKind, label: &str) -> Result<Profile> {
+        let label = require_name(label)?;
+        let id = AccountId::generate();
+        let home = crate::account::home_for(agent, &id);
+
+        std::fs::create_dir_all(&home).map_err(|err| CoreError::io(&home, err))?;
+
+        let profile = Profile { id, label, home };
+        self.settings
+            .accounts
+            .of_mut(agent)
+            .added
+            .push(profile.clone());
+        self.save_settings()?;
+        Ok(profile)
+    }
+
+    /// Switches which account the agent's next session uses.
+    ///
+    /// `None` is the machine's own. Takes effect on the next start and not
+    /// before: the home is an environment variable, and a process that is
+    /// already running cannot be given another one.
+    pub fn set_active_account(&mut self, agent: AgentKind, id: Option<AccountId>) -> Result<()> {
+        if let Some(id) = &id
+            && self.settings.accounts.of(agent).get(id).is_none()
+        {
+            return Err(CoreError::invalid("no such account"));
+        }
+        self.settings.accounts.of_mut(agent).active = id;
+        self.save_settings()
+    }
+
+    pub fn rename_account(&mut self, agent: AgentKind, id: &AccountId, label: &str) -> Result<()> {
+        let label = require_name(label)?;
+        let accounts = self.settings.accounts.of_mut(agent);
+        let profile = accounts
+            .added
+            .iter_mut()
+            .find(|profile| &profile.id == id)
+            .ok_or_else(|| CoreError::invalid("no such account"))?;
+        profile.label = label;
+        self.save_settings()
+    }
+
+    /// Takes an account out of the list, and leaves its files alone.
+    ///
+    /// Deliberately not a delete. That directory holds somebody's settings,
+    /// their `CLAUDE.md`, their conversation history and a live credential,
+    /// and none of it is Beacon's to destroy from a menu — it is also where
+    /// they would go to sign out properly. Forgetting it is reversible by
+    /// adding it again; deleting it is not reversible at all.
+    pub fn forget_account(&mut self, agent: AgentKind, id: &AccountId) -> Result<()> {
+        let accounts = self.settings.accounts.of_mut(agent);
+        let before = accounts.added.len();
+        accounts.added.retain(|profile| &profile.id != id);
+        if accounts.added.len() == before {
+            return Err(CoreError::invalid("no such account"));
+        }
+        if accounts.active.as_ref() == Some(id) {
+            accounts.active = None;
+        }
         self.save_settings()
     }
 

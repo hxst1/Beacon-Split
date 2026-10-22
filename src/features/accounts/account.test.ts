@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { accountLabel } from './account'
+import { accountLabel, switchedTo } from './account'
 
 describe('accountLabel', () => {
   it('names the account and the plan when Claude Code says both', () => {
@@ -15,6 +15,7 @@ describe('accountLabel', () => {
       name: 'someone@example.com',
       detail: 'Max',
       title: 'Claude Code is signed in as someone@example.com on the Max plan, through claude.ai',
+      signedOut: false,
     })
   })
 
@@ -35,6 +36,7 @@ describe('accountLabel', () => {
       name: 'not signed in',
       detail: null,
       title: 'Nobody is signed in to Claude Code',
+      signedOut: true,
     })
   })
 
@@ -51,5 +53,18 @@ describe('accountLabel', () => {
 
     expect(label?.detail).toBeNull()
     expect(label?.title).toBe('Claude Code is signed in as someone@example.com')
+  })
+})
+
+describe('switchedTo', () => {
+  it('says when the switch takes effect, because it is not now', () => {
+    // The home is an environment variable, so a running agent keeps the
+    // account it started with. Somebody not told that picks an account, sees
+    // the session carry on unchanged, and concludes Beacon ignored them.
+    const said = switchedTo('claude', 'Work')
+
+    expect(said).toContain('Work')
+    expect(said).toContain('next start')
+    expect(said).toContain('Restart')
   })
 })

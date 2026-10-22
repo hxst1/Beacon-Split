@@ -119,14 +119,27 @@ impl CodexUsage {
 
 /// Where Codex keeps its configuration and its sessions.
 ///
-/// `CODEX_HOME` first, because that is what Beacon sets when it wants Codex
-/// pointed somewhere else, and what somebody with more than one Codex setup
-/// will have set for themselves.
-pub fn home() -> PathBuf {
+/// The session's own home first, when the session was started with one: a
+/// rollout is written under the home the session used, and the daemon's own
+/// environment is not that home — it is whatever happened to be set when the
+/// daemon started, which with more than one account is the wrong account's
+/// usage shown against the right account's name.
+///
+/// Then `CODEX_HOME`, for somebody who set it for themselves outside Beacon,
+/// and then Codex's own default.
+pub fn home_of(session: Option<&std::path::Path>) -> PathBuf {
+    if let Some(home) = session {
+        return home.to_path_buf();
+    }
     if let Some(set) = std::env::var_os("CODEX_HOME") {
         return PathBuf::from(set);
     }
     crate::paths::home_dir().join(".codex")
+}
+
+/// Where Codex keeps it for a Beacon that was told nothing about accounts.
+pub fn home() -> PathBuf {
+    home_of(None)
 }
 
 /// The rollout of one conversation, by the id Codex calls it.

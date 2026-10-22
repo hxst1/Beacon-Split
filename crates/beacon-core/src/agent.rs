@@ -37,6 +37,14 @@ impl AgentKind {
     /// Every agent, in the order a settings screen should offer them.
     pub const ALL: [AgentKind; 2] = [AgentKind::Claude, AgentKind::Codex];
 
+    /// The kind of session this agent runs as.
+    pub fn session_kind(self) -> crate::session::SessionKind {
+        match self {
+            AgentKind::Claude => crate::session::SessionKind::Claude,
+            AgentKind::Codex => crate::session::SessionKind::Codex,
+        }
+    }
+
     /// The program to run, as it is called on the PATH.
     pub fn program(self) -> &'static str {
         match self {

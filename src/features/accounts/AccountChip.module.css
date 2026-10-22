@@ -35,3 +35,46 @@
   flex: none;
   opacity: 0.75;
 }
+
+/* Interactive now, so it answers to a pointer the way the chip beside it
+   does — but no louder: the account is read far more often than it is
+   changed. */
+.chip:hover,
+.chip[aria-expanded='true'] {
+  background: var(--surface-2);
+  color: var(--fg-2);
+  border-radius: var(--radius-xs);
+}
+
+.caret {
+  flex: none;
+  font-size: 8px;
+  opacity: 0.6;
+}
+
+.menu {
+  min-width: 260px;
+}
+
+/*
+ * The thing somebody has to know before they use this, said where they are
+ * using it. A hairline and small type, no icon and no colour: it is an
+ * explanation, not a warning, and an application that shouts explanations
+ * teaches people to close the menu.
+ */
+.note {
+  margin: 6px 5px 2px;
+  padding: 7px 8px 8px;
+  border-top: 1px solid var(--line-1);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.note code {
+  padding: 0 3px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  font-family: inherit;
+}

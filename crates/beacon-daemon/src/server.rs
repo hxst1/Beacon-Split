@@ -292,7 +292,12 @@ fn spawn_codex_usage_watch(daemon: Arc<Daemon>) {
 /// first line of every rollout, so the common case, a Codex nobody has asked
 /// to report, still works.
 fn codex_rollout(daemon: &Daemon, info: &beacon_core::session::SessionInfo) -> Option<PathBuf> {
-    let home = beacon_core::codex_usage::home();
+    let home = beacon_core::codex_usage::home_of(
+        daemon
+            .sessions
+            .account_home(&info.project, AgentKind::Codex)
+            .as_deref(),
+    );
     let by_id = daemon
         .workstreams
         .lock_or_recover()
@@ -529,19 +534,19 @@ fn spawn_sign_in_watch(daemon: Arc<Daemon>) {
                 }
 
                 let asked_at = Instant::now();
-                // Found already: the session being watched was started with it.
-                let answer = daemon
-                    .sessions
-                    .known_program(AgentKind::Claude)
-                    .and_then(|claude| beacon_core::claude::signed_in(&claude));
-
-                let next = daemon.sign_in.lock_or_recover().answer(
-                    answer,
-                    asked_at,
-                    Instant::now(),
-                    |id| daemon.sessions.is_alive(id),
-                    |id| daemon.sessions.last_return(id),
-                );
+                let next = match ask_whether_signed_in(&daemon) {
+                    Asked::Said(answer) => daemon.sign_in.lock_or_recover().answer(
+                        answer,
+                        asked_at,
+                        Instant::now(),
+                        |id| daemon.sessions.is_alive(id),
+                        |id| daemon.sessions.last_return(id),
+                    ),
+                    // No answer was sought, so there is nothing to tell the
+                    // book — and telling it nothing would end the watch, which
+                    // is the one outcome worse than waiting.
+                    Asked::NotYet => Next::AskAgainIn(sign_in::POLL),
+                };
                 match next {
                     Next::AskAgainIn(after) => wait = after,
                     Next::Stop => return,
@@ -559,6 +564,69 @@ fn spawn_sign_in_watch(daemon: Arc<Daemon>) {
         tracing::warn!(error = %err, "could not start watching for a sign-in");
         daemon.sign_in.lock_or_recover().abandon();
     }
+}
+
+/// Asks Claude Code whether anybody is signed in to the account the waiting
+/// sessions are actually using.
+///
+/// One question for all of them, because that is what the watcher is: on a
+/// machine with one account they are all on it, and a single `claude auth
+/// status` answers for every panel.
+///
+/// When they are *not* all on the same account there is no single question to
+/// ask, and answering the wrong one would restart a session that is still
+/// signed out — straight back to the sign-in screen it was already on. So
+/// nothing is asked, which leaves things exactly where they were before any of
+/// this existed: the user signs in, and the next session to start picks it up.
+fn ask_whether_signed_in(daemon: &Daemon) -> Asked {
+    let watching = daemon.sign_in.lock_or_recover().watching();
+    let homes: Vec<Option<PathBuf>> = watching
+        .iter()
+        .filter_map(|id| daemon.sessions.info(id).ok())
+        .map(|info| {
+            daemon
+                .sessions
+                .account_home(&info.project, AgentKind::Claude)
+        })
+        .collect();
+
+    let Some(home) = one_account(&homes) else {
+        tracing::debug!("sessions are waiting on more than one account; asking none of them");
+        return Asked::NotYet;
+    };
+    let Some(claude) = daemon.sessions.known_program(AgentKind::Claude) else {
+        return Asked::Said(None);
+    };
+    Asked::Said(beacon_core::claude::signed_in(&claude, home.as_deref()))
+}
+
+/// Whether the sign-in question was put to Claude Code at all.
+///
+/// The difference matters because a `None` handed to the book ends the watch.
+/// "Claude Code would not say" is that; "there was no one account to ask
+/// about" is not, and a watch that stopped for it would never restart the
+/// panels waiting on a sign-in that is about to happen.
+enum Asked {
+    /// What Claude Code said, or that it would not say.
+    Said(Option<bool>),
+    /// Not a question that can be asked yet. The watch stays open.
+    NotYet,
+}
+
+/// The account all of these sessions are on, when it is the same one.
+///
+/// The inner `Option` is a real answer: `Some(None)` is "all of them are on
+/// the machine's own account", which is the ordinary case and the one that
+/// must not be confused with having nothing to ask about.
+///
+/// Pure, so the decision can be tested without a daemon, sessions or a Claude
+/// Code configuration folder — the same reason [`learn_from`] is.
+fn one_account(homes: &[Option<PathBuf>]) -> Option<Option<PathBuf>> {
+    let first = homes.first()?;
+    homes
+        .iter()
+        .all(|home| home == first)
+        .then(|| first.clone())
 }
 
 /// Starts again the Claude sessions left on the sign-in screen, now that
@@ -658,7 +726,7 @@ fn prepare_agent(daemon: &Daemon, project: &ProjectId, agent: AgentKind, agents:
         return;
     };
 
-    let stream = learn_from_disk(daemon, stream);
+    let stream = learn_from_disk(daemon, project, stream);
     let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, project, &stream, start, agents);
 }
@@ -671,13 +739,12 @@ fn prepare_agent(daemon: &Daemon, project: &ProjectId, agent: AgentKind, agents:
 /// already in use` on every start after the first, because the book still
 /// said the conversation had never been written and `--session-id` was asked
 /// for again. Claude Code's own transcript settles it either way.
-fn learn_from_disk(daemon: &Daemon, stream: Workstream) -> Workstream {
+fn learn_from_disk(daemon: &Daemon, project: &ProjectId, stream: Workstream) -> Workstream {
     let mut book = daemon.workstreams.lock_or_recover();
-    if !learn_from(
-        &mut book,
-        &stream,
-        beacon_core::claude::conversation_written,
-    ) {
+    let home = daemon.sessions.account_home(project, AgentKind::Claude);
+    if !learn_from(&mut book, &stream, |id| {
+        beacon_core::claude::conversation_written_under(home.as_deref(), id)
+    }) {
         return stream;
     }
     let updated = book.get(&stream.id).cloned().unwrap_or(stream);
@@ -885,7 +952,7 @@ fn resume_workstream(
         .ok_or_else(|| CoreError::invalid("that conversation is not one of this project's"))?;
     daemon.persist_workstreams();
 
-    let stream = learn_from_disk(daemon, stream);
+    let stream = learn_from_disk(daemon, &project, stream);
     let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, &project, &stream, start, agents);
     into_agent(daemon, &project, stream, cwd, size, shell)
@@ -975,7 +1042,9 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             rows,
             shell,
             agents,
+            accounts,
         } => {
+            sessions.set_account_homes(project.clone(), accounts);
             if let Some(agent) = kind.agent() {
                 prepare_agent(daemon, &project, agent, wanted(agents));
             }
@@ -1009,7 +1078,9 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             rows,
             shell,
             agents,
+            accounts,
         } => {
+            sessions.set_account_homes(project.clone(), accounts);
             if let Some(agent) = kind.agent() {
                 prepare_agent(daemon, &project, agent, wanted(agents));
             }
@@ -1188,7 +1259,9 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             rows,
             shell,
             agents,
+            accounts,
         } => {
+            sessions.set_account_homes(project.clone(), accounts);
             let stream = daemon
                 .workstreams
                 .lock_or_recover()
@@ -1212,15 +1285,19 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             rows,
             shell,
             agents,
-        } => resume_workstream(
-            daemon,
-            project,
-            id,
-            &cwd,
-            (cols, rows),
-            shell.as_ref(),
-            wanted(agents),
-        ),
+            accounts,
+        } => {
+            sessions.set_account_homes(project.clone(), accounts);
+            resume_workstream(
+                daemon,
+                project,
+                id,
+                &cwd,
+                (cols, rows),
+                shell.as_ref(),
+                wanted(agents),
+            )
+        }
 
         Request::ForkWorkstream {
             project,
@@ -1231,7 +1308,9 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             rows,
             shell,
             agents,
+            accounts,
         } => {
+            sessions.set_account_homes(project.clone(), accounts);
             // A conversation Claude Code has never seen cannot be resumed, and
             // `--fork-session` resumes before it forks. Refused here, where the
             // reason can be said, rather than in the terminal as whatever error
@@ -1332,6 +1411,36 @@ impl<T> LockOrRecover<T> for Mutex<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One `claude auth status` answers for every panel — but only when every
+    /// panel is on the same account.
+    ///
+    /// The case this exists for: one project waiting on the sign-in screen of
+    /// the machine's own account, another on an added account that is already
+    /// signed in. Asking the signed-in one and applying the answer to both
+    /// restarts the session that is still signed out, straight back onto the
+    /// sign-in screen it was already looking at.
+    #[test]
+    fn one_question_is_only_asked_when_every_session_is_on_one_account() {
+        let own: Option<PathBuf> = None;
+        let work = Some(PathBuf::from("/accounts/work"));
+
+        // Nothing waiting: nothing to ask.
+        assert_eq!(one_account(&[]), None);
+
+        // All on the machine's own, which is an answer and not an absence.
+        assert_eq!(one_account(&[own.clone(), own.clone()]), Some(None));
+
+        // All on the same added account.
+        assert_eq!(
+            one_account(&[work.clone(), work.clone()]),
+            Some(work.clone())
+        );
+
+        // And the one that matters: they disagree, so there is no one
+        // question, and Beacon asks none rather than the wrong one.
+        assert_eq!(one_account(&[own, work]), None);
+    }
 
     const PARENT: &str = "cafb8c86-53eb-49c4-a8b8-609e5cbc0f49";
     const REPORTED: &str = "01a0a9d6-e991-70f0-8c36-aa613bd90216";

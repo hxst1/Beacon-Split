@@ -96,6 +96,19 @@ impl SignInWatch {
     ///
     /// Without this `watching` would stay set and no watcher would ever be
     /// started again for as long as the daemon runs.
+    /// Every session whose sign-in state is still an open question.
+    ///
+    /// For asking that question of the right account: these sessions were
+    /// started under one, and it is not necessarily the one the daemon's own
+    /// environment names.
+    pub fn watching(&self) -> Vec<SessionId> {
+        self.unchecked
+            .keys()
+            .chain(self.waiting.iter())
+            .cloned()
+            .collect()
+    }
+
     pub fn abandon(&mut self) {
         self.unchecked.clear();
         self.waiting.clear();

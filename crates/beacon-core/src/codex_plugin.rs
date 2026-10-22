@@ -125,10 +125,10 @@ pub fn write_at(root: &Path, command: &Path) -> Result<()> {
 ///
 /// Two steps that fail for unrelated reasons, so they are reported apart: the
 /// files can be written and Codex can still refuse, or be missing entirely.
-pub fn install(command: &Path) -> Result<()> {
+pub fn install(command: &Path, home: Option<&Path>) -> Result<()> {
     let root = marketplace_dir();
     write_at(&root, command)?;
-    register(&root)
+    register(&root, home)
 }
 
 /// Registers the marketplace and installs the plugin from it.
@@ -136,7 +136,7 @@ pub fn install(command: &Path) -> Result<()> {
 /// Idempotent as far as Codex is concerned — adding a marketplace it already
 /// has, or a plugin it already installed, replaces what was there. Which is
 /// what makes reinstalling the answer to a stale one.
-pub fn register(root: &Path) -> Result<()> {
+pub fn register(root: &Path, home: Option<&Path>) -> Result<()> {
     let codex = crate::tools::resolve_program("codex").ok_or_else(|| {
         CoreError::invalid(
             "could not find the codex command. Install Codex, or make sure it is on the PATH your \
@@ -147,25 +147,50 @@ pub fn register(root: &Path) -> Result<()> {
     run(
         &codex,
         &["plugin", "marketplace", "add", &root.to_string_lossy()],
+        home,
     )?;
-    run(&codex, &["plugin", "add", &format!("{NAME}@{NAME}")])
+    run(&codex, &["plugin", "add", &format!("{NAME}@{NAME}")], home)
 }
 
 /// Removes the plugin and the marketplace, leaving nothing of Beacon behind.
-pub fn uninstall() -> Result<()> {
+pub fn uninstall(homes: &[PathBuf]) -> Result<()> {
     let codex = crate::tools::resolve_program("codex")
         .ok_or_else(|| CoreError::invalid("could not find the codex command"))?;
 
-    // The plugin first: a marketplace removed from under an installed plugin
-    // leaves Codex describing something it can no longer find.
-    run(&codex, &["plugin", "remove", &format!("{NAME}@{NAME}")])?;
-    run(&codex, &["plugin", "marketplace", "remove", NAME])?;
+    // Out of every account it was put into, or the ones left behind go on
+    // describing a plugin whose marketplace is about to be deleted.
+    // Every home is tried, and a home that never had it is not a failure:
+    // after a partial install — a `codex` that refused once, an account added
+    // while Codex was not installed — one home has it and another does not,
+    // and stopping at the first complaint would make uninstalling impossible
+    // to finish. The last real error is kept and reported once the rest are
+    // done.
+    let mut failed = None;
+    for home in homes {
+        // The plugin first: a marketplace removed from under an installed
+        // plugin leaves Codex describing something it can no longer find.
+        for args in [
+            vec!["plugin", "remove", &format!("{NAME}@{NAME}")],
+            vec!["plugin", "marketplace", "remove", NAME],
+        ] {
+            if let Err(error) = run(&codex, &args, Some(home)) {
+                tracing::debug!(%error, home = ?home, "codex had nothing to remove here");
+                failed = Some(error);
+            }
+        }
+    }
 
     let root = marketplace_dir();
     if root.exists() {
         std::fs::remove_dir_all(&root).map_err(|err| CoreError::io(&root, err))?;
     }
-    Ok(())
+
+    // Beacon's own files are gone either way, which is what "removed" means
+    // here. A Codex that would not cooperate is still worth saying out loud.
+    match failed {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
 }
 
 /// Runs Codex and turns a refusal into something a person can act on.
@@ -173,13 +198,21 @@ pub fn uninstall() -> Result<()> {
 /// Codex says why it refused on stderr, and that sentence is worth far more
 /// than "it did not work" — so it is carried out rather than logged and
 /// dropped.
-fn run(codex: &Path, args: &[&str]) -> Result<()> {
+fn run(codex: &Path, args: &[&str], home: Option<&Path>) -> Result<()> {
     let mut command = std::process::Command::new(codex);
     command.args(args);
     crate::tools::strip_terminal_identity(&mut command);
     // The same PATH a session gets: the login shell's, with Codex's own
     // directory in front for the interpreter npm put beside it.
     command.env("PATH", crate::tools::session_path(codex));
+    // Into one account's configuration, when there is more than one. A plugin
+    // registered in the wrong home is a Codex that reports nothing.
+    if let Some(home) = home {
+        command.env(
+            crate::account::home_variable(crate::agent::AgentKind::Codex),
+            home,
+        );
+    }
 
     let output = command
         .output()

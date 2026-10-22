@@ -114,6 +114,8 @@ export interface Snapshot {
   /** Whether Beacon offers its own subagents to the sessions it starts. */
   claudeAgents: boolean
   projectsHome: string
+  /** The accounts each agent can use, and which one it is using. */
+  accounts: AccountBook
 }
 
 export type HostPlatform = 'macos' | 'linux' | 'windows' | string
@@ -345,6 +347,34 @@ export interface Account {
   method?: string
   /** `max`, `pro`, `team`, where the agent says. */
   plan?: string
+}
+
+/**
+ * One account somebody added, which is a configuration home.
+ *
+ * Not a credential and not a login: a directory. The agent's own variable
+ * points it there, the agent's own `login` command fills it, and Beacon's part
+ * is deciding which directory a session starts with. See ADR-099.
+ */
+export interface AccountProfile {
+  id: string
+  /** What the person called it. For Codex this is the only name there is. */
+  label: string
+  /** Where the agent keeps everything for this account. */
+  home: string
+}
+
+/** One agent's accounts, and which of them is in use. */
+export interface AgentAccounts {
+  /** The ones that were added. Never includes the machine's own. */
+  added?: AccountProfile[]
+  /** Absent is the machine's own account, with no variable set at all. */
+  active?: string
+}
+
+export interface AccountBook {
+  claude?: AgentAccounts
+  codex?: AgentAccounts
 }
 
 export interface Requirement {

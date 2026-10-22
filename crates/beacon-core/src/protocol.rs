@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::account::AccountHomes;
 use crate::agent::AgentKind;
 use crate::clips::{Clip, ClipKind};
 use crate::domain::{ClipId, ProjectId};
@@ -58,7 +59,24 @@ use crate::workstreams::{Workstream, WorkstreamId};
 /// daemon, which a window never starts. The other way round, a newer window on
 /// an older daemon simply never hears it. Neither leaves anything waiting, and
 /// replacing the daemon for it would end every running session on upgrade.
-pub const PROTOCOL_VERSION: u32 = 7;
+///
+/// Version 8 added `accounts` to `Ensure`: which configuration home each agent
+/// starts with. A field and not a request, so the rule above did not require
+/// this, and it is the one time that rule has been overruled on purpose.
+///
+/// An older daemon ignores an unknown field, which here means it would start
+/// the session under the machine's own account while the window's header names
+/// another one. Nothing waits, nothing errors, and somebody's work goes to the
+/// wrong subscription — which is the exact mistake the accounts feature exists
+/// to stop, so a feature that could cause it quietly is worth less than
+/// nothing. The daemon is replaced instead, once, on upgrade to this version.
+pub const PROTOCOL_VERSION: u32 = 8;
+
+/// Whether anybody chose an account at all. Almost nobody has, and the wire
+/// should say nothing where there is nothing to say.
+fn is_the_machines_own(accounts: &AccountHomes) -> bool {
+    accounts == &AccountHomes::default()
+}
 
 /// Newline-delimited JSON, one message per line.
 ///
@@ -390,6 +408,12 @@ pub enum Request {
         /// means "the client did not say", which is treated as yes.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         agents: Option<bool>,
+        /// Which configuration home each agent should use, where it is not the
+        /// machine's own. Sent with every session for the same reason as the
+        /// preference above. Empty — the common case — means no variable is
+        /// set and the agent uses whatever it would use without Beacon.
+        #[serde(default, skip_serializing_if = "is_the_machines_own")]
+        accounts: AccountHomes,
     },
     #[serde(rename_all = "camelCase")]
     Write { id: SessionId, data: String },
@@ -418,6 +442,12 @@ pub enum Request {
         /// means "the client did not say", which is treated as yes.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         agents: Option<bool>,
+        /// Which configuration home each agent should use, where it is not the
+        /// machine's own. Sent with every session for the same reason as the
+        /// preference above. Empty — the common case — means no variable is
+        /// set and the agent uses whatever it would use without Beacon.
+        #[serde(default, skip_serializing_if = "is_the_machines_own")]
+        accounts: AccountHomes,
     },
     #[serde(rename_all = "camelCase")]
     CloseProject { project: ProjectId },
@@ -557,6 +587,12 @@ pub enum Request {
         /// means "the client did not say", which is treated as yes.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         agents: Option<bool>,
+        /// Which configuration home each agent should use, where it is not the
+        /// machine's own. Sent with every session for the same reason as the
+        /// preference above. Empty — the common case — means no variable is
+        /// set and the agent uses whatever it would use without Beacon.
+        #[serde(default, skip_serializing_if = "is_the_machines_own")]
+        accounts: AccountHomes,
     },
     /// Returns to a conversation the project already has.
     #[serde(rename_all = "camelCase")]
@@ -575,6 +611,12 @@ pub enum Request {
         /// means "the client did not say", which is treated as yes.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         agents: Option<bool>,
+        /// Which configuration home each agent should use, where it is not the
+        /// machine's own. Sent with every session for the same reason as the
+        /// preference above. Empty — the common case — means no variable is
+        /// set and the agent uses whatever it would use without Beacon.
+        #[serde(default, skip_serializing_if = "is_the_machines_own")]
+        accounts: AccountHomes,
     },
     /// Starts a new conversation carrying another's history.
     #[serde(rename_all = "camelCase")]
@@ -595,6 +637,12 @@ pub enum Request {
         /// means "the client did not say", which is treated as yes.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         agents: Option<bool>,
+        /// Which configuration home each agent should use, where it is not the
+        /// machine's own. Sent with every session for the same reason as the
+        /// preference above. Empty — the common case — means no variable is
+        /// set and the agent uses whatever it would use without Beacon.
+        #[serde(default, skip_serializing_if = "is_the_machines_own")]
+        accounts: AccountHomes,
     },
     /// Renames one, or takes its name away when told `None`.
     #[serde(rename_all = "camelCase")]
@@ -812,6 +860,7 @@ mod tests {
                 rows: 24,
                 shell: None,
                 agents: Some(true),
+                accounts: AccountHomes::default(),
             },
         };
 
@@ -841,6 +890,7 @@ mod tests {
                 rows: 24,
                 shell: None,
                 agents: None,
+                accounts: AccountHomes::default(),
             },
             Request::Write {
                 id: id.clone(),
@@ -862,6 +912,7 @@ mod tests {
                 rows: 24,
                 shell: None,
                 agents: Some(false),
+                accounts: AccountHomes::default(),
             },
             Request::CloseProject {
                 project: project.clone(),
@@ -903,6 +954,7 @@ mod tests {
                 rows: 24,
                 shell: None,
                 agents: Some(true),
+                accounts: AccountHomes::default(),
             },
             Request::ResumeWorkstream {
                 project: ProjectId("pj_y".into()),
@@ -912,6 +964,7 @@ mod tests {
                 rows: 24,
                 shell: None,
                 agents: None,
+                accounts: AccountHomes::default(),
             },
             Request::ForkWorkstream {
                 project: ProjectId("pj_y".into()),
@@ -922,6 +975,7 @@ mod tests {
                 rows: 24,
                 shell: None,
                 agents: Some(true),
+                accounts: AccountHomes::default(),
             },
             Request::RenameWorkstream {
                 project: ProjectId("pj_y".into()),

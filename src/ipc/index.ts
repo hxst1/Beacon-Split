@@ -11,6 +11,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
+  AgentKind,
   Appearance,
   Clip,
   DirEntry,
@@ -128,6 +129,31 @@ export const ipc = {
 
   /** Whether Beacon offers its own subagents. Takes effect on the next session. */
   setClaudeAgents: (enabled: boolean) => invoke<Snapshot>('set_claude_agents', { enabled }),
+
+  /**
+   * Adds an account: a new, empty configuration home with a name on it.
+   *
+   * Nobody is signed in to it. Beacon will not do that part — the agent's own
+   * login command does, and the terminal can type it.
+   */
+  addAccount: (agent: AgentKind, label: string) =>
+    invoke<Snapshot>('add_account', { agent, label }),
+
+  /**
+   * Switches which account the agent's next session uses.
+   *
+   * `null` is the machine's own. Takes effect on the next start: the home is an
+   * environment variable, and a running process cannot be handed another one.
+   */
+  setAccount: (agent: AgentKind, id: string | null) =>
+    invoke<Snapshot>('set_account', { agent, id }),
+
+  renameAccount: (agent: AgentKind, id: string, label: string) =>
+    invoke<Snapshot>('rename_account', { agent, id, label }),
+
+  /** Takes an account off the list. Its files are left exactly where they are. */
+  forgetAccount: (agent: AgentKind, id: string) =>
+    invoke<Snapshot>('forget_account', { agent, id }),
 
   /**
    * What macOS will do with a notification right now.

@@ -1,3 +1,8 @@
+use std::path::PathBuf;
+
+use tauri::State;
+
+use beacon_core::agent::AgentKind;
 use beacon_core::claude::{self, Capabilities};
 use beacon_core::claude_hooks::{self, HookStatus};
 use beacon_core::client::daemon_binary_path;
@@ -7,14 +12,55 @@ use beacon_core::requirements::{self, Requirement};
 
 use super::run_off_thread;
 use crate::error::CommandResult;
+use crate::state::AppState;
+
+/// Every place an agent's configuration lives on this machine.
+///
+/// The machine's own account and every account that was added. What Beacon
+/// installs into another application's configuration goes into all of them:
+/// hooks only report where they are registered, so an account without them is
+/// an account where the amber tab, "waiting for you" and resuming a
+/// conversation all quietly stop working (ADR-099).
+fn homes(state: &State<'_, AppState>, agent: AgentKind) -> Vec<PathBuf> {
+    state.beacon().accounts().every_home(agent)
+}
+
+/// Claude Code's user settings file in each of them.
+fn claude_settings(state: &State<'_, AppState>) -> Vec<PathBuf> {
+    homes(state, AgentKind::Claude)
+        .into_iter()
+        .map(|home| home.join("settings.json"))
+        .collect()
+}
+
+/// The worst of what the accounts say, because the reader is deciding whether
+/// to press one button.
+///
+/// An installation that is only partly there has to read as not there: the fix
+/// is the same — install, which goes everywhere — and "installed" beside an
+/// account that reports nothing is the kind of half-truth somebody debugs for
+/// an hour.
+fn worst(found: impl IntoIterator<Item = HookStatus>) -> HookStatus {
+    let mut worst = HookStatus::Installed;
+    for status in found {
+        worst = match (worst, status) {
+            (HookStatus::NotInstalled, _) | (_, HookStatus::NotInstalled) => {
+                HookStatus::NotInstalled
+            }
+            (HookStatus::Stale, _) | (_, HookStatus::Stale) => HookStatus::Stale,
+            _ => HookStatus::Installed,
+        };
+    }
+    worst
+}
 
 /// What the machine has, and what is missing.
 ///
 /// Checked on demand rather than cached: someone told that git is missing will
 /// go and install it, and the next thing they do is look again.
 #[tauri::command]
-pub fn check_requirements() -> Vec<Requirement> {
-    requirements::check()
+pub fn check_requirements(state: State<'_, AppState>) -> Vec<Requirement> {
+    requirements::check_in(&state.beacon().account_homes())
 }
 
 /// The same, after forgetting what Beacon had worked out about this machine.
@@ -25,8 +71,11 @@ pub fn check_requirements() -> Vec<Requirement> {
 /// missing, and the whole point of it is that the answer is not the one Beacon
 /// already had.
 #[tauri::command]
-pub async fn recheck_requirements() -> CommandResult<Vec<Requirement>> {
-    run_off_thread(|| Ok(requirements::recheck())).await
+pub async fn recheck_requirements(state: State<'_, AppState>) -> CommandResult<Vec<Requirement>> {
+    // Read before leaving the thread: the state is not `Send`, and this is a
+    // snapshot of a preference rather than something to watch.
+    let homes = state.beacon().account_homes();
+    run_off_thread(move || Ok(requirements::recheck(&homes))).await
 }
 
 /// Whether the session daemon was found where it should be.
@@ -49,7 +98,7 @@ pub fn daemon_available() -> bool {
 ///
 /// On Windows it is the path alone: the hook is registered with `hook` in its
 /// `args`, which Claude Code runs without a shell. See ADR-073.
-fn hook_command() -> String {
+pub(super) fn hook_command() -> String {
     let daemon = daemon_binary_path().to_string_lossy().into_owned();
     if cfg!(windows) {
         return daemon;
@@ -57,7 +106,7 @@ fn hook_command() -> String {
     format!("{} hook", claude_hooks::shell_quote(&daemon))
 }
 
-fn status_line_command() -> String {
+pub(super) fn status_line_command() -> String {
     format!(
         "{} statusline",
         claude_hooks::command_word(&daemon_binary_path().to_string_lossy())
@@ -75,11 +124,25 @@ pub struct Integration {
 }
 
 #[tauri::command]
-pub fn claude_integration() -> CommandResult<Integration> {
+pub fn claude_integration(state: State<'_, AppState>) -> CommandResult<Integration> {
+    let command = hook_command();
+    let command = std::path::Path::new(&command);
+    // A home that cannot be read counts as not installed rather than failing
+    // the whole screen: one unparseable `settings.json` in one account would
+    // otherwise leave the reader unable to see or fix any of the others, and
+    // "not installed" is both the safe reading and the one whose button does
+    // the right thing.
+    let mut hooks = Vec::new();
+    let mut lines = true;
+    for settings in claude_settings(&state) {
+        hooks.push(claude_hooks::status_at(&settings, command).unwrap_or(HookStatus::NotInstalled));
+        lines = lines && claude_hooks::status_line_installed_at(&settings).unwrap_or(false);
+    }
+
     Ok(Integration {
-        hooks: claude_hooks::status(std::path::Path::new(&hook_command()))?,
+        hooks: worst(hooks),
         hook_command: claude_hook_command(),
-        status_line: claude_hooks::status_line_installed()?,
+        status_line: lines,
         status_line_command: status_line_command(),
     })
 }
@@ -88,24 +151,35 @@ pub fn claude_integration() -> CommandResult<Integration> {
 /// five-hour allowance and how full the context is. Whatever was there still
 /// runs and is still what Claude Code shows.
 #[tauri::command]
-pub fn install_claude_status_line() -> CommandResult<Integration> {
-    claude_hooks::install_status_line(std::path::Path::new(&status_line_command()))?;
+pub fn install_claude_status_line(state: State<'_, AppState>) -> CommandResult<Integration> {
+    let command = status_line_command();
+    for settings in claude_settings(&state) {
+        claude_hooks::install_status_line_at(&settings, std::path::Path::new(&command))?;
+    }
     tracing::info!("took over Claude Code's status line");
-    claude_integration()
+    claude_integration(state)
 }
 
 #[tauri::command]
-pub fn remove_claude_status_line() -> CommandResult<Integration> {
-    claude_hooks::remove_status_line()?;
+pub fn remove_claude_status_line(state: State<'_, AppState>) -> CommandResult<Integration> {
+    for settings in claude_settings(&state) {
+        claude_hooks::remove_status_line_at(&settings)?;
+    }
     tracing::info!("gave Claude Code's status line back");
-    claude_integration()
+    claude_integration(state)
 }
 
 /// Whether Beacon's hooks are registered with Claude Code, and whether they
 /// still point at this build.
 #[tauri::command]
-pub fn claude_hook_status() -> CommandResult<HookStatus> {
-    Ok(claude_hooks::status(std::path::Path::new(&hook_command()))?)
+pub fn claude_hook_status(state: State<'_, AppState>) -> CommandResult<HookStatus> {
+    let command = hook_command();
+    let command = std::path::Path::new(&command);
+    let mut found = Vec::new();
+    for settings in claude_settings(&state) {
+        found.push(claude_hooks::status_at(&settings, command).unwrap_or(HookStatus::NotInstalled));
+    }
+    Ok(worst(found))
 }
 
 /// Registers the hooks in the user's Claude Code settings.
@@ -113,18 +187,42 @@ pub fn claude_hook_status() -> CommandResult<HookStatus> {
 /// Explicitly, never on startup: this writes to a file that belongs to another
 /// application, and doing that unasked is not Beacon's to decide.
 #[tauri::command]
-pub fn install_claude_hooks() -> CommandResult<HookStatus> {
+pub fn install_claude_hooks(state: State<'_, AppState>) -> CommandResult<HookStatus> {
     let command = hook_command();
-    claude_hooks::install(std::path::Path::new(&command))?;
+    // Every account is attempted before anything is reported. Stopping at the
+    // first failure would leave the accounts after it untouched, and the
+    // status that comes back says which — so a half-done install reads as not
+    // done, and pressing the button again finishes the job.
+    let mut failed = None;
+    for settings in claude_settings(&state) {
+        if let Err(error) = claude_hooks::install_at(&settings, std::path::Path::new(&command)) {
+            tracing::warn!(%error, settings = ?settings, "could not register the hooks here");
+            failed = Some(error);
+        }
+    }
+    if let Some(error) = failed {
+        return Err(error.into());
+    }
     tracing::info!("registered Beacon's hooks with Claude Code");
-    Ok(claude_hooks::status(std::path::Path::new(&command))?)
+    claude_hook_status(state)
 }
 
 #[tauri::command]
-pub fn remove_claude_hooks() -> CommandResult<HookStatus> {
-    claude_hooks::uninstall()?;
+pub fn remove_claude_hooks(state: State<'_, AppState>) -> CommandResult<HookStatus> {
+    // Out of every account, whatever one of them says: a removal that stops
+    // half way cannot be finished by pressing the button again.
+    let mut failed = None;
+    for settings in claude_settings(&state) {
+        if let Err(error) = claude_hooks::uninstall_at(&settings) {
+            tracing::warn!(%error, settings = ?settings, "could not remove the hooks here");
+            failed = Some(error);
+        }
+    }
+    if let Some(error) = failed {
+        return Err(error.into());
+    }
     tracing::info!("removed Beacon's hooks from Claude Code");
-    Ok(claude_hooks::status(std::path::Path::new(&hook_command()))?)
+    claude_hook_status(state)
 }
 
 /// The exact command that would be registered, so the user can see what Beacon
@@ -177,15 +275,24 @@ pub fn codex_integration() -> CommandResult<CodexIntegration> {
 /// it has been shown and runs none it has not, because a hook is arbitrary
 /// code. The last step is the user's, in Codex's own `/hooks`.
 #[tauri::command]
-pub fn install_codex_plugin() -> CommandResult<CodexIntegration> {
-    codex_plugin::install(&daemon_binary_path())?;
+pub fn install_codex_plugin(state: State<'_, AppState>) -> CommandResult<CodexIntegration> {
+    let mut failed = None;
+    for home in homes(&state, AgentKind::Codex) {
+        if let Err(error) = codex_plugin::install(&daemon_binary_path(), Some(&home)) {
+            tracing::warn!(%error, home = ?home, "could not install the plugin here");
+            failed = Some(error);
+        }
+    }
+    if let Some(error) = failed {
+        return Err(error.into());
+    }
     tracing::info!("installed Beacon's plugin into Codex");
     codex_integration_now()
 }
 
 #[tauri::command]
-pub fn remove_codex_plugin() -> CommandResult<CodexIntegration> {
-    codex_plugin::uninstall()?;
+pub fn remove_codex_plugin(state: State<'_, AppState>) -> CommandResult<CodexIntegration> {
+    codex_plugin::uninstall(&homes(&state, AgentKind::Codex))?;
     tracing::info!("removed Beacon's plugin from Codex");
     codex_integration_now()
 }
