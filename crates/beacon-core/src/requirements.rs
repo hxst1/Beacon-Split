@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
+use crate::account::Account;
 use crate::tools::{hide_console_window, resolve_program, strip_terminal_identity};
 
 /// How badly Beacon needs something.
@@ -61,6 +62,14 @@ pub struct Requirement {
     pub install: Vec<InstallOption>,
     /// Anything worth knowing beyond running the command.
     pub note: Option<&'static str>,
+    /// Which account it is signed in to, for a program somebody signs in to.
+    ///
+    /// Here rather than behind a request of its own because it is the same
+    /// answer: the state below is worked out from asking the program about its
+    /// sign-in, and throwing away the account it named only to ask again a
+    /// moment later would cost a second process and let the two disagree.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account: Option<Account>,
 }
 
 impl Requirement {
@@ -75,29 +84,34 @@ impl Requirement {
 /// program that resolves and will not say what it is has something wrong with
 /// it, and that is worth telling apart from not being there.
 ///
-/// `signed_in` is asked only of something that is otherwise ready, and only
-/// where there is an official way to ask. `None` from it means the question
-/// had no answer — a version too old to have the subcommand, or one that would
-/// not finish — and then Beacon says nothing rather than guessing.
+/// `account` is asked only of something that is otherwise ready, and only
+/// where there is an official way to ask. A `signed_in` of `None` means the
+/// question had no answer — a version too old to have the subcommand, or one
+/// that would not finish — and then Beacon says nothing rather than guessing.
+///
+/// Returned alongside the state because the one probe answers both: which
+/// account, and whether there is one.
 fn state_of(
     path: Option<&Path>,
     version: Option<&str>,
-    signed_in: impl Fn(&Path) -> Option<bool>,
-) -> State {
+    account: impl Fn(&Path) -> Option<Account>,
+) -> (State, Option<Account>) {
     let Some(path) = path else {
-        return State::Missing;
+        return (State::Missing, None);
     };
     if version.is_none() {
-        return State::Broken;
+        return (State::Broken, None);
     }
-    match signed_in(path) {
+    let found = account(path);
+    let state = match found.as_ref().and_then(|found| found.signed_in) {
         Some(false) => State::NeedsAuth,
         _ => State::Ready,
-    }
+    };
+    (state, found.filter(Account::worth_showing))
 }
 
 /// For a program nobody signs in to.
-fn no_sign_in(_: &Path) -> Option<bool> {
+fn no_sign_in(_: &Path) -> Option<Account> {
     None
 }
 
@@ -144,16 +158,13 @@ fn check_claude() -> Requirement {
     let version = path
         .as_deref()
         .and_then(|path| version_of(path, "--version"));
-    let state = state_of(
-        path.as_deref(),
-        version.as_deref(),
-        crate::claude::signed_in,
-    );
+    let (state, account) = state_of(path.as_deref(), version.as_deref(), crate::claude::account);
     Requirement {
         id: "claude",
         name: "Claude Code",
         importance: Importance::Required,
         state,
+        account,
         version,
         path: path.map(|path| path.to_string_lossy().into_owned()),
         what_breaks: "Beacon runs the real claude command in each project. \
@@ -213,12 +224,13 @@ fn check_codex() -> Requirement {
     let version = path
         .as_deref()
         .and_then(|path| version_of(path, "--version"));
-    let state = state_of(path.as_deref(), version.as_deref(), crate::codex::signed_in);
+    let (state, account) = state_of(path.as_deref(), version.as_deref(), crate::codex::account);
     Requirement {
         id: "codex",
         name: "Codex",
         importance: Importance::Recommended,
         state,
+        account,
         version,
         path: path.map(|path| path.to_string_lossy().into_owned()),
         what_breaks: "Beacon can run Codex beside Claude Code, in its own \
@@ -256,12 +268,13 @@ fn check_git() -> Requirement {
     let version = path
         .as_deref()
         .and_then(|path| version_of(path, "--version"));
-    let state = state_of(path.as_deref(), version.as_deref(), no_sign_in);
+    let (state, account) = state_of(path.as_deref(), version.as_deref(), no_sign_in);
     Requirement {
         id: "git",
         name: "Git",
         importance: Importance::Recommended,
         state,
+        account,
         version,
         path: path.map(|path| path.to_string_lossy().into_owned()),
         what_breaks: "The Git panel needs it, and Quick Open uses it to respect \
@@ -435,23 +448,32 @@ mod tests {
     #[test]
     fn a_state_is_worked_out_from_what_was_already_asked() {
         let somewhere = Path::new("/usr/local/bin/claude");
+        let answering = |signed_in: Option<bool>| {
+            move |_: &Path| {
+                Some(Account {
+                    signed_in,
+                    email: Some("someone@example.com".to_string()),
+                    ..Account::default()
+                })
+            }
+        };
 
         // Not there at all.
-        assert_eq!(state_of(None, None, no_sign_in), State::Missing);
+        assert_eq!(state_of(None, None, no_sign_in).0, State::Missing);
 
         // There, and it would not say what it is. "Not installed" would be a
         // lie to somebody looking straight at the binary.
-        assert_eq!(state_of(Some(somewhere), None, no_sign_in), State::Broken);
+        assert_eq!(state_of(Some(somewhere), None, no_sign_in).0, State::Broken);
 
         // There, working, and nobody signed in.
         assert_eq!(
-            state_of(Some(somewhere), Some("1.0"), |_| Some(false)),
+            state_of(Some(somewhere), Some("1.0"), answering(Some(false))).0,
             State::NeedsAuth
         );
 
         // There, working, signed in.
         assert_eq!(
-            state_of(Some(somewhere), Some("1.0"), |_| Some(true)),
+            state_of(Some(somewhere), Some("1.0"), answering(Some(true))).0,
             State::Ready
         );
 
@@ -460,9 +482,23 @@ mod tests {
         // move, so it reads as ready rather than as a warning nobody can act
         // on.
         assert_eq!(
-            state_of(Some(somewhere), Some("1.0"), |_| None),
+            state_of(Some(somewhere), Some("1.0"), |_| None).0,
             State::Ready
         );
+    }
+
+    #[test]
+    fn a_program_nobody_signs_in_to_reports_no_account() {
+        // Git has no account, and an empty chip beside it would be a question
+        // nobody asked.
+        let path = Path::new("/usr/bin/git");
+        assert_eq!(state_of(Some(path), Some("2.0"), no_sign_in).1, None);
+
+        // Nor does one whose answer named nothing: there is a difference
+        // between "no account" and "an account I cannot name", and only the
+        // second is worth a line on screen.
+        let silent = |_: &Path| Some(Account::default());
+        assert_eq!(state_of(Some(path), Some("2.0"), silent).1, None);
     }
 
     #[test]
@@ -503,6 +539,23 @@ mod tests {
             );
             for option in &requirement.install {
                 assert!(!option.command.is_empty());
+            }
+        }
+    }
+
+    /// On whatever machine this runs, including one with nothing installed.
+    #[test]
+    fn nothing_that_is_not_there_can_name_an_account() {
+        for requirement in check() {
+            if requirement.state == State::Missing || requirement.state == State::Broken {
+                assert!(
+                    requirement.account.is_none(),
+                    "{} is not usable and still claims an account",
+                    requirement.id
+                );
+            }
+            if requirement.id == "git" {
+                assert!(requirement.account.is_none(), "nobody signs in to git");
             }
         }
     }

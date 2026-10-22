@@ -88,6 +88,22 @@ interface BeaconState {
    */
   sessionEpoch: Record<string, number>
 
+  /**
+   * Looks at the machine again, and tells everything that reads the answer.
+   *
+   * One copy, deliberately. What is installed decides whether a panel shows a
+   * terminal or an install command, and which account a chip names, so a
+   * screen holding its own private answer is a screen that can disagree with
+   * the window around it.
+   *
+   * `again` is the difference between asking and insisting: without it Beacon
+   * reuses what it worked out about this machine, and with it everything —
+   * where each program is, the login shell's PATH, what each agent can do — is
+   * forgotten first. That is what somebody who just installed something needs,
+   * and it costs a cold start, which is why it is not the default.
+   */
+  refreshRequirements: (again?: boolean) => Promise<void>
+
   load: () => Promise<void>
   createWorkspace: (name: string, accent: string) => Promise<void>
   /** An absent `icon` leaves it alone; an empty one clears it. */
@@ -165,6 +181,23 @@ interface BeaconState {
   dismissNotice: () => void
 }
 
+/**
+ * How long an answer about this machine is reused before asking again.
+ *
+ * Asking costs a handful of short processes — a version from each program and
+ * a sign-in from each agent — and nothing it reports changes often. Long
+ * enough that coming back to the window repeatedly is free, short enough that
+ * signing in somewhere else and returning shows the new account.
+ *
+ * Pressing Check again ignores this entirely, which is the point of that
+ * button.
+ */
+const REQUIREMENTS_STAY_FRESH = 30_000
+
+/** When the last look succeeded, and how many have been started. */
+let lookedAt = 0
+let looks = 0
+
 export const useBeacon = create<BeaconState>((set, get) => {
   /** Applies a snapshot returned by any command and keeps the accent in sync. */
   const accept = (snapshot: Snapshot): void => {
@@ -211,6 +244,33 @@ export const useBeacon = create<BeaconState>((set, get) => {
     requirements: [],
     sessionEpoch: {},
 
+    refreshRequirements: async (again = false) => {
+      if (!again && Date.now() - lookedAt < REQUIREMENTS_STAY_FRESH) return
+      looks += 1
+      const mine = looks
+
+      try {
+        const found = again ? await ipc.recheckRequirements() : await ipc.checkRequirements()
+        // A slow answer must never land on top of a newer one. Pressing Check
+        // again while the window's own look is still in flight is exactly how
+        // that happens, and the stale list would win by arriving last.
+        if (mine !== looks) return
+        lookedAt = Date.now()
+        set({
+          requirements: found,
+          // Missing and broken both mean the panel has nothing to run. Needing
+          // a sign-in does not: the agent is there and shows its own sign-in
+          // screen in the terminal, which is the one Beacon must not get
+          // between.
+          missing: found.filter((entry) => entry.state === 'missing' || entry.state === 'broken'),
+        })
+      } catch {
+        // Not knowing what is on the machine must not stop Beacon opening, and
+        // must not throw away the last answer that worked either. The clock is
+        // left alone so the next look actually looks.
+      }
+    },
+
     load: async () => {
       try {
         setPlatform(await ipc.hostPlatform())
@@ -220,21 +280,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
         loadUsage()
 
         // Best-effort: not knowing what is missing must not stop Beacon opening.
-        ipc
-          .checkRequirements()
-          // Missing and broken both mean the panel has nothing to run. Needing
-          // a sign-in does not: the agent is there and shows its own sign-in
-          // screen in the terminal, which is the one Beacon must not get
-          // between.
-          .then((found) =>
-            set({
-              requirements: found,
-              missing: found.filter(
-                (entry) => entry.state === 'missing' || entry.state === 'broken',
-              ),
-            }),
-          )
-          .catch(() => undefined)
+        void get().refreshRequirements()
       } catch (error) {
         set({ status: 'error', fatal: errorMessage(error) })
       }
@@ -448,6 +494,23 @@ export function startSystemThemeTracking(): () => void {
   })
 }
 
+/**
+ * Asks the machine again when somebody comes back to the window.
+ *
+ * Signing in, signing out and switching account all happen somewhere Beacon
+ * cannot see — in a terminal, in a browser, in another window — and the one
+ * thing they have in common is that the person comes back here afterwards. A
+ * header still naming the account they just left is worse than one naming
+ * none.
+ *
+ * Throttled by {@link REQUIREMENTS_STAY_FRESH}, so alt-tabbing costs nothing.
+ */
+export function startRequirementTracking(): () => void {
+  const onFocus = (): void => void useBeacon.getState().refreshRequirements()
+  window.addEventListener('focus', onFocus)
+  return () => window.removeEventListener('focus', onFocus)
+}
+
 export function startConnectionTracking(): () => void {
   return watchActivity({
     onOutput: () => {},
@@ -465,6 +528,13 @@ export function startConnectionTracking(): () => void {
       useBeacon.setState({
         notice: 'Signed in to Claude Code. The other open projects picked it up.',
       })
+      // This is the exact moment the account changed, so what Beacon last
+      // worked out about it is now wrong — the headers would go on saying "not
+      // signed in" to somebody who just signed in. The clock is cleared rather
+      // than the whole answer forgotten: only the sign-in moved, and forgetting
+      // everything costs a login shell.
+      lookedAt = 0
+      void useBeacon.getState().refreshRequirements()
     },
     onReattached: () => {
       // The daemon on the other end may not be the one that issued the session

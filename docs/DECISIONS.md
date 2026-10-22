@@ -2398,3 +2398,80 @@ with `compositionstart` — Japanese, Chinese, Korean — is still xterm's.
 **Why.** It is the narrowest change that makes the event shape WebKitGTK
 produces into one xterm handles correctly; on macOS every composition is
 announced and nothing changes there.
+## ADR-099: An account is a config home, and the agent names it
+
+**Context.** People have more than one account per agent — a personal Claude
+and a work one, two ChatGPT plans — and today Beacon runs whichever the machine
+happens to be signed in to, says nothing about which that is, and offers no way
+to change it. The expensive mistake is silent: an hour of work charged to the
+wrong subscription, or a rate limit hit on the account that was not supposed to
+be touched.
+
+The tempting implementation is the one to refuse: hold the credentials, show a
+sign-in screen, write the token files. ADR-052 already ruled that out, and
+nothing here is a reason to revisit it.
+
+**Decision.** An account is a **config home**, selected per session through the
+variable each tool already provides: `CLAUDE_CONFIG_DIR` for Claude Code,
+`CODEX_HOME` for Codex. Beacon decides which directory a session points at and
+nothing else. The default account is the machine's own `~/.claude` and
+`~/.codex` with no variable set at all, so a user who never opens the menu
+cannot tell this feature exists.
+
+Signing in happens through the official command, in a terminal, with that
+home's variable set — the same command the user could type, which is what
+`useTypeInTerminal` is for. Beacon never reads, writes, copies or moves a
+credential. Copying `auth.json` between homes would be the obvious shortcut and
+it is both forbidden and broken: Codex refreshes its token in place, and under
+`cli_auth_credentials_store = "keyring"` the entry is keyed on a hash of the
+canonical `CODEX_HOME`, so a copy could not be read anyway.
+
+**Who is signed in** comes from the agent, never from a token.
+`claude auth status --json` prints the email, the plan and the method; Beacon
+already ran that command for its `loggedIn` field and now keeps the rest of
+what it says. `codex login status` prints one line — "Logged in using ChatGPT"
+— and there is no account name anywhere in the Codex CLI, so for Codex the
+identity shown is the method plus **the label the user gave the profile**.
+Decoding the identity token in `auth.json` would produce an email and is
+exactly the line not to cross.
+
+What Codex prints is not shown verbatim either. The strings in its binary are
+"Logged in using ChatGPT", "Logged in using access token", "Logged in using
+workload identity" and "Logged in using an API key - ", with the key appended
+to the last of them. The method is cut at that separator: part of a credential
+is still a credential, and a panel header is not where it goes.
+
+**Why.** Every alternative is worse in a way that matters. A credential Beacon
+holds is a credential Beacon can leak, and an OAuth flow of its own would make
+this application a party to an agreement between the user and Anthropic or
+OpenAI. The config home, by contrast, is the mechanism both vendors document
+for exactly this, and it isolates more than the login: settings, history, MCP
+servers and rate limits all stop being shared, which is what somebody keeping
+work and personal apart actually wants.
+
+**Consequence.** Switching cannot be instant, and the interface must not
+pretend otherwise. A variable is fixed when a process starts, so a running
+agent cannot change account: a switch takes effect at the next start, and where
+a session is live the menu offers to restart it. That restart cannot carry the
+conversation — the transcript lives under the other home — so it is a new
+conversation on the other account, said in the menu rather than discovered
+afterwards.
+
+Two things that live under the default home have to follow a session to
+whichever home it uses, or Beacon's own features break quietly on every
+non-default account:
+
+- **The hooks.** `claude_hooks::settings_path` points at `~/.claude` alone. An
+  account without Beacon's hooks has no amber tab, no "waiting for you" and no
+  way to know a conversation exists to resume — which is most of the product.
+  The Codex plugin has the same shape of problem.
+- **The paths read back.** `claude::conversation_written` and
+  `codex_usage::codex_home` read these variables from the daemon's own
+  environment. Per-session homes make that wrong: the resume decision and the
+  context percentage would come from whichever account the daemon was started
+  under. They take the session's home instead.
+
+A new config home is empty — no settings, no `CLAUDE.md`, no MCP servers, no
+agents — so creating an account offers to copy the non-secret parts of the
+default one. Copy and not a symlink: a symlink into somebody's home directory
+is a surprising thing for an application to leave behind.

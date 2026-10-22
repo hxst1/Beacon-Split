@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::account::Account;
 use crate::tools::{
     capture_briefly, capture_briefly_any_exit, resolve_program, strip_terminal_identity,
 };
@@ -223,21 +224,23 @@ fn ask(path: &std::path::Path, args: &[&str]) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// Whether Claude Code is signed in on this machine, in its own words.
+/// Which account Claude Code is using, in its own words.
 ///
-/// `claude auth status --json`, and only its `loggedIn`. Beacon never touches a
-/// credential (ADR-052), and this does not either: it asks the program that
-/// holds them a yes-or-no question, the same one the user could type. Nothing
-/// else the answer carries — which account, which organisation — is read.
+/// `claude auth status --json`. Beacon never touches a credential (ADR-052),
+/// and this does not either: it asks the program that holds them the question
+/// the user could type, and reads the answer it prints. What comes back names
+/// the account — the email, the plan, how it signed in — and none of it is a
+/// secret or is kept anywhere.
 ///
 /// `None` means there is no answer: a Claude Code too old to have `auth`, one
 /// that would not finish, or output that is not what this expects. Callers
 /// treat that as "do nothing", so a change on Claude Code's side switches the
-/// feature off rather than leaving sessions restarting.
+/// feature off rather than leaving sessions restarting or a chip asserting
+/// something nobody said.
 ///
 /// Read whatever the exit status, because "signed out" is an answer a status
 /// command is entitled to exit non-zero with.
-pub fn signed_in(claude: &std::path::Path) -> Option<bool> {
+pub fn account(claude: &std::path::Path) -> Option<Account> {
     let mut command = std::process::Command::new(claude);
     command.args(["auth", "status", "--json"]);
     strip_terminal_identity(&mut command);
@@ -245,17 +248,53 @@ pub fn signed_in(claude: &std::path::Path) -> Option<bool> {
     // needs the `node` beside it, and Beacon launched from the Dock has none.
     command.env("PATH", crate::tools::session_path(claude));
 
-    parse_auth_status(&capture_briefly_any_exit(&mut command, PROBE_TIMEOUT)?)
+    parse_account(&capture_briefly_any_exit(&mut command, PROBE_TIMEOUT)?)
 }
 
-/// Reads `loggedIn` out of what `claude auth status --json` prints.
+/// Whether Claude Code is signed in on this machine.
 ///
-/// Pure, for the same reason [`interpret`] is.
-pub fn parse_auth_status(json: &str) -> Option<bool> {
-    serde_json::from_str::<serde_json::Value>(json.trim())
-        .ok()?
-        .get("loggedIn")?
-        .as_bool()
+/// The one question the sign-in watcher asks, kept separate because it is
+/// asked on a timer and from a different moment than anything that wants to
+/// name the account.
+pub fn signed_in(claude: &std::path::Path) -> Option<bool> {
+    account(claude)?.signed_in
+}
+
+/// Reads what `claude auth status --json` prints.
+///
+/// Pure, for the same reason [`interpret`] is. An object that answers nothing
+/// this understands is still an object, so it reads as an account with nothing
+/// known rather than as no answer at all — but anything that is not an object
+/// is no answer, which is what a help screen or an error looks like.
+///
+/// The account is read only from an answer that said whether it was signed in.
+/// Without that this is not the output being parsed for, and the fields beside
+/// it are not to be trusted on their own: an `authMethod` of "none" from some
+/// future shape would otherwise put the word "none" in a panel header as
+/// though it were an account.
+pub fn parse_account(json: &str) -> Option<Account> {
+    let value = serde_json::from_str::<serde_json::Value>(json.trim()).ok()?;
+    let fields = value.as_object()?;
+
+    let Some(signed_in) = fields.get("loggedIn").and_then(serde_json::Value::as_bool) else {
+        return Some(Account::default());
+    };
+
+    let text = |key: &str| {
+        fields
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|found| !found.is_empty())
+            .map(str::to_string)
+    };
+
+    Some(Account {
+        signed_in: Some(signed_in),
+        email: text("email"),
+        method: text("authMethod"),
+        plan: text("subscriptionType"),
+    })
 }
 
 /// A Claude session that is running right now, as Claude Code lists it.
@@ -400,27 +439,77 @@ mod tests {
     }
 
     #[test]
-    fn auth_status_is_read_for_loggedin_and_nothing_else() {
-        // The shape of 2.1.287, with the account fields Beacon never reads.
+    fn auth_status_names_the_account_it_is_signed_in_to() {
+        // Verbatim from 2.1.287 on this machine, keys and all, so the parser
+        // is tested against what it will really be handed. Nothing here is a
+        // credential: it is who, on what plan, by which method.
         let signed_in = r#"{
   "loggedIn": true,
   "authMethod": "claude.ai",
   "apiProvider": "firstParty",
-  "email": "someone@example.com"
+  "analyticsDisabled": false,
+  "projectsDirectory": "/Users/someone/.claude/projects",
+  "configDirectory": "/Users/someone/.claude",
+  "email": "someone@example.com",
+  "orgId": "977bce8e-12c7-480c-b21b-ed419d5965b3",
+  "orgName": "someone@example.com's Organization",
+  "subscriptionType": "max"
 }"#;
-        assert_eq!(parse_auth_status(signed_in), Some(true));
-        assert_eq!(parse_auth_status(r#"{"loggedIn": false}"#), Some(false));
-        assert_eq!(parse_auth_status("\n{\"loggedIn\":false}\n"), Some(false));
+        assert_eq!(
+            parse_account(signed_in),
+            Some(Account {
+                signed_in: Some(true),
+                email: Some("someone@example.com".to_string()),
+                method: Some("claude.ai".to_string()),
+                plan: Some("max".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn signing_in_is_still_read_on_its_own() {
+        // The sign-in watcher's question, and the only one that restarts a
+        // session. It has to keep answering exactly as it did.
+        assert_eq!(
+            parse_account(r#"{"loggedIn": false}"#).and_then(|found| found.signed_in),
+            Some(false)
+        );
+        assert_eq!(
+            parse_account("\n{\"loggedIn\":false}\n").and_then(|found| found.signed_in),
+            Some(false)
+        );
+        // Said in a way this does not recognise is not said: a watcher that
+        // read "yes" as true would restart sessions on a typo.
+        assert_eq!(
+            parse_account(r#"{"loggedIn": "yes"}"#).and_then(|found| found.signed_in),
+            None
+        );
     }
 
     #[test]
     fn an_auth_status_that_does_not_say_is_no_answer() {
         // An older Claude Code prints its help, or an error, instead.
-        assert_eq!(parse_auth_status("Usage: claude [options]"), None);
-        assert_eq!(parse_auth_status(""), None);
-        assert_eq!(parse_auth_status(r#"{"authMethod": "none"}"#), None);
-        assert_eq!(parse_auth_status(r#"{"loggedIn": "yes"}"#), None);
-        assert_eq!(parse_auth_status("[true]"), None);
+        assert_eq!(parse_account("Usage: claude [options]"), None);
+        assert_eq!(parse_account(""), None);
+        assert_eq!(parse_account("[true]"), None);
+
+        // An object that says nothing Beacon understands is different: there
+        // was an answer, and it named no account. Nothing is asserted from it
+        // and nothing is drawn from it.
+        let silent = parse_account(r#"{"apiProvider": "firstParty"}"#).unwrap();
+        assert_eq!(silent, Account::default());
+        assert!(!silent.worth_showing());
+
+        // And the fields beside `loggedIn` are not read without it, however
+        // inviting they look. "none" in a panel header would read as the name
+        // of an account.
+        let unsaid = parse_account(r#"{"authMethod": "none"}"#).unwrap();
+        assert_eq!(unsaid, Account::default());
+        assert!(!unsaid.worth_showing());
+
+        // And an empty string is not an account name.
+        let blank = parse_account(r#"{"loggedIn": true, "email": "  "}"#).unwrap();
+        assert_eq!(blank.email, None);
     }
 
     #[test]

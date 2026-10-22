@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
+use crate::account::Account;
 use crate::tools::{capture_briefly, resolve_program, strip_terminal_identity};
 
 /// How long Codex gets to describe itself before Beacon stops waiting.
@@ -254,26 +255,95 @@ fn detect() -> Capabilities {
 ///
 /// `codex login status`, which is the question the user could type. Beacon
 /// never touches the credential — the same rule as Claude Code's (ADR-052) —
-/// and this does not either: it reads the exit status and nothing else. Codex
-/// has no machine-readable form of this answer, so the exit status is what
-/// there is.
+/// and this does not either: it asks, and reads what comes back.
 ///
-/// Deliberately one-directional. A non-zero exit is read as not signed in; a
-/// zero exit is read as nothing at all. If Codex turns out to exit zero either
-/// way, Beacon simply never says Codex needs signing in — which is where it
-/// was before this existed. The other way round would be telling somebody who
-/// is signed in that they are not, which is worse than saying nothing.
-///
-/// `None` means no answer: a Codex too old for the subcommand, or one that
-/// would not finish.
+/// Deliberately one-directional, for the reason in [`parse_login_status`], and
+/// `None` is no answer: a Codex too old for the subcommand, or one that would
+/// not finish.
 pub fn signed_in(codex: &std::path::Path) -> Option<bool> {
+    account(codex)?.signed_in
+}
+
+/// Which account Codex is using, as far as Codex will say.
+///
+/// Which is not far. `codex login status` prints one line — "Logged in using
+/// ChatGPT" — and there is no `--json` and no account name anywhere in the
+/// CLI: `codex doctor` adds how the credential is stored and no more. So this
+/// carries the method and never an email.
+///
+/// Decoding the identity token in `auth.json` would produce one, and that is
+/// exactly the line Beacon does not cross (ADR-052): it is a credential file,
+/// and a program that opens it to read a name is a program that opens it.
+/// Naming a Codex account is the user's job, and in the account menu it is
+/// their own label that does it.
+///
+/// That one line goes to **standard error**, with nothing on standard output,
+/// which is why the whole of what it prints is read and not just stdout.
+pub fn account(codex: &std::path::Path) -> Option<Account> {
     let mut command = std::process::Command::new(codex);
     command.args(["login", "status"]);
     crate::tools::strip_terminal_identity(&mut command);
     command.env("PATH", crate::tools::session_path(codex));
 
-    let succeeded = crate::tools::succeeded_briefly(&mut command, PROBE_TIMEOUT)?;
-    (!succeeded).then_some(false)
+    let (succeeded, text) = crate::tools::outcome_briefly(&mut command, PROBE_TIMEOUT)?;
+    Some(parse_login_status(&text, succeeded))
+}
+
+/// What Codex's one line of login status says.
+///
+/// Deliberately one-directional about signing in, which is the rule
+/// [`signed_in`] has always followed: a non-zero exit, or a line that says so
+/// in words, is read as not signed in; a zero exit is read as nothing at all.
+/// If Codex turns out to exit zero either way, Beacon simply never says Codex
+/// needs signing in — which is where it was before any of this existed. The
+/// other way round would be telling somebody who is signed in that they are
+/// not, which is worse than saying nothing.
+///
+/// The method is read case-insensitively and reported with Codex's own
+/// capitals, since "ChatGPT" is a name and not a word.
+///
+/// Every line is looked at rather than the first one, because the first one is
+/// not reliably Codex's. An npm-installed Codex is reached through a shim, and
+/// a Node deprecation warning or a `punycode` notice lands on the same stream
+/// ahead of the answer — this command puts nothing on standard output at all,
+/// so there is nothing to tell them apart by position.
+pub fn parse_login_status(text: &str, succeeded: bool) -> Account {
+    const USING: &str = "logged in using ";
+    const NOT: &str = "not logged in";
+
+    // Byte-for-byte with the line it came from, so an offset found in one
+    // indexes the other, and always on a character boundary because the
+    // needle is ASCII. `to_ascii_lowercase` is the reason: the Unicode one
+    // can change a string's length.
+    let said = |needle: &str| {
+        text.lines().map(str::trim).find_map(|line| {
+            let at = line.to_ascii_lowercase().find(needle)?;
+            Some(&line[at + needle.len()..])
+        })
+    };
+
+    // Cut at " - ", because Codex puts a masked key after it: the strings in
+    // the binary are "Logged in using ChatGPT", "Logged in using access
+    // token", "Logged in using workload identity", and
+    // "Logged in using an API key - " with the key appended. Part of a
+    // credential is still a credential, and a header is not where it goes.
+    let method = said(USING).map(|rest| {
+        rest.split(" - ")
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .trim_end_matches('.')
+            .to_string()
+    });
+
+    Account {
+        signed_in: (!succeeded || said(NOT).is_some()).then_some(false),
+        email: None,
+        // An empty tail — "Logged in using" and nothing after it — names no
+        // method, and a chip reading nothing at all is not a chip.
+        method: method.filter(|found| !found.is_empty()),
+        plan: None,
+    }
 }
 
 /// Runs Codex for its own description of itself.
@@ -451,5 +521,107 @@ Commands:
         let capabilities = interpret(None, "", "");
         assert_eq!(capabilities, Capabilities::none());
         assert!(!capabilities.workstreams());
+    }
+
+    /// Every way Codex can answer, taken out of the shipped binary's own
+    /// strings rather than guessed at.
+    #[test]
+    fn a_masked_key_in_the_answer_never_reaches_the_screen() {
+        // This is the one that matters: Codex appends the key to this line.
+        let keyed = parse_login_status("Logged in using an API key - sk-proj-abc***WXYZ", true);
+        assert_eq!(keyed.method.as_deref(), Some("an API key"));
+
+        // And the rest of the list, verbatim, so a new one is noticed by this
+        // test failing rather than by a key appearing in a header.
+        for (printed, expected) in [
+            ("Logged in using ChatGPT", "ChatGPT"),
+            ("Logged in using access token", "access token"),
+            (
+                "Logged in using personal access token",
+                "personal access token",
+            ),
+            ("Logged in using workload identity", "workload identity"),
+            (
+                "Logged in using Amazon Bedrock API key",
+                "Amazon Bedrock API key",
+            ),
+            (
+                "Logged in using Amazon Bedrock AWS access keys",
+                "Amazon Bedrock AWS access keys",
+            ),
+        ] {
+            assert_eq!(
+                parse_login_status(printed, true).method.as_deref(),
+                Some(expected),
+                "{printed}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_names_how_it_signed_in_and_never_who() {
+        // The whole of what `codex login status` prints, on a machine signed
+        // in with a ChatGPT plan. There is no email in it, and none anywhere
+        // else in the CLI.
+        let account = parse_login_status("Logged in using ChatGPT\n", true);
+        assert_eq!(account.method.as_deref(), Some("ChatGPT"));
+        assert_eq!(account.email, None);
+        assert!(account.worth_showing());
+
+        // A zero exit is not read as signed in, and never has been.
+        assert_eq!(account.signed_in, None);
+    }
+
+    #[test]
+    fn codex_is_only_ever_reported_as_signed_out() {
+        // The exit code is one way of saying it.
+        assert_eq!(parse_login_status("", false).signed_in, Some(false));
+        // And the line is the other, for a Codex that says so and exits zero.
+        assert_eq!(
+            parse_login_status("Not logged in\n", true).signed_in,
+            Some(false)
+        );
+        // "Not logged in" is not a method, however it is capitalised.
+        assert_eq!(parse_login_status("not logged in", true).method, None);
+    }
+
+    #[test]
+    fn a_warning_in_front_of_the_answer_does_not_become_the_answer() {
+        // Codex is reached through an npm shim, its answer is on standard
+        // error, and so is everything Node feels like saying first.
+        let noisy = "\
+(node:51234) [DEP0040] DeprecationWarning: The `punycode` module is deprecated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Logged in using ChatGPT
+";
+        assert_eq!(
+            parse_login_status(noisy, true).method.as_deref(),
+            Some("ChatGPT")
+        );
+
+        // And the same for being told nobody is signed in.
+        assert_eq!(
+            parse_login_status("(node:51234) DeprecationWarning\nNot logged in\n", true).signed_in,
+            Some(false)
+        );
+    }
+
+    /// Byte offsets are found in a lowercased copy and used on the original.
+    #[test]
+    fn an_answer_with_characters_outside_ascii_does_not_panic() {
+        // A line whose bytes outnumber its characters, on both sides of the
+        // phrase being looked for. Indexing a `str` off a boundary panics,
+        // and this is the shape that would do it.
+        let account = parse_login_status("Señor — logged in using ChatGPT · año", true);
+        assert_eq!(account.method.as_deref(), Some("ChatGPT · año"));
+    }
+
+    #[test]
+    fn a_login_status_nobody_recognises_asserts_nothing() {
+        // A Codex too old for the subcommand, or a wording that changed. The
+        // chip draws nothing rather than a blank badge.
+        let quiet = parse_login_status("", true);
+        assert_eq!(quiet, Account::default());
+        assert!(!quiet.worth_showing());
     }
 }
