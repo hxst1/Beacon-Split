@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.10.1",
+    "date": "2026-10-22",
+    "summary": "Switching account works: 0.10.0 killed the session instead of opening it.",
+    "changes": [
+      "Switching Claude Code to another account and coming back to the project ended the session before it drew anything — \"No conversation found with session ID\" — and left no way to sign in to the new account, because the sign-in screen is what that session would have shown. The conversation was real, in the account just left: it lives inside that account's folder, so it belongs to one account and cannot be opened from another. Beacon asks to continue a conversation only in the account it was had in, and starts a new one otherwise.",
+      "The conversations offered in the menu are the ones the account in use can actually open. Asking to resume one from another account says so, and says to switch back to it, rather than leaving the session to die on the agent's own error.",
+      "The context percentage showed the other account's and never moved. It belongs to a conversation, and the conversation was the one Beacon should no longer have been in. It follows the account now.",
+      "A message in the status bar is only red when something is wrong. \"Claude Code will use Work from its next start\" — a switch that had just worked — arrived in the colour a crash arrives in.",
+      "The session daemon keeps the log of the previous run beside the current one. Updating Beacon and then restarting it used to write over the only account of whatever went wrong, which is the run anybody would be asking about."
+    ]
+  },
+  {
     "version": "0.10.0",
     "date": "2026-10-22",
     "summary": "Each agent can be signed in to more than one account, and its panel says which one it is using.",
