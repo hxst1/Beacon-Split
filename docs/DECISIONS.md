@@ -2472,6 +2472,44 @@ non-default account:
   under. They take the session's home instead.
 
 A new config home is empty — no settings, no `CLAUDE.md`, no MCP servers, no
-agents — so creating an account offers to copy the non-secret parts of the
-default one. Copy and not a symlink: a symlink into somebody's home directory
-is a surprising thing for an application to leave behind.
+agents — and **Beacon carries over exactly one thing: its own reporting.** When
+the hooks, the status line or the Codex plugin are installed in the machine's
+own home, adding an account installs them in the new one too. That is not a new
+decision being made on somebody's behalf; it is the decision they already made,
+applied to a second directory, and without it the new account silently has no
+amber tab.
+
+Everything else is left alone on purpose. Copying somebody's settings,
+`CLAUDE.md` and MCP servers into a second account reads as helpful and is a
+guess: those files name paths, hold keys and were written for one account, and
+an application that duplicates them unasked is one that has to be undone by
+hand. The menu says a new account starts empty, which is both true and the
+thing to know.
+
+The sign-in watcher asks one `claude auth status` for every panel waiting on a
+sign-in screen, which is right as long as they are all on one account. When
+they are not, it asks nothing and keeps waiting rather than applying one
+account's answer to another's session — which would restart a panel that is
+still signed out, back onto the screen it was already looking at.
+
+One gap is known and left open. Whether Claude Code's hooks are registered is
+read per home, out of each `settings.json`, so an account missing them says so.
+Codex's plugin cannot be read that way — what Beacon can see is its own
+marketplace, which is shared — so the integration screen reports a plugin as
+installed without being able to say it is registered in every account. Asking
+Codex per account would mean running it once per home and parsing output no
+version documents; pressing Install again registers it everywhere, which is the
+recovery either way.
+
+Signing in is the agent's own command, in Beacon's terminal. A shell session is
+given both agents' homes for exactly this reason: `claude` or `codex login` run
+in the project's terminal lands in the account the panel beside it names, with
+no credential passing through Beacon at any point.
+
+`PROTOCOL_VERSION` moved to 8 for it, which is the first time the rule about
+that number has been overruled deliberately. The rule is about requests and
+this was a field, but an older daemon ignores a field it does not know — and
+here that means starting the session under the machine's own account while the
+window's header names another. Nothing waits and nothing errors; the work just
+goes to the wrong subscription, which is the exact mistake this feature exists
+to prevent, so the daemon is replaced once on upgrade instead.

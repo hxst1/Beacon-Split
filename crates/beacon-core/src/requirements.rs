@@ -2,7 +2,8 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::account::Account;
+use crate::account::{Account, AccountHomes};
+use crate::agent::AgentKind;
 use crate::tools::{hide_console_window, resolve_program, strip_terminal_identity};
 
 /// How badly Beacon needs something.
@@ -121,7 +122,17 @@ fn no_sign_in(_: &Path) -> Option<Account> {
 /// a check that looks somewhere else could pass while the thing it checked
 /// still failed to start, which is worse than not checking.
 pub fn check() -> Vec<Requirement> {
-    vec![check_claude(), check_codex(), check_git()]
+    check_in(&AccountHomes::default())
+}
+
+/// The same, asking each agent about the account its sessions would use.
+///
+/// The home matters to the answer: without it an agent reports whichever
+/// account the machine itself is signed in to, so a newly added account — an
+/// empty directory nobody has signed in to yet — would be reported as ready,
+/// and the panel header would show somebody else's email under its name.
+pub fn check_in(homes: &AccountHomes) -> Vec<Requirement> {
+    vec![check_claude(homes), check_codex(homes), check_git()]
 }
 
 /// The same, after forgetting everything Beacon had worked out about this
@@ -136,11 +147,11 @@ pub fn check() -> Vec<Requirement> {
 ///
 /// It costs what a cold start costs, a shell and a few short processes, which
 /// is why it is this and not what every check does.
-pub fn recheck() -> Vec<Requirement> {
+pub fn recheck(homes: &AccountHomes) -> Vec<Requirement> {
     crate::tools::forget_programs();
     crate::claude::forget_capabilities();
     crate::codex::forget_capabilities();
-    check()
+    check_in(homes)
 }
 
 /// Whether anything Beacon considers essential is missing.
@@ -153,12 +164,14 @@ pub fn missing_essentials(requirements: &[Requirement]) -> Vec<&Requirement> {
         .collect()
 }
 
-fn check_claude() -> Requirement {
+fn check_claude(homes: &AccountHomes) -> Requirement {
     let path = resolve_program("claude");
     let version = path
         .as_deref()
         .and_then(|path| version_of(path, "--version"));
-    let (state, account) = state_of(path.as_deref(), version.as_deref(), crate::claude::account);
+    let (state, account) = state_of(path.as_deref(), version.as_deref(), |path| {
+        crate::claude::account(path, homes.of(AgentKind::Claude))
+    });
     Requirement {
         id: "claude",
         name: "Claude Code",
@@ -219,12 +232,14 @@ fn check_claude() -> Requirement {
 /// not work, and it says so in a way that blocks. Codex is a second agent
 /// somebody may never want, so not having it costs one panel and must not
 /// present itself as something wrong with the installation.
-fn check_codex() -> Requirement {
+fn check_codex(homes: &AccountHomes) -> Requirement {
     let path = resolve_program("codex");
     let version = path
         .as_deref()
         .and_then(|path| version_of(path, "--version"));
-    let (state, account) = state_of(path.as_deref(), version.as_deref(), crate::codex::account);
+    let (state, account) = state_of(path.as_deref(), version.as_deref(), |path| {
+        crate::codex::account(path, homes.of(AgentKind::Codex))
+    });
     Requirement {
         id: "codex",
         name: "Codex",

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::account::AccountBook;
 use crate::appearance::Appearance;
 use crate::error::{CoreError, Result};
 use crate::paths::default_projects_home;
@@ -108,6 +109,18 @@ pub struct Settings {
     /// The typeface every terminal draws in.
     #[serde(default)]
     pub terminal_font: TerminalFont,
+    /// The accounts each agent can be signed in to, and which one is in use.
+    ///
+    /// Empty for almost everybody, and that is the default: no accounts added
+    /// means no account chosen means no variable set, and a session starts in
+    /// exactly the configuration the machine already had. Nothing is written
+    /// here until somebody adds one. See ADR-099.
+    #[serde(default, skip_serializing_if = "is_unused")]
+    pub accounts: AccountBook,
+}
+
+fn is_unused(accounts: &AccountBook) -> bool {
+    accounts == &AccountBook::default()
 }
 
 impl Settings {
@@ -219,6 +232,7 @@ impl Default for Settings {
             claude_agents: true,
             appearance: Appearance::default(),
             terminal_font: TerminalFont::default(),
+            accounts: AccountBook::default(),
         }
     }
 }

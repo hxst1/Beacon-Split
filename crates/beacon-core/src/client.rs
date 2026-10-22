@@ -196,6 +196,7 @@ impl DaemonClient {
             rows: size.1,
             shell: prefs.shell,
             agents: Some(prefs.agents),
+            accounts: prefs.accounts,
         })? {
             Reply::Session(info) => Ok(info),
             _ => Err(unexpected()),
@@ -249,6 +250,7 @@ impl DaemonClient {
             rows: size.1,
             shell: prefs.shell,
             agents: Some(prefs.agents),
+            accounts: prefs.accounts,
         })? {
             Reply::Session(info) => Ok(info),
             _ => Err(unexpected()),
@@ -318,6 +320,7 @@ impl DaemonClient {
             rows: size.1,
             shell: prefs.shell,
             agents: Some(prefs.agents),
+            accounts: prefs.accounts,
         })
     }
 
@@ -338,6 +341,7 @@ impl DaemonClient {
             rows: size.1,
             shell: prefs.shell,
             agents: Some(prefs.agents),
+            accounts: prefs.accounts,
         })
     }
 
@@ -360,6 +364,7 @@ impl DaemonClient {
             rows: size.1,
             shell: prefs.shell,
             agents: Some(prefs.agents),
+            accounts: prefs.accounts,
         })
     }
 

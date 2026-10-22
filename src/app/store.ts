@@ -19,6 +19,7 @@ import { applyAppearance, watchSystemTheme } from '@/lib/appearance'
 import { isWindows, setPlatform, setWindowsBuild } from '@/lib/platform'
 import type {
   ActionBinding,
+  AgentKind,
   Appearance,
   LayoutNode,
   Requirement,
@@ -172,6 +173,18 @@ interface BeaconState {
   setShowHiddenFiles: (shown: boolean) => Promise<void>
   /** Whether Beacon offers its own subagents. Takes effect on the next session. */
   setClaudeAgents: (enabled: boolean) => Promise<void>
+  /**
+   * Account housekeeping for one agent.
+   *
+   * Switching takes effect the next time that agent starts, so `setAccount`
+   * leaves a line in the status bar saying so — the alternative is somebody
+   * picking an account, seeing the session carry on exactly as before, and
+   * concluding it did not work.
+   */
+  addAccount: (agent: AgentKind, label: string) => Promise<void>
+  setAccount: (agent: AgentKind, id: string | null, said: string) => Promise<void>
+  renameAccount: (agent: AgentKind, id: string, label: string) => Promise<void>
+  forgetAccount: (agent: AgentKind, id: string) => Promise<void>
   setBinding: (action: string, binding: string | null) => Promise<string | null>
   resetBindings: () => Promise<void>
   /** Reveals a panel if it is hidden. Showing an already-visible panel is a no-op. */
@@ -197,6 +210,18 @@ const REQUIREMENTS_STAY_FRESH = 30_000
 /** When the last look succeeded, and how many have been started. */
 let lookedAt = 0
 let looks = 0
+
+/**
+ * Re-asks who the active account is, now rather than within the minute.
+ *
+ * Called when the account itself changed: the email and the plan on screen
+ * belong to the one just left. The clock is cleared because the answer is
+ * known to be stale, which is the one case the throttle must not win.
+ */
+function askTheAccountAgain(): void {
+  lookedAt = 0
+  void useBeacon.getState().refreshRequirements()
+}
 
 export const useBeacon = create<BeaconState>((set, get) => {
   /** Applies a snapshot returned by any command and keeps the accent in sync. */
@@ -433,6 +458,27 @@ export const useBeacon = create<BeaconState>((set, get) => {
     setShowHiddenFiles: (shown) => run(() => ipc.setShowHiddenFiles(shown)),
 
     setClaudeAgents: (enabled) => run(() => ipc.setClaudeAgents(enabled)),
+
+    addAccount: (agent, label) => run(() => ipc.addAccount(agent, label)),
+    setAccount: async (agent, id, said) => {
+      // Cleared first, so what is read back afterwards is this call's own
+      // outcome and not a notice left over from something unrelated.
+      set({ notice: null })
+      await run(() => ipc.setAccount(agent, id))
+      // Only if the switch actually happened: `run` puts the failure in the
+      // same place this line would go, and overwriting it with good news would
+      // be the worst of both.
+      if (get().notice) return
+      set({ notice: said })
+      askTheAccountAgain()
+    },
+    renameAccount: (agent, id, label) => run(() => ipc.renameAccount(agent, id, label)),
+    forgetAccount: async (agent, id) => {
+      await run(() => ipc.forgetAccount(agent, id))
+      // The account just forgotten may be the one the chip was naming, and
+      // the identity on screen is still its email.
+      askTheAccountAgain()
+    },
 
     setBinding: async (action, binding) => {
       try {

@@ -240,13 +240,23 @@ fn ask(path: &std::path::Path, args: &[&str]) -> Option<String> {
 ///
 /// Read whatever the exit status, because "signed out" is an answer a status
 /// command is entitled to exit non-zero with.
-pub fn account(claude: &std::path::Path) -> Option<Account> {
+pub fn account(claude: &std::path::Path, home: Option<&std::path::Path>) -> Option<Account> {
     let mut command = std::process::Command::new(claude);
     command.args(["auth", "status", "--json"]);
     strip_terminal_identity(&mut command);
     // The session's PATH, because an npm-installed Claude Code is a script that
     // needs the `node` beside it, and Beacon launched from the Dock has none.
     command.env("PATH", crate::tools::session_path(claude));
+    // And the account a session would be started with. Without this the answer
+    // is whichever account the machine itself is signed in to, which is a chip
+    // naming one account and reporting another's email — and a newly added,
+    // empty account reported as signed in when nobody has signed in to it.
+    if let Some(home) = home {
+        command.env(
+            crate::account::home_variable(crate::agent::AgentKind::Claude),
+            home,
+        );
+    }
 
     parse_account(&capture_briefly_any_exit(&mut command, PROBE_TIMEOUT)?)
 }
@@ -256,8 +266,8 @@ pub fn account(claude: &std::path::Path) -> Option<Account> {
 /// The one question the sign-in watcher asks, kept separate because it is
 /// asked on a timer and from a different moment than anything that wants to
 /// name the account.
-pub fn signed_in(claude: &std::path::Path) -> Option<bool> {
-    account(claude)?.signed_in
+pub fn signed_in(claude: &std::path::Path, home: Option<&std::path::Path>) -> Option<bool> {
+    account(claude, home)?.signed_in
 }
 
 /// Reads what `claude auth status --json` prints.
@@ -400,9 +410,23 @@ pub fn is_running(session_id: &str) -> Option<bool> {
 /// is Claude Code's to change, and the id alone is unique. `<config>` is
 /// `CLAUDE_CONFIG_DIR` when set, as for Claude Code itself.
 pub fn conversation_written(session_id: &str) -> bool {
-    let config = std::env::var_os("CLAUDE_CONFIG_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| crate::paths::home_dir().join(".claude"));
+    conversation_written_under(None, session_id)
+}
+
+/// The same, under the configuration home the session was started with.
+///
+/// `None` falls back to `CLAUDE_CONFIG_DIR` and then to Claude Code's own
+/// default, which is what a Beacon that knows nothing about accounts uses. The
+/// home matters: a transcript is written under the home its session used, and
+/// looking in the wrong one says a conversation was never written — which is
+/// how a resumable conversation turns into `Session ID … is already in use`.
+pub fn conversation_written_under(home: Option<&std::path::Path>, session_id: &str) -> bool {
+    let config = match home {
+        Some(home) => home.to_path_buf(),
+        None => std::env::var_os("CLAUDE_CONFIG_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| crate::paths::home_dir().join(".claude")),
+    };
     conversation_written_in(&config.join("projects"), session_id)
 }
 
