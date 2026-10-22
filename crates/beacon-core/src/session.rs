@@ -796,6 +796,20 @@ impl SessionManager {
             .insert(project, homes);
     }
 
+    /// Which account a project's next agent session will be started with.
+    ///
+    /// The question to ask before starting one — whether the conversation it
+    /// would continue is even in that account — as opposed to
+    /// [`Self::started_with`], which answers for a session that is already
+    /// running.
+    pub fn wanted_account_home(&self, project: &ProjectId, agent: AgentKind) -> Option<PathBuf> {
+        self.wanted_accounts
+            .lock_or_recover()
+            .get(project)?
+            .of(agent)
+            .map(Path::to_path_buf)
+    }
+
     /// Which accounts one session was started with, for the places that have
     /// to read back what it wrote there.
     ///

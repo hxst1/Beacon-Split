@@ -42,6 +42,15 @@ interface BeaconState {
   fatal: string | null
   /** A short, dismissable message shown in the status bar. */
   notice: string | null
+  /**
+   * Whether the notice is something going wrong.
+   *
+   * The band it appears in was built for failures and is drawn in the danger
+   * colour, so a message that is simply telling you something — an account
+   * switched, a conversation moved — arrived looking like a crash. It is the
+   * same band and the same place; only the colour follows this.
+   */
+  noticeIsProblem: boolean
   snapshot: Snapshot | null
   /** Panel temporarily expanded to fill the window. Never persisted. */
   fullscreenPanel: PanelId | null
@@ -249,7 +258,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     try {
       accept(await action())
     } catch (error) {
-      set({ notice: errorMessage(error) })
+      set({ notice: errorMessage(error), noticeIsProblem: true })
     }
   }
 
@@ -259,6 +268,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
     status: 'loading',
     fatal: null,
     notice: null,
+    noticeIsProblem: true,
     snapshot: null,
     fullscreenPanel: null,
     overlay: null,
@@ -356,7 +366,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
         useActivity.getState().projectStopped(projectId)
         forgetUsage(projectId)
       } catch (error) {
-        set({ notice: errorMessage(error) })
+        set({ notice: errorMessage(error), noticeIsProblem: true })
       }
     },
 
@@ -376,7 +386,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
       })
     },
 
-    notify: (message) => set({ notice: message }),
+    notify: (message) => set({ notice: message, noticeIsProblem: true }),
 
     restartSession: async (projectId, kind, slot = 0) => {
       const workspaceId = requireWorkspace()
@@ -387,7 +397,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
         await ipc.restartSession(workspaceId, projectId, kind, slot, 80, 24)
         get().rebuildSession(projectId, kind, slot)
       } catch (error) {
-        set({ notice: errorMessage(error) })
+        set({ notice: errorMessage(error), noticeIsProblem: true })
       }
     },
 
@@ -414,7 +424,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
       try {
         await ipc.revealProject(workspaceId, projectId)
       } catch (error) {
-        set({ notice: errorMessage(error) })
+        set({ notice: errorMessage(error), noticeIsProblem: true })
       }
     },
 
@@ -469,7 +479,7 @@ export const useBeacon = create<BeaconState>((set, get) => {
       // same place this line would go, and overwriting it with good news would
       // be the worst of both.
       if (get().notice) return
-      set({ notice: said })
+      set({ notice: said, noticeIsProblem: false })
       askTheAccountAgain()
     },
     renameAccount: (agent, id, label) => run(() => ipc.renameAccount(agent, id, label)),
@@ -565,7 +575,8 @@ export function startConnectionTracking(): () => void {
     // Shown rather than swallowed: the session it belongs to is running fine,
     // so there is nothing to fail — only something the user should know is not
     // there. The status bar is where a dismissible, non-blocking thing goes.
-    onDegraded: ({ summary }) => useBeacon.setState({ notice: summary }),
+    onDegraded: ({ summary }) =>
+      useBeacon.setState({ notice: summary, noticeIsProblem: true }),
     // Somebody signed in to Claude Code in one panel, and the daemon started
     // the ones left on the sign-in screen again so they pick it up. The process
     // each view was showing has gone; rebuilding attaches to its replacement.
@@ -573,6 +584,7 @@ export function startConnectionTracking(): () => void {
       useBeacon.getState().rebuildSession(project, kind, slot)
       useBeacon.setState({
         notice: 'Signed in to Claude Code. The other open projects picked it up.',
+        noticeIsProblem: false,
       })
       // This is the exact moment the account changed, so what Beacon last
       // worked out about it is now wrong — the headers would go on saying "not
