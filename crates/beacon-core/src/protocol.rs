@@ -70,6 +70,19 @@ use crate::workstreams::{Workstream, WorkstreamId};
 /// wrong subscription — which is the exact mistake the accounts feature exists
 /// to stop, so a feature that could cause it quietly is worth less than
 /// nothing. The daemon is replaced instead, once, on upgrade to this version.
+/// From the build after version 8, the number no longer has to move to get a
+/// daemon replaced, and the rule above is only about whether two of them can
+/// talk. The window replaces any daemon that is not its own build, which it
+/// learns from the `build` the greeting now carries.
+///
+/// That is here because the absence of it cost a release. The daemon outlives
+/// the window — the whole point of it — so after an update that did not move
+/// the protocol the new window went on talking to the daemon the old one had
+/// started. 0.10.1 fixed switching accounts, every line of the fix was in the
+/// daemon, and on an updated machine the bug was still there, served by a
+/// process from before the update. Moving this number had been the only way
+/// to force a swap, which made every daemon-side fix wait for an unrelated
+/// protocol change.
 pub const PROTOCOL_VERSION: u32 = 8;
 
 /// Whether anybody chose an account at all. Almost nobody has, and the wire
@@ -673,6 +686,19 @@ pub struct Greeting {
     pub pid: u32,
     /// How many sessions were already running when this client arrived.
     pub sessions: usize,
+    /// Which build of Beacon this daemon is, as `CARGO_PKG_VERSION`.
+    ///
+    /// The protocol number says whether the two can talk. This says whether
+    /// they are the same program, which is a different question and the one
+    /// that was missing: a daemon outlives the window, so after an update that
+    /// did not move the protocol the new window went on talking to the old
+    /// daemon — and every fix that lives in the daemon, which is most of them,
+    /// reached nobody until something unrelated moved the protocol.
+    ///
+    /// Absent from a daemon too old to send it, which is itself an answer: a
+    /// daemon that does not say what it is, is not this one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1115,6 +1141,7 @@ mod tests {
 
         let replies = vec![
             Reply::Greeting(Greeting {
+                build: Some("0.0.0-test".into()),
                 version: PROTOCOL_VERSION,
                 pid: 1234,
                 sessions: 2,

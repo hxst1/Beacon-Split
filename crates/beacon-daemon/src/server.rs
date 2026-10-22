@@ -1054,6 +1054,7 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
                 version: PROTOCOL_VERSION,
                 pid: std::process::id(),
                 sessions: sessions.count(),
+                build: Some(env!("CARGO_PKG_VERSION").to_string()),
             }))
         }
 
