@@ -761,13 +761,17 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
 
     // Two connections on one socket: the first speaks last version's protocol
     // and hangs up when asked to stop, the second is the daemon that replaced
-    // it. From the client's side that is exactly an upgrade.
-    let versions = [
-        beacon_core::protocol::PROTOCOL_VERSION - 1,
-        beacon_core::protocol::PROTOCOL_VERSION,
+    // it — this protocol and this build. From the client's side that is
+    // exactly an upgrade.
+    let greetings = [
+        (beacon_core::protocol::PROTOCOL_VERSION - 1, None),
+        (
+            beacon_core::protocol::PROTOCOL_VERSION,
+            Some(env!("CARGO_PKG_VERSION")),
+        ),
     ];
     let stand_in = std::thread::spawn(move || {
-        for version in versions {
+        for (version, build) in greetings {
             let Some(stream) = next_connection(&listener) else {
                 return;
             };
@@ -787,7 +791,13 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
 
                 let reply = serde_json::json!({
                     "id": id,
-                    "ok": { "result": "greeting", "version": version, "pid": 1, "sessions": 0 },
+                    "ok": {
+                        "result": "greeting",
+                        "version": version,
+                        "pid": 1,
+                        "sessions": 0,
+                        "build": build,
+                    },
                 });
                 let _ = writeln!(writer, "{reply}");
                 let _ = writer.flush();
@@ -813,6 +823,81 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
     // Not joined: the stand-in is still holding the connection this client
     // opened, and waiting for it to notice would be waiting for the test's own
     // reader thread to be torn down first.
+    drop(stand_in);
+}
+
+/// A daemon of the same protocol but another build is replaced too.
+///
+/// This is the one that cost a release. The daemon outlives the window, which
+/// is the point of it — but it also outlives an *update*, and the window only
+/// ever replaced one whose protocol differed. 0.10.1 fixed switching accounts
+/// entirely inside the daemon, and on an updated machine the bug was still
+/// there, answered by a process started before the update. The number had to
+/// be moved to force a swap, which made every daemon-side fix wait for an
+/// unrelated protocol change.
+#[test]
+fn a_daemon_of_the_same_protocol_but_another_build_is_replaced() {
+    use beacon_core::transport::LocalListener;
+    use std::io::{BufRead, BufReader, Write};
+
+    let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
+    let socket = private_socket(dir.path());
+    let listener = LocalListener::bind(&socket).expect("the stand-in should bind");
+
+    // Both speak this protocol. The first is last release's build — exactly
+    // what is left running after an update — and the second is this one.
+    let greetings = [
+        (beacon_core::protocol::PROTOCOL_VERSION, Some("0.0.1")),
+        (
+            beacon_core::protocol::PROTOCOL_VERSION,
+            Some(env!("CARGO_PKG_VERSION")),
+        ),
+    ];
+    let stand_in = std::thread::spawn(move || {
+        for (version, build) in greetings {
+            let Some(stream) = next_connection(&listener) else {
+                return;
+            };
+            let mut writer = stream.try_clone().expect("a writable half");
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else {
+                    continue;
+                };
+                if message["method"] == "shutdown" {
+                    break;
+                }
+                let reply = serde_json::json!({
+                    "id": message["id"].as_u64().unwrap_or_default(),
+                    "ok": {
+                        "result": "greeting",
+                        "version": version,
+                        "pid": 1,
+                        "sessions": 0,
+                        "build": build,
+                    },
+                });
+                let _ = writeln!(writer, "{reply}");
+                let _ = writer.flush();
+            }
+        }
+    });
+
+    let recorder = Arc::new(Recorder::default());
+    let client = DaemonClient::connect_at(
+        &daemon_binary(),
+        &socket,
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    )
+    .expect("the daemon left over from the last build should have been replaced");
+
+    assert_eq!(
+        *recorder.disconnects.lock().unwrap(),
+        0,
+        "a planned swap was reported to the window as a daemon lost"
+    );
+
+    drop(client);
     drop(stand_in);
 }
 
