@@ -13,6 +13,7 @@
 //! transcript to find out what it is talking to.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -104,6 +105,20 @@ pub struct Workstream {
     /// correctly without a migration.
     #[serde(default)]
     pub agent: AgentKind,
+    /// The account this conversation was had in, when it was not the
+    /// machine's own.
+    ///
+    /// A conversation lives in its agent's configuration home, so it belongs
+    /// to one account and cannot be opened from another: asking to resume it
+    /// there answers *"No conversation found with session ID"* and the session
+    /// exits. Beacon has to know which account a conversation is in before it
+    /// offers to continue it.
+    ///
+    /// Defaulted for the same reason the agent is: everything recorded before
+    /// accounts existed was had in the machine's own account, which is what
+    /// `None` means.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<PathBuf>,
     /// The id the agent itself uses for this conversation, when Beacon could
     /// not choose it.
     ///
@@ -122,7 +137,12 @@ pub struct Workstream {
 }
 
 impl Workstream {
-    fn new(project: ProjectId, name: Option<String>, agent: AgentKind) -> Self {
+    fn new(
+        project: ProjectId,
+        name: Option<String>,
+        agent: AgentKind,
+        home: Option<&Path>,
+    ) -> Self {
         let now = now_seconds();
         Self {
             id: WorkstreamId::generate(),
@@ -133,10 +153,16 @@ impl Workstream {
             forked_from: None,
             resumable: false,
             agent,
+            home: home.map(Path::to_path_buf),
             agent_session_id: None,
             model: None,
             context_used_percentage: None,
         }
+    }
+
+    /// Whether this conversation is one the account in use could open.
+    pub fn is_on(&self, home: Option<&Path>) -> bool {
+        self.home.as_deref() == home
     }
 
     /// The id the agent knows this conversation by, once it is known.
@@ -266,6 +292,36 @@ impl WorkstreamBook {
         self.get(id)
     }
 
+    /// The conversation a project is in with one agent **on this account**.
+    ///
+    /// A conversation lives in the configuration home it was had in, so one
+    /// belonging to another account is not a conversation this session could
+    /// continue — asking it to answers "No conversation found with session ID"
+    /// and the session exits. From here that reads as no current conversation,
+    /// which starts a new one in the account now in use.
+    pub fn current_on(
+        &self,
+        project: &ProjectId,
+        agent: AgentKind,
+        home: Option<&Path>,
+    ) -> Option<&Workstream> {
+        self.current(project, agent)
+            .filter(|stream| stream.is_on(home))
+    }
+
+    /// A project's conversations with one agent, on one account.
+    pub fn for_project_on(
+        &self,
+        project: &ProjectId,
+        agent: AgentKind,
+        home: Option<&Path>,
+    ) -> Vec<&Workstream> {
+        self.for_project(project, agent)
+            .into_iter()
+            .filter(|stream| stream.is_on(home))
+            .collect()
+    }
+
     /// Every conversation a project is currently in, across its agents.
     ///
     /// What the cap has to protect: with two agents there is more than one
@@ -291,8 +347,9 @@ impl WorkstreamBook {
         project: ProjectId,
         name: Option<String>,
         agent: AgentKind,
+        home: Option<&Path>,
     ) -> Workstream {
-        let stream = Workstream::new(project.clone(), name, agent);
+        let stream = Workstream::new(project.clone(), name, agent, home);
         self.insert(stream.clone());
         self.move_into(&project, agent, stream.id.clone());
         self.enforce_cap(&project);
@@ -316,7 +373,11 @@ impl WorkstreamBook {
         // conversation into Codex: what a fork is for is the history, and the
         // history is in the other program.
         let agent = parent.agent;
-        let mut stream = Workstream::new(project.clone(), name, agent);
+        // In the parent's account, because that is where the history it is
+        // carrying lives. Forking into another account would ask an agent to
+        // resume a conversation it has never heard of.
+        let home = parent.home.clone();
+        let mut stream = Workstream::new(project.clone(), name, agent, home.as_deref());
         stream.forked_from = Some(from.clone());
         self.insert(stream.clone());
         self.move_into(project, agent, stream.id.clone());
@@ -598,6 +659,69 @@ impl WorkstreamStore {
 
 #[cfg(test)]
 mod tests {
+
+    /// The bug this exists for, as it was met: switch Claude to a second
+    /// account, come back to the project, and the session died on
+    /// `No conversation found with session ID` before drawing anything.
+    ///
+    /// The conversation was real — in the *other* account. A conversation
+    /// lives in the configuration home it was had in, so from this account
+    /// there is no current conversation, and a new one is started here.
+    #[test]
+    fn a_conversation_had_on_another_account_is_not_offered_to_this_one() {
+        let work = Path::new("/accounts/work");
+        let mut book = WorkstreamBook::default();
+
+        let own = book.start(project(), None, AgentKind::Claude, None);
+        assert_eq!(
+            book.current_on(&project(), AgentKind::Claude, None)
+                .map(|s| &s.id),
+            Some(&own.id)
+        );
+
+        // On the other account there is nothing current, which is what makes
+        // the next start a new conversation instead of a refused resume.
+        assert!(
+            book.current_on(&project(), AgentKind::Claude, Some(work))
+                .is_none()
+        );
+        assert!(
+            book.for_project_on(&project(), AgentKind::Claude, Some(work))
+                .is_empty(),
+            "a conversation nobody here can open should not be listed"
+        );
+
+        // Started there, each account has its own and neither sees the other's.
+        let theirs = book.start(project(), None, AgentKind::Claude, Some(work));
+        assert_eq!(
+            book.current_on(&project(), AgentKind::Claude, Some(work))
+                .map(|s| &s.id),
+            Some(&theirs.id)
+        );
+        assert_eq!(
+            book.for_project_on(&project(), AgentKind::Claude, None)
+                .iter()
+                .map(|s| &s.id)
+                .collect::<Vec<_>>(),
+            vec![&own.id]
+        );
+    }
+
+    /// A book written before accounts existed belongs to the machine's own.
+    #[test]
+    fn everything_recorded_before_accounts_is_on_the_machines_own() {
+        let written = r#"{"schemaVersion":1,"workstreams":[{"id":"w1","project":"pj_1",
+            "createdAt":1,"lastActiveAt":1,"resumable":true}],"current":{"pj_1":"w1"}}"#;
+        let book: WorkstreamBook = serde_json::from_str(written).unwrap();
+
+        let stream = book.current_on(&ProjectId("pj_1".into()), AgentKind::Claude, None);
+        assert!(
+            stream.is_some(),
+            "an existing conversation must still be the current one after upgrading"
+        );
+        assert!(stream.unwrap().resumable);
+    }
+
     use super::*;
 
     fn project() -> ProjectId {
@@ -669,8 +793,8 @@ mod tests {
     #[test]
     fn each_agent_keeps_its_own_place_in_the_same_project() {
         let mut book = WorkstreamBook::default();
-        let claude = book.start(project(), None, AgentKind::Claude);
-        let codex = book.start(project(), None, AgentKind::Codex);
+        let claude = book.start(project(), None, AgentKind::Claude, None);
+        let codex = book.start(project(), None, AgentKind::Codex, None);
 
         // Starting Codex's must not have moved Claude's.
         assert_eq!(
@@ -692,14 +816,14 @@ mod tests {
     #[test]
     fn the_cap_no_longer_evicts_the_other_agents_place() {
         let mut book = WorkstreamBook::default();
-        let codex = book.start(project(), None, AgentKind::Codex).id;
+        let codex = book.start(project(), None, AgentKind::Codex, None).id;
 
         // A long session with Claude, well past the cap. Each new conversation
         // becomes Claude's current one, so the older Claude ones are supposed
         // to be dropped — that is what the cap is for.
-        let mut last_claude = book.start(project(), None, AgentKind::Claude).id;
+        let mut last_claude = book.start(project(), None, AgentKind::Claude, None).id;
         for _ in 0..MAX_PER_PROJECT * 2 {
-            last_claude = book.start(project(), None, AgentKind::Claude).id;
+            last_claude = book.start(project(), None, AgentKind::Claude, None).id;
         }
 
         // What must not be dropped is the conversation the *other* agent is
@@ -716,7 +840,7 @@ mod tests {
     #[test]
     fn a_codex_conversation_is_connected_by_its_first_report() {
         let mut book = WorkstreamBook::default();
-        let stream = book.start(project(), None, AgentKind::Codex);
+        let stream = book.start(project(), None, AgentKind::Codex, None);
 
         // Beacon has a conversation and no id for it. The first report is the
         // only thing that ever says what Codex calls it.
@@ -741,7 +865,7 @@ mod tests {
         // belongs to something else, and writing it here would point Beacon's
         // conversation at a session it does not own.
         let mut book = WorkstreamBook::default();
-        let stream = book.start(project(), None, AgentKind::Codex);
+        let stream = book.start(project(), None, AgentKind::Codex, None);
         book.attribute(&project(), AgentKind::Codex, "the-real-one");
 
         assert_eq!(
@@ -758,7 +882,7 @@ mod tests {
     #[test]
     fn a_report_for_a_conversation_this_project_does_not_have_is_ignored() {
         let mut book = WorkstreamBook::default();
-        book.start(project(), None, AgentKind::Codex);
+        book.start(project(), None, AgentKind::Codex, None);
 
         // Another project's Codex, reporting through the same daemon.
         assert_eq!(
@@ -774,7 +898,7 @@ mod tests {
     #[test]
     fn a_claude_report_is_matched_on_the_id_it_already_wears() {
         let mut book = WorkstreamBook::default();
-        let stream = book.start(project(), None, AgentKind::Claude);
+        let stream = book.start(project(), None, AgentKind::Claude, None);
 
         let found = book
             .attribute(&project(), AgentKind::Claude, stream.id.as_str())
@@ -796,8 +920,8 @@ mod tests {
     #[test]
     fn one_agents_report_never_lands_on_the_others_conversation() {
         let mut book = WorkstreamBook::default();
-        let claude = book.start(project(), None, AgentKind::Claude);
-        let codex = book.start(project(), None, AgentKind::Codex);
+        let claude = book.start(project(), None, AgentKind::Claude, None);
+        let codex = book.start(project(), None, AgentKind::Codex, None);
 
         let found = book
             .attribute(&project(), AgentKind::Codex, "01a0-thread")
@@ -810,7 +934,7 @@ mod tests {
     #[test]
     fn a_claude_conversation_is_resumed_by_the_id_beacon_gave_it() {
         let mut book = WorkstreamBook::default();
-        let stream = book.start(project(), None, AgentKind::Claude);
+        let stream = book.start(project(), None, AgentKind::Claude, None);
 
         // Beacon chose this id and passed it with `--session-id`, so there is
         // nothing to learn and nothing to wait for.
@@ -821,7 +945,7 @@ mod tests {
     #[test]
     fn a_codex_conversation_has_nothing_to_resume_by_until_it_says_so() {
         let mut book = WorkstreamBook::default();
-        let stream = book.start(project(), None, AgentKind::Codex);
+        let stream = book.start(project(), None, AgentKind::Codex, None);
         let id = stream.id.clone();
 
         // The window that only exists for an agent that names itself: Beacon
@@ -838,7 +962,7 @@ mod tests {
     #[test]
     fn an_id_reported_again_is_not_a_change_worth_writing_to_disk() {
         let mut book = WorkstreamBook::default();
-        let id = book.start(project(), None, AgentKind::Codex).id;
+        let id = book.start(project(), None, AgentKind::Codex, None).id;
 
         assert!(book.learn_session_id(&id, "abc"));
         assert!(
@@ -860,7 +984,7 @@ mod tests {
     #[test]
     fn a_fork_belongs_to_the_same_agent_as_its_parent() {
         let mut book = WorkstreamBook::default();
-        let parent = book.start(project(), None, AgentKind::Codex);
+        let parent = book.start(project(), None, AgentKind::Codex, None);
 
         let forked = book.fork(&project(), &parent.id, None).unwrap();
 
@@ -916,7 +1040,12 @@ mod tests {
     #[test]
     fn starting_one_moves_the_project_into_it() {
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), Some("auth-refactor".into()), AgentKind::Claude);
+        let started = book.start(
+            project(),
+            Some("auth-refactor".into()),
+            AgentKind::Claude,
+            None,
+        );
 
         assert_eq!(
             book.current(&project(), AgentKind::Claude).unwrap().id,
@@ -937,7 +1066,7 @@ mod tests {
         // indistinguishable from one the user chose.
         let mut book = WorkstreamBook::default();
         for blank in [None, Some(String::new()), Some("   ".into())] {
-            let started = book.start(project(), blank, AgentKind::Claude);
+            let started = book.start(project(), blank, AgentKind::Claude, None);
             assert_eq!(started.name, None);
         }
     }
@@ -949,6 +1078,7 @@ mod tests {
             project(),
             Some("  payments-bug \n".into()),
             AgentKind::Claude,
+            None,
         );
         assert_eq!(started.name.as_deref(), Some("payments-bug"));
     }
@@ -956,12 +1086,13 @@ mod tests {
     #[test]
     fn a_project_lists_its_own_conversations_most_recent_first() {
         let mut book = WorkstreamBook::default();
-        let first = book.start(project(), Some("one".into()), AgentKind::Claude);
-        let second = book.start(project(), Some("two".into()), AgentKind::Claude);
+        let first = book.start(project(), Some("one".into()), AgentKind::Claude, None);
+        let second = book.start(project(), Some("two".into()), AgentKind::Claude, None);
         book.start(
             ProjectId("pj_other".into()),
             Some("elsewhere".into()),
             AgentKind::Claude,
+            None,
         );
 
         let listed = book.for_project(&project(), AgentKind::Claude);
@@ -973,8 +1104,8 @@ mod tests {
     #[test]
     fn working_in_one_moves_it_to_the_front() {
         let mut book = WorkstreamBook::default();
-        let first = book.start(project(), Some("one".into()), AgentKind::Claude);
-        book.start(project(), Some("two".into()), AgentKind::Claude);
+        let first = book.start(project(), Some("one".into()), AgentKind::Claude, None);
+        book.start(project(), Some("two".into()), AgentKind::Claude, None);
 
         book.touch(&first.id);
         assert_eq!(
@@ -988,7 +1119,7 @@ mod tests {
         // The guard that stops a stray id from moving another project into a
         // conversation that was never its own.
         let mut book = WorkstreamBook::default();
-        let mine = book.start(project(), Some("mine".into()), AgentKind::Claude);
+        let mine = book.start(project(), Some("mine".into()), AgentKind::Claude, None);
         let other = ProjectId("pj_other".into());
 
         assert!(book.resume(&other, &mine.id).is_none());
@@ -999,7 +1130,7 @@ mod tests {
     #[test]
     fn a_fork_records_where_it_came_from_and_becomes_current() {
         let mut book = WorkstreamBook::default();
-        let parent = book.start(project(), Some("dashboard".into()), AgentKind::Claude);
+        let parent = book.start(project(), Some("dashboard".into()), AgentKind::Claude, None);
         let forked = book
             .fork(&project(), &parent.id, Some("dashboard-experiment".into()))
             .unwrap();
@@ -1025,7 +1156,7 @@ mod tests {
     #[test]
     fn a_status_line_report_updates_the_conversation_it_names() {
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), Some("auth".into()), AgentKind::Claude);
+        let started = book.start(project(), Some("auth".into()), AgentKind::Claude, None);
 
         let observed = UsageReport {
             model: Some("Opus 5".into()),
@@ -1045,7 +1176,7 @@ mod tests {
         // Writing it onto whichever workstream happened to be current would put
         // another conversation's context percentage on this one.
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), Some("auth".into()), AgentKind::Claude);
+        let started = book.start(project(), Some("auth".into()), AgentKind::Claude, None);
 
         assert!(!book.observe(&report("11111111-2222-3333-4444-555555555555")));
         assert_eq!(book.get(&started.id).unwrap().model, None);
@@ -1054,7 +1185,7 @@ mod tests {
     #[test]
     fn a_report_with_no_session_id_changes_nothing() {
         let mut book = WorkstreamBook::default();
-        book.start(project(), Some("auth".into()), AgentKind::Claude);
+        book.start(project(), Some("auth".into()), AgentKind::Claude, None);
         assert!(!book.observe(&UsageReport::unknown(project())));
     }
 
@@ -1063,7 +1194,7 @@ mod tests {
         // `/rename` is Claude Code's, not Beacon's. The status line is how
         // Beacon finds out it happened.
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), None, AgentKind::Claude);
+        let started = book.start(project(), None, AgentKind::Claude, None);
 
         book.observe(&UsageReport {
             session_name: Some("payments-bug".into()),
@@ -1080,7 +1211,12 @@ mod tests {
     fn a_project_keeps_a_readable_number_of_conversations() {
         let mut book = WorkstreamBook::default();
         for n in 0..MAX_PER_PROJECT + 10 {
-            book.start(project(), Some(format!("stream-{n}")), AgentKind::Claude);
+            book.start(
+                project(),
+                Some(format!("stream-{n}")),
+                AgentKind::Claude,
+                None,
+            );
         }
         assert_eq!(
             book.for_project(&project(), AgentKind::Claude).len(),
@@ -1091,10 +1227,20 @@ mod tests {
     #[test]
     fn the_conversation_you_are_in_is_never_dropped_to_make_room() {
         let mut book = WorkstreamBook::default();
-        let oldest = book.start(project(), Some("the-one-i-am-in".into()), AgentKind::Claude);
+        let oldest = book.start(
+            project(),
+            Some("the-one-i-am-in".into()),
+            AgentKind::Claude,
+            None,
+        );
 
         for n in 0..MAX_PER_PROJECT + 5 {
-            let started = book.start(project(), Some(format!("stream-{n}")), AgentKind::Claude);
+            let started = book.start(
+                project(),
+                Some(format!("stream-{n}")),
+                AgentKind::Claude,
+                None,
+            );
             // Move back into the old one, so every later start has to consider
             // dropping it.
             book.resume(&project(), &oldest.id);
@@ -1112,10 +1258,20 @@ mod tests {
     fn the_cap_is_per_project_rather_than_overall() {
         let mut book = WorkstreamBook::default();
         let other = ProjectId("pj_other".into());
-        book.start(other.clone(), Some("theirs".into()), AgentKind::Claude);
+        book.start(
+            other.clone(),
+            Some("theirs".into()),
+            AgentKind::Claude,
+            None,
+        );
 
         for n in 0..MAX_PER_PROJECT + 5 {
-            book.start(project(), Some(format!("mine-{n}")), AgentKind::Claude);
+            book.start(
+                project(),
+                Some(format!("mine-{n}")),
+                AgentKind::Claude,
+                None,
+            );
         }
 
         assert_eq!(book.for_project(&other, AgentKind::Claude).len(), 1);
@@ -1124,12 +1280,13 @@ mod tests {
     #[test]
     fn removing_a_project_takes_its_conversations_with_it() {
         let mut book = WorkstreamBook::default();
-        book.start(project(), Some("one".into()), AgentKind::Claude);
-        book.start(project(), Some("two".into()), AgentKind::Claude);
+        book.start(project(), Some("one".into()), AgentKind::Claude, None);
+        book.start(project(), Some("two".into()), AgentKind::Claude, None);
         book.start(
             ProjectId("pj_other".into()),
             Some("theirs".into()),
             AgentKind::Claude,
+            None,
         );
 
         assert_eq!(book.forget_project(&project()), 2);
@@ -1140,7 +1297,7 @@ mod tests {
     #[test]
     fn a_conversation_does_not_exist_until_something_has_been_said_in_it() {
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), Some("auth".into()), AgentKind::Claude);
+        let started = book.start(project(), Some("auth".into()), AgentKind::Claude, None);
         assert!(!book.get(&started.id).unwrap().resumable);
 
         assert!(book.mark_resumable(&started.id));
@@ -1156,7 +1313,7 @@ mod tests {
         // until the first exchange, so the next start answered "No conversation
         // found with session ID" where the session should have been.
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), None, AgentKind::Claude);
+        let started = book.start(project(), None, AgentKind::Claude, None);
 
         // A status line report from a session that has not had a turn: the
         // window is empty and there is no cache to speak of.
@@ -1171,7 +1328,7 @@ mod tests {
     #[test]
     fn a_window_with_tokens_in_it_proves_there_is_a_conversation() {
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), None, AgentKind::Claude);
+        let started = book.start(project(), None, AgentKind::Claude, None);
 
         book.observe(&UsageReport {
             context_used_tokens: Some(12_400),
@@ -1185,7 +1342,7 @@ mod tests {
     fn a_cache_report_proves_it_too() {
         // Claude Code only describes the cache after the first API response.
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), None, AgentKind::Claude);
+        let started = book.start(project(), None, AgentKind::Claude, None);
 
         book.observe(&UsageReport {
             prompt_cache: Some(crate::protocol::PromptCache {
@@ -1207,7 +1364,7 @@ mod tests {
         // The flag decides `--session-id` against `--resume`, and a daemon that
         // came back and guessed would meet one refusal or the other.
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), None, AgentKind::Claude);
+        let started = book.start(project(), None, AgentKind::Claude, None);
         book.mark_resumable(&started.id);
 
         let line = serde_json::to_string(&book).unwrap();
@@ -1218,7 +1375,12 @@ mod tests {
     #[test]
     fn a_book_survives_a_round_trip_through_disk() {
         let mut book = WorkstreamBook::default();
-        let started = book.start(project(), Some("auth-refactor".into()), AgentKind::Claude);
+        let started = book.start(
+            project(),
+            Some("auth-refactor".into()),
+            AgentKind::Claude,
+            None,
+        );
         book.fork(&project(), &started.id, None);
 
         let line = serde_json::to_string(&book).unwrap();

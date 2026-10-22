@@ -714,10 +714,18 @@ fn spawn_daemon(binary: &Path, socket: &Path) -> Result<()> {
     // to be thrown away, leaving the window with "the session daemon did not
     // start listening" in every panel and nothing to act on.
     //
-    // Truncated on each start, so it holds one run and cannot grow without
-    // bound. Safe to write because the daemon already never logs a payload:
-    // what it carries is whatever is on the user's screen.
-    match std::fs::File::create(log_path(directory)) {
+    // One run per file, and the run before it kept beside it. Truncating on
+    // each start keeps this from growing without bound, but it also threw away
+    // the only account of what happened the *last* time the daemon ran — which
+    // is exactly the run somebody asks about, because the symptom is usually
+    // that they had to start Beacon again. Two files cost a few kilobytes and
+    // answer the question.
+    //
+    // Safe to write because the daemon already never logs a payload: what it
+    // carries is whatever is on the user's screen.
+    let path = log_path(directory);
+    let _ = std::fs::rename(&path, path.with_extension("log.1"));
+    match std::fs::File::create(&path) {
         Ok(file) => {
             command.stderr(file);
         }

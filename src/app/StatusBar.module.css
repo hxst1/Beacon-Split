@@ -20,18 +20,31 @@
   font-family: var(--font-mono);
 }
 
+/*
+ * Where the status bar says something short.
+ *
+ * Two colours and not one: this band was built for failures, and it was
+ * telling somebody that their account had switched — which worked — in the
+ * same red a crash arrives in. The shape stays; only the colour follows
+ * whether anything is wrong.
+ */
 .notice {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 1px 8px;
   border-radius: 99px;
-  background: color-mix(in oklab, var(--danger) 16%, transparent);
-  color: var(--danger);
+  background: color-mix(in oklab, var(--fg-3) 12%, transparent);
+  color: var(--fg-2);
   max-width: 60%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.notice[data-problem='true'] {
+  background: color-mix(in oklab, var(--danger) 16%, transparent);
+  color: var(--danger);
 }
 
 .dismiss {

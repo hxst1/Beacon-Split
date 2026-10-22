@@ -703,12 +703,20 @@ fn restart_signed_in(daemon: &Arc<Daemon>, waiting: &[SessionId]) {
 /// has just come back knows which conversation a project was in, and nothing
 /// else about it.
 fn prepare_agent(daemon: &Daemon, project: &ProjectId, agent: AgentKind, agents: bool) {
+    // The account this session is about to start on, which is not necessarily
+    // the one the last session ran on: somebody may have just switched. A
+    // conversation lives in the home it was had in, so one belonging to
+    // another account is not one this session can continue — asking it to is
+    // how `No conversation found with session ID` ends a session before it
+    // draws anything.
+    let home = daemon.sessions.wanted_account_home(project, agent);
+
     let created = {
         let mut book = daemon.workstreams.lock_or_recover();
-        match book.current(project, agent) {
+        match book.current_on(project, agent, home.as_deref()) {
             Some(_) => false,
             None => {
-                book.start(project.clone(), None, agent);
+                book.start(project.clone(), None, agent, home.as_deref());
                 true
             }
         }
@@ -720,13 +728,13 @@ fn prepare_agent(daemon: &Daemon, project: &ProjectId, agent: AgentKind, agents:
     let Some(stream) = daemon
         .workstreams
         .lock_or_recover()
-        .current(project, agent)
+        .current_on(project, agent, home.as_deref())
         .cloned()
     else {
         return;
     };
 
-    let stream = learn_from_disk(daemon, project, stream);
+    let stream = learn_from_disk(daemon, home.as_deref(), stream);
     let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, project, &stream, start, agents);
 }
@@ -739,11 +747,10 @@ fn prepare_agent(daemon: &Daemon, project: &ProjectId, agent: AgentKind, agents:
 /// already in use` on every start after the first, because the book still
 /// said the conversation had never been written and `--session-id` was asked
 /// for again. Claude Code's own transcript settles it either way.
-fn learn_from_disk(daemon: &Daemon, project: &ProjectId, stream: Workstream) -> Workstream {
+fn learn_from_disk(daemon: &Daemon, home: Option<&Path>, stream: Workstream) -> Workstream {
     let mut book = daemon.workstreams.lock_or_recover();
-    let home = daemon.sessions.account_home(project, AgentKind::Claude);
     if !learn_from(&mut book, &stream, |id| {
-        beacon_core::claude::conversation_written_under(home.as_deref(), id)
+        beacon_core::claude::conversation_written_under(home, id)
     }) {
         return stream;
     }
@@ -945,6 +952,23 @@ fn resume_workstream(
         ));
     }
 
+    // Refused here, where the reason can be said, rather than by Claude Code
+    // after the old session has already been closed: a conversation lives in
+    // the home it was had in, and the one in use is not that home.
+    let home = daemon
+        .sessions
+        .wanted_account_home(&project, AgentKind::Claude);
+    let elsewhere = daemon
+        .workstreams
+        .lock_or_recover()
+        .get(&id)
+        .is_some_and(|stream| !stream.is_on(home.as_deref()));
+    if elsewhere {
+        return Err(CoreError::invalid(
+            "that conversation was had on another account. Switch back to it in the panel              header to carry on there.",
+        ));
+    }
+
     let stream = daemon
         .workstreams
         .lock_or_recover()
@@ -952,7 +976,7 @@ fn resume_workstream(
         .ok_or_else(|| CoreError::invalid("that conversation is not one of this project's"))?;
     daemon.persist_workstreams();
 
-    let stream = learn_from_disk(daemon, &project, stream);
+    let stream = learn_from_disk(daemon, home.as_deref(), stream);
     let start = start_for(&daemon.workstreams.lock_or_recover(), &stream);
     set_launch(daemon, &project, &stream, start, agents);
     into_agent(daemon, &project, stream, cwd, size, shell)
@@ -1237,15 +1261,20 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
         }),
 
         Request::Workstreams { project, agent } => {
+            // Only the account in use. A conversation had on another one
+            // cannot be opened from here — Claude Code answers "No
+            // conversation found with session ID" and the session exits — so
+            // listing it would be offering something that does not work.
+            let home = sessions.wanted_account_home(&project, agent);
             let book = daemon.workstreams.lock_or_recover();
             Ok(Reply::Workstreams {
                 workstreams: book
-                    .for_project(&project, agent)
+                    .for_project_on(&project, agent, home.as_deref())
                     .into_iter()
                     .cloned()
                     .collect(),
                 current: book
-                    .current(&project, agent)
+                    .current_on(&project, agent, home.as_deref())
                     .map(|stream| stream.id.clone()),
             })
         }
@@ -1262,10 +1291,13 @@ fn dispatch(daemon: &Daemon, request: Request) -> Outcome {
             accounts,
         } => {
             sessions.set_account_homes(project.clone(), accounts);
-            let stream = daemon
-                .workstreams
-                .lock_or_recover()
-                .start(project.clone(), name, agent);
+            let home = sessions.wanted_account_home(&project, agent);
+            let stream = daemon.workstreams.lock_or_recover().start(
+                project.clone(),
+                name,
+                agent,
+                home.as_deref(),
+            );
             daemon.persist_workstreams();
             set_launch(
                 daemon,
@@ -1448,7 +1480,7 @@ mod tests {
     /// A book holding one conversation, handed back with it.
     fn book_with(agent: AgentKind, resumable: bool) -> (WorkstreamBook, Workstream) {
         let mut book = WorkstreamBook::default();
-        let stream = book.start(ProjectId("pj_x".into()), None, agent);
+        let stream = book.start(ProjectId("pj_x".into()), None, agent, None);
         if resumable {
             book.mark_resumable(&stream.id);
         }
@@ -1535,7 +1567,7 @@ mod tests {
         // forked from, which is the whole reason it exists.
         let mut book = WorkstreamBook::default();
         let project = ProjectId("pj_x".into());
-        let parent = book.start(project.clone(), None, AgentKind::Claude);
+        let parent = book.start(project.clone(), None, AgentKind::Claude, None);
         book.mark_resumable(&parent.id);
         let forked = book.fork(&project, &parent.id, None).unwrap();
 
@@ -1551,7 +1583,7 @@ mod tests {
     fn a_codex_fork_names_its_parent_as_codex_knows_it() {
         let mut book = WorkstreamBook::default();
         let project = ProjectId("pj_x".into());
-        let parent = book.start(project.clone(), None, AgentKind::Codex);
+        let parent = book.start(project.clone(), None, AgentKind::Codex, None);
         book.mark_resumable(&parent.id);
         book.learn_session_id(&parent.id, REPORTED);
 
@@ -1570,7 +1602,7 @@ mod tests {
     fn a_fork_whose_parent_has_no_reported_id_starts_fresh_instead() {
         let mut book = WorkstreamBook::default();
         let project = ProjectId("pj_x".into());
-        let parent = book.start(project.clone(), None, AgentKind::Codex);
+        let parent = book.start(project.clone(), None, AgentKind::Codex, None);
         let forked = book.fork(&project, &parent.id, None).unwrap();
 
         assert_eq!(start_for(&book, &forked), ConversationStart::New);
@@ -1583,7 +1615,7 @@ mod tests {
         // Beacon chose that id, so the row is only where it was written down.
         let mut book = WorkstreamBook::default();
         let project = ProjectId("pj_x".into());
-        let mut orphan = book.start(project.clone(), None, AgentKind::Claude);
+        let mut orphan = book.start(project.clone(), None, AgentKind::Claude, None);
         orphan.forked_from = Some(WorkstreamId(PARENT.into()));
 
         assert_eq!(

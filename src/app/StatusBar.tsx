@@ -13,6 +13,7 @@ import styles from './StatusBar.module.css'
 export function StatusBar(): React.ReactElement {
   const project = useBeacon(selectActiveProject)
   const notice = useBeacon((s) => s.notice)
+  const noticeIsProblem = useBeacon((s) => s.noticeIsProblem)
   // Installed, as the requirements check found it. Recommended rather than
   // required, so its absence is normal and says nothing here.
   const hasCodex = useBeacon((s) => !s.missing.some((entry) => entry.id === 'codex'))
@@ -54,7 +55,7 @@ export function StatusBar(): React.ReactElement {
       ) : null}
 
       {notice ? (
-        <span className={styles['notice']}>
+        <span className={styles['notice']} data-problem={noticeIsProblem}>
           {notice}
           <button type="button" className={styles['dismiss']} onClick={dismissNotice}>
             ✕
