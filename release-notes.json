@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.10.0",
+    "date": "2026-10-22",
+    "summary": "Each agent can be signed in to more than one account, and its panel says which one it is using.",
+    "changes": [
+      "Each agent's panel header names the account it is signed in to. Claude Code is asked for it — the email and the plan — so what is on screen is what Claude Code itself reports. Codex has no way to say which account it is on, only how it signed in, so it shows that and the name you gave the account.",
+      "That name opens a menu, and one click changes which account the agent uses. An account is a folder the agent keeps its own settings, history and sign-in in — Beacon points the agent at it with the variable the agent documents for exactly this, and nothing else. No credential of yours is read, written, copied or moved, and there is no sign-in screen in Beacon: Add an account makes an empty folder, and you sign in by running the agent's own login in the project's terminal, where it will already be pointed at the new account.",
+      "Switching applies the next time that agent starts, which the menu says rather than leaving you to notice. A running agent keeps the account it was started with — that is what an environment variable is — and the conversation does not come along either, because it stays with the account it happened in. The panel's Restart button is in the same header.",
+      "Whatever Beacon has been allowed to install into an agent's configuration goes into every account, and a new account inherits it. Without that, an account you switched to would have no hooks: no amber tab, no \"waiting for you\", and no resuming a conversation. Forgetting an account leaves its folder alone — it holds your settings and a live credential, and forgetting is reversible where deleting is not.",
+      "Check again in Settings → Requirements used to update only that screen. Installing Claude Code, pressing it and going back left the panel still showing the install instructions. It tells the whole window now.",
+      "This update replaces the session daemon once, so anything running when you install it ends. The daemon has to be the one that understands which account to start a session with; an older one would ignore it and start your work on the wrong subscription without anything saying so."
+    ]
+  },
+  {
     "version": "0.9.3",
     "date": "2026-10-21",
     "summary": "Variables can be added to a .env and changed from its view, and the editor panel has one close button.",
