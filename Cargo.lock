@@ -285,6 +285,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tracing",
  "tracing-subscriber",
+ "webkit2gtk",
  "window-vibrancy",
  "windows-sys 0.61.2",
 ]
