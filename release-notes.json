@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.10.4",
+    "date": "2026-10-26",
+    "summary": "Updating no longer opens on \"could not reach the session daemon\".",
+    "changes": [
+      "The first window after updating to 0.10.3 could open on \"could not reach the session daemon: Broken pipe\" and work only once started again. Replacing the previous version's daemon, it reconnected while that daemon was still closing — which, for a moment, still accepts a connection, and either cuts it or answers as itself. The window now waits that moment out and connects to the new daemon. The swap is done by the new window, so this already holds for the update to this version."
+    ]
+  },
+  {
     "version": "0.10.3",
     "date": "2026-10-26",
     "summary": "Updates now reach the session daemon, and a new account keeps your settings without your keys.",
