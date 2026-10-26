@@ -215,10 +215,65 @@ pub fn settings_file(agent: AgentKind) -> &'static str {
 /// the wrong one after Beacon moved.
 const BEACONS_OWN: [&str; 2] = ["hooks", "statusLine"];
 
+/// Settings that hand Claude Code a credential, which a new account must not
+/// inherit: the whole point of a second account is a second credential, and a
+/// copied `apiKeyHelper` would quietly go on paying with the first one — the
+/// wrong-subscription mistake the accounts feature exists to stop.
+const CREDENTIAL_SETTINGS: [&str; 4] = [
+    "apiKeyHelper",
+    "awsAuthRefresh",
+    "awsCredentialExport",
+    "otelHeadersHelper",
+];
+
+/// Whether an environment variable's name says it holds a secret.
+///
+/// By shape rather than by a list of names, because the names that matter are
+/// whatever the person's tools use — `ANTHROPIC_API_KEY` and `GITHUB_TOKEN`
+/// alike. Dropping a variable that only looked like one costs a line to put
+/// back; copying a real one costs the separation between accounts.
+pub fn looks_like_a_secret(name: &str) -> bool {
+    let name = name.to_ascii_uppercase();
+    [
+        "KEY",
+        "TOKEN",
+        "SECRET",
+        "PASSWORD",
+        "PASSWD",
+        "CREDENTIAL",
+        "AUTH",
+    ]
+    .iter()
+    .any(|part| name.contains(part))
+}
+
+/// What to write into a new Codex account's `config.toml`, given the
+/// machine's own.
+///
+/// Codex keeps its login in `auth.json`, but its configuration can still carry
+/// a credential: a provider's `experimental_bearer_token`, an `http_headers`
+/// with an `Authorization`, a token in an MCP server's `env`. Rather than parse
+/// another program's schema to cut those out, a file that shows any of them is
+/// not copied at all — the account works without it, and the person's
+/// preferences are not worth a second copy of their secrets.
+pub fn codex_config_for_a_new_account(own: &str) -> Option<String> {
+    let carries_a_secret = own.lines().any(|line| {
+        let line = line.trim();
+        if line.starts_with('#') {
+            return false;
+        }
+        let key = line.split('=').next().unwrap_or_default();
+        line.contains('=') && (looks_like_a_secret(key) || line.contains("Authorization"))
+    });
+    (!carries_a_secret && !own.trim().is_empty()).then(|| own.to_string())
+}
+
 /// What to write into a new account's settings, given the ones the machine's
 /// own account has.
 ///
-/// Everything the person had, less the entries Beacon manages itself. Not a
+/// Everything the person had, less the entries Beacon manages itself and
+/// anything that hands over a credential (see `CREDENTIAL_SETTINGS` and
+/// `looks_like_a_secret`). Not a
 /// chosen list of preferences to keep: that would be a table of guesses about
 /// another program's schema, wrong the moment Claude Code adds a key, which is
 /// the thing ADR-068 exists to refuse. The file is theirs; it comes across as
@@ -237,8 +292,15 @@ const BEACONS_OWN: [&str; 2] = ["hooks", "statusLine"];
 pub fn settings_for_a_new_account(own: &str) -> Option<String> {
     let mut settings: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(own).ok()?;
-    for key in BEACONS_OWN {
-        settings.remove(key);
+    for key in BEACONS_OWN.iter().chain(&CREDENTIAL_SETTINGS) {
+        settings.remove(*key);
+    }
+    // The environment comes across less anything that looks like a secret.
+    if let Some(serde_json::Value::Object(env)) = settings.get_mut("env") {
+        env.retain(|name, _| !looks_like_a_secret(name));
+        if env.is_empty() {
+            settings.remove("env");
+        }
     }
     if settings.is_empty() {
         return None;
@@ -446,6 +508,59 @@ mod tests {
         // the path this build has today and the wrong one after Beacon moves.
         assert!(back.get("hooks").is_none());
         assert!(back.get("statusLine").is_none());
+    }
+
+    /// A second account is a second credential. A copied `apiKeyHelper` or
+    /// API key would go on paying with the first one.
+    #[test]
+    fn a_new_account_does_not_inherit_a_credential() {
+        let own = r#"{
+            "theme": "dark",
+            "apiKeyHelper": "~/bin/key.sh",
+            "awsCredentialExport": "~/bin/aws.sh",
+            "env": {
+                "ANTHROPIC_API_KEY": "sk-ant-…",
+                "GITHUB_TOKEN": "ghp_…",
+                "DISABLE_TELEMETRY": "1"
+            }
+        }"#;
+        let back: serde_json::Value =
+            serde_json::from_str(&settings_for_a_new_account(own).unwrap()).unwrap();
+
+        assert_eq!(back["theme"], "dark");
+        assert!(back.get("apiKeyHelper").is_none());
+        assert!(back.get("awsCredentialExport").is_none());
+        assert!(back["env"].get("ANTHROPIC_API_KEY").is_none());
+        assert!(back["env"].get("GITHUB_TOKEN").is_none());
+        assert_eq!(back["env"]["DISABLE_TELEMETRY"], "1");
+
+        // An environment that was only secrets leaves no empty object behind.
+        let only = r#"{"theme": "dark", "env": {"ANTHROPIC_AUTH_TOKEN": "x"}}"#;
+        let back: serde_json::Value =
+            serde_json::from_str(&settings_for_a_new_account(only).unwrap()).unwrap();
+        assert!(back.get("env").is_none());
+    }
+
+    #[test]
+    fn a_codex_config_holding_a_secret_is_not_copied() {
+        let plain = "model = \"gpt-5\"\n[projects.\"/home/me\"]\ntrust_level = \"trusted\"\n";
+        assert_eq!(
+            codex_config_for_a_new_account(plain).as_deref(),
+            Some(plain)
+        );
+
+        for secret in [
+            "[model_providers.x]\nexperimental_bearer_token = \"abc\"\n",
+            "[mcp_servers.gh.env]\nGITHUB_TOKEN = \"ghp\"\n",
+            "[model_providers.x]\nhttp_headers = { Authorization = \"Bearer abc\" }\n",
+        ] {
+            assert_eq!(codex_config_for_a_new_account(secret), None, "{secret}");
+        }
+
+        // A comment that mentions a token is not one.
+        let commented = "# put your api_key here\nmodel = \"gpt-5\"\n";
+        assert!(codex_config_for_a_new_account(commented).is_some());
+        assert_eq!(codex_config_for_a_new_account("  \n"), None);
     }
 
     #[test]

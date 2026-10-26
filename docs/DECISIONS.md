@@ -2497,9 +2497,15 @@ would be a table of guesses about another program's schema, wrong the moment a
 key is added, which is what ADR-068 exists to refuse. The file is theirs and it
 comes across as theirs.
 
-The credential is still never touched. Both agents keep it in a different file
-— `.credentials.json` or the keychain, `auth.json` — and that separation is
-what makes copying the configuration safe to do at all.
+The credential is still never copied. Both agents keep their login in a
+different file — `.credentials.json` or the keychain, `auth.json` — but the
+preferences can carry one too, and those are left behind: Claude Code's
+`apiKeyHelper` and its AWS and telemetry helpers, any `env` variable whose name
+looks like a secret (`*KEY*`, `*TOKEN*`, `*SECRET*`, …), and a Codex
+`config.toml` that shows a bearer token, an `Authorization` header or a
+secret-looking key is not copied at all. A second account is a second
+credential; a copied key would go on paying with the first one, which is the
+mistake this feature exists to stop.
 
 The sign-in watcher asks one `claude auth status` for every panel waiting on a
 sign-in screen, which is right as long as they are all on one account. When

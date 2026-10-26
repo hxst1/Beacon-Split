@@ -59,9 +59,10 @@ pub fn add_account(
 /// Two things, and the difference between them matters. The **preferences**
 /// are copied: they are the person's, they were not written for one account,
 /// and not copying them is how a setting somebody turned off came back on in
-/// an account Beacon made for them. The **credential is never touched** — it
-/// is a different file in both agents, and that separation is what makes this
-/// safe to do at all.
+/// an account Beacon made for them. The **credential is never copied**: the
+/// login is a different file in both agents, and what in the preferences can
+/// still carry one — an `apiKeyHelper`, a key in `env`, a bearer token in
+/// Codex's providers — is left behind.
 ///
 /// What Beacon installs into another application's configuration is installed
 /// here too, not copied: the code that does it knows what this build's hook
@@ -100,13 +101,20 @@ fn carry_over(agent: AgentKind, profile: &Profile) -> Result<(), beacon_core::er
             }
         }
         AgentKind::Codex => {
-            // Copied whole: Codex keeps its credential in `auth.json`, so its
-            // configuration file is preferences and the servers the person
-            // set up, and none of it is a secret.
+            // Codex keeps its login in `auth.json`, but its configuration can
+            // still name a credential — a bearer token, a header, a token in a
+            // server's environment. A file that shows one is not copied.
             if let Ok(theirs) = std::fs::read_to_string(own.join(file)) {
-                let at = profile.home.join(file);
-                std::fs::write(&at, theirs)
-                    .map_err(|err| beacon_core::error::CoreError::io(&at, err))?;
+                match beacon_core::account::codex_config_for_a_new_account(&theirs) {
+                    Some(carried) => {
+                        let at = profile.home.join(file);
+                        std::fs::write(&at, carried)
+                            .map_err(|err| beacon_core::error::CoreError::io(&at, err))?;
+                    }
+                    None => tracing::info!(
+                        "not copying Codex's config.toml into the new account: it holds what looks like a credential"
+                    ),
+                }
             }
 
             // Codex keeps a hash of every hook it has been shown and runs none
