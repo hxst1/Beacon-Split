@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.10.2",
+    "date": "2026-10-26",
+    "summary": "On Linux with an NVIDIA card the window no longer flashes empty.",
+    "changes": [
+      "With WebKitGTK 2.54 and NVIDIA's driver, the window flashed empty several times a second while a project was working: for a frame only what had just changed was drawn — the tab's pulsing dot, the terminal cursor, the scrollbar — and the desktop showed through the rest. A part nothing redrew could stay blank. It came from the way Beacon had to draw on NVIDIA until now, without DMA-BUF, which WebKitGTK 2.54 no longer does correctly; on 2.54 Beacon draws through DMA-BUF again, and every frame arrives whole.",
+      "On an older WebKitGTK nothing changes. If your machine still closes the window on start with WebKitGTK 2.54, setting WEBKIT_DISABLE_DMABUF_RENDERER=1 brings the old way back, and Beacon leaves that choice alone."
+    ]
+  },
+  {
     "version": "0.10.1",
     "date": "2026-10-22",
     "summary": "Switching account works: 0.10.0 killed the session instead of opening it.",
