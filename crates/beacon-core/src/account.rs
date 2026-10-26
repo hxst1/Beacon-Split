@@ -195,6 +195,57 @@ impl AccountHomes {
     }
 }
 
+/// The file an agent keeps its preferences in, inside its configuration home.
+///
+/// Its preferences and not its credential: those are separate files in both
+/// agents, which is what makes carrying one over without the other a line
+/// Beacon can hold.
+pub fn settings_file(agent: AgentKind) -> &'static str {
+    match agent {
+        AgentKind::Claude => "settings.json",
+        AgentKind::Codex => "config.toml",
+    }
+}
+
+/// Beacon's own entries in Claude Code's settings, which a new account should
+/// not inherit by copy.
+///
+/// They are installed rather than copied, by the code that knows what this
+/// build's hook command is — a copied one would name the right path today and
+/// the wrong one after Beacon moved.
+const BEACONS_OWN: [&str; 2] = ["hooks", "statusLine"];
+
+/// What to write into a new account's settings, given the ones the machine's
+/// own account has.
+///
+/// Everything the person had, less the entries Beacon manages itself. Not a
+/// chosen list of preferences to keep: that would be a table of guesses about
+/// another program's schema, wrong the moment Claude Code adds a key, which is
+/// the thing ADR-068 exists to refuse. The file is theirs; it comes across as
+/// theirs.
+///
+/// This is a correction. Beacon used to copy none of it, reasoning that those
+/// files name paths and hold keys — true of the MCP servers, which live
+/// elsewhere, and false of the preferences, which is what the file mostly is.
+/// What that cost was concrete: `remoteControlAtStartup` turned off on
+/// purpose, a second account added, and Claude Code starting with remote
+/// control on because the new home had never heard of the preference.
+///
+/// `None` when there is nothing worth writing — no settings of their own, or a
+/// file this cannot read. An unreadable one is left alone rather than
+/// rewritten: it is still theirs, and the account works without it.
+pub fn settings_for_a_new_account(own: &str) -> Option<String> {
+    let mut settings: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(own).ok()?;
+    for key in BEACONS_OWN {
+        settings.remove(key);
+    }
+    if settings.is_empty() {
+        return None;
+    }
+    serde_json::to_string_pretty(&settings).ok()
+}
+
 /// The variable that tells an agent where its configuration lives.
 ///
 /// The agents' own, documented and supported. Beacon invents nothing here.
@@ -365,6 +416,58 @@ mod tests {
 
         // And an agent with no accounts has exactly one place to install into.
         assert_eq!(book.every_home(AgentKind::Codex).len(), 1);
+    }
+
+    /// The preference that found this: turned off on purpose in one account,
+    /// and on again in the next because the new home had never heard of it.
+    #[test]
+    fn a_new_account_starts_with_the_preferences_the_machine_already_had() {
+        let own = r#"{
+            "remoteControlAtStartup": false,
+            "theme": "dark",
+            "model": "opus",
+            "permissions": { "allow": ["Bash(git *)"] },
+            "hooks": { "Stop": [] },
+            "statusLine": { "type": "command", "command": "beacon statusline" }
+        }"#;
+
+        let written = settings_for_a_new_account(own).expect("there is plenty worth writing");
+        let back: serde_json::Value = serde_json::from_str(&written).unwrap();
+
+        assert_eq!(back["remoteControlAtStartup"], false);
+        assert_eq!(back["theme"], "dark");
+        assert_eq!(back["model"], "opus");
+        assert!(
+            back["permissions"].is_object(),
+            "permissions are theirs too"
+        );
+
+        // Beacon's own entries are installed, not copied: a copied hook names
+        // the path this build has today and the wrong one after Beacon moves.
+        assert!(back.get("hooks").is_none());
+        assert!(back.get("statusLine").is_none());
+    }
+
+    #[test]
+    fn nothing_of_their_own_means_nothing_to_write() {
+        // Somebody whose settings hold only what Beacon put there gets a new
+        // account with no settings file at all, rather than an empty object.
+        assert_eq!(
+            settings_for_a_new_account(r#"{"hooks": {}, "statusLine": {}}"#),
+            None
+        );
+        assert_eq!(settings_for_a_new_account("{}"), None);
+
+        // And a file this cannot read is left where it is. It is still theirs,
+        // and the account works without it.
+        assert_eq!(settings_for_a_new_account("not json at all"), None);
+        assert_eq!(settings_for_a_new_account("[1, 2, 3]"), None);
+    }
+
+    #[test]
+    fn each_agent_keeps_its_preferences_where_it_keeps_them() {
+        assert_eq!(settings_file(AgentKind::Claude), "settings.json");
+        assert_eq!(settings_file(AgentKind::Codex), "config.toml");
     }
 
     /// These are the agents' own variables. Beacon inventing a name here
