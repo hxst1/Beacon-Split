@@ -195,6 +195,119 @@ impl AccountHomes {
     }
 }
 
+/// The file an agent keeps its preferences in, inside its configuration home.
+///
+/// Its preferences and not its credential: those are separate files in both
+/// agents, which is what makes carrying one over without the other a line
+/// Beacon can hold.
+pub fn settings_file(agent: AgentKind) -> &'static str {
+    match agent {
+        AgentKind::Claude => "settings.json",
+        AgentKind::Codex => "config.toml",
+    }
+}
+
+/// Beacon's own entries in Claude Code's settings, which a new account should
+/// not inherit by copy.
+///
+/// They are installed rather than copied, by the code that knows what this
+/// build's hook command is — a copied one would name the right path today and
+/// the wrong one after Beacon moved.
+const BEACONS_OWN: [&str; 2] = ["hooks", "statusLine"];
+
+/// Settings that hand Claude Code a credential, which a new account must not
+/// inherit: the whole point of a second account is a second credential, and a
+/// copied `apiKeyHelper` would quietly go on paying with the first one — the
+/// wrong-subscription mistake the accounts feature exists to stop.
+const CREDENTIAL_SETTINGS: [&str; 4] = [
+    "apiKeyHelper",
+    "awsAuthRefresh",
+    "awsCredentialExport",
+    "otelHeadersHelper",
+];
+
+/// Whether an environment variable's name says it holds a secret.
+///
+/// By shape rather than by a list of names, because the names that matter are
+/// whatever the person's tools use — `ANTHROPIC_API_KEY` and `GITHUB_TOKEN`
+/// alike. Dropping a variable that only looked like one costs a line to put
+/// back; copying a real one costs the separation between accounts.
+pub fn looks_like_a_secret(name: &str) -> bool {
+    let name = name.to_ascii_uppercase();
+    [
+        "KEY",
+        "TOKEN",
+        "SECRET",
+        "PASSWORD",
+        "PASSWD",
+        "CREDENTIAL",
+        "AUTH",
+    ]
+    .iter()
+    .any(|part| name.contains(part))
+}
+
+/// What to write into a new Codex account's `config.toml`, given the
+/// machine's own.
+///
+/// Codex keeps its login in `auth.json`, but its configuration can still carry
+/// a credential: a provider's `experimental_bearer_token`, an `http_headers`
+/// with an `Authorization`, a token in an MCP server's `env`. Rather than parse
+/// another program's schema to cut those out, a file that shows any of them is
+/// not copied at all — the account works without it, and the person's
+/// preferences are not worth a second copy of their secrets.
+pub fn codex_config_for_a_new_account(own: &str) -> Option<String> {
+    let carries_a_secret = own.lines().any(|line| {
+        let line = line.trim();
+        if line.starts_with('#') {
+            return false;
+        }
+        let key = line.split('=').next().unwrap_or_default();
+        line.contains('=') && (looks_like_a_secret(key) || line.contains("Authorization"))
+    });
+    (!carries_a_secret && !own.trim().is_empty()).then(|| own.to_string())
+}
+
+/// What to write into a new account's settings, given the ones the machine's
+/// own account has.
+///
+/// Everything the person had, less the entries Beacon manages itself and
+/// anything that hands over a credential (see `CREDENTIAL_SETTINGS` and
+/// `looks_like_a_secret`). Not a
+/// chosen list of preferences to keep: that would be a table of guesses about
+/// another program's schema, wrong the moment Claude Code adds a key, which is
+/// the thing ADR-068 exists to refuse. The file is theirs; it comes across as
+/// theirs.
+///
+/// This is a correction. Beacon used to copy none of it, reasoning that those
+/// files name paths and hold keys — true of the MCP servers, which live
+/// elsewhere, and false of the preferences, which is what the file mostly is.
+/// What that cost was concrete: `remoteControlAtStartup` turned off on
+/// purpose, a second account added, and Claude Code starting with remote
+/// control on because the new home had never heard of the preference.
+///
+/// `None` when there is nothing worth writing — no settings of their own, or a
+/// file this cannot read. An unreadable one is left alone rather than
+/// rewritten: it is still theirs, and the account works without it.
+pub fn settings_for_a_new_account(own: &str) -> Option<String> {
+    let mut settings: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(own).ok()?;
+    for key in BEACONS_OWN.iter().chain(&CREDENTIAL_SETTINGS) {
+        settings.remove(*key);
+    }
+    // The environment comes across less anything that looks like a secret.
+    if let Some(serde_json::Value::Object(env)) = settings.get_mut("env") {
+        env.retain(|name, _| !looks_like_a_secret(name));
+        if env.is_empty() {
+            settings.remove("env");
+        }
+    }
+    if settings.is_empty() {
+        return None;
+    }
+    serde_json::to_string_pretty(&settings).ok()
+}
+
 /// The variable that tells an agent where its configuration lives.
 ///
 /// The agents' own, documented and supported. Beacon invents nothing here.
@@ -365,6 +478,111 @@ mod tests {
 
         // And an agent with no accounts has exactly one place to install into.
         assert_eq!(book.every_home(AgentKind::Codex).len(), 1);
+    }
+
+    /// The preference that found this: turned off on purpose in one account,
+    /// and on again in the next because the new home had never heard of it.
+    #[test]
+    fn a_new_account_starts_with_the_preferences_the_machine_already_had() {
+        let own = r#"{
+            "remoteControlAtStartup": false,
+            "theme": "dark",
+            "model": "opus",
+            "permissions": { "allow": ["Bash(git *)"] },
+            "hooks": { "Stop": [] },
+            "statusLine": { "type": "command", "command": "beacon statusline" }
+        }"#;
+
+        let written = settings_for_a_new_account(own).expect("there is plenty worth writing");
+        let back: serde_json::Value = serde_json::from_str(&written).unwrap();
+
+        assert_eq!(back["remoteControlAtStartup"], false);
+        assert_eq!(back["theme"], "dark");
+        assert_eq!(back["model"], "opus");
+        assert!(
+            back["permissions"].is_object(),
+            "permissions are theirs too"
+        );
+
+        // Beacon's own entries are installed, not copied: a copied hook names
+        // the path this build has today and the wrong one after Beacon moves.
+        assert!(back.get("hooks").is_none());
+        assert!(back.get("statusLine").is_none());
+    }
+
+    /// A second account is a second credential. A copied `apiKeyHelper` or
+    /// API key would go on paying with the first one.
+    #[test]
+    fn a_new_account_does_not_inherit_a_credential() {
+        let own = r#"{
+            "theme": "dark",
+            "apiKeyHelper": "~/bin/key.sh",
+            "awsCredentialExport": "~/bin/aws.sh",
+            "env": {
+                "ANTHROPIC_API_KEY": "sk-ant-…",
+                "GITHUB_TOKEN": "ghp_…",
+                "DISABLE_TELEMETRY": "1"
+            }
+        }"#;
+        let back: serde_json::Value =
+            serde_json::from_str(&settings_for_a_new_account(own).unwrap()).unwrap();
+
+        assert_eq!(back["theme"], "dark");
+        assert!(back.get("apiKeyHelper").is_none());
+        assert!(back.get("awsCredentialExport").is_none());
+        assert!(back["env"].get("ANTHROPIC_API_KEY").is_none());
+        assert!(back["env"].get("GITHUB_TOKEN").is_none());
+        assert_eq!(back["env"]["DISABLE_TELEMETRY"], "1");
+
+        // An environment that was only secrets leaves no empty object behind.
+        let only = r#"{"theme": "dark", "env": {"ANTHROPIC_AUTH_TOKEN": "x"}}"#;
+        let back: serde_json::Value =
+            serde_json::from_str(&settings_for_a_new_account(only).unwrap()).unwrap();
+        assert!(back.get("env").is_none());
+    }
+
+    #[test]
+    fn a_codex_config_holding_a_secret_is_not_copied() {
+        let plain = "model = \"gpt-5\"\n[projects.\"/home/me\"]\ntrust_level = \"trusted\"\n";
+        assert_eq!(
+            codex_config_for_a_new_account(plain).as_deref(),
+            Some(plain)
+        );
+
+        for secret in [
+            "[model_providers.x]\nexperimental_bearer_token = \"abc\"\n",
+            "[mcp_servers.gh.env]\nGITHUB_TOKEN = \"ghp\"\n",
+            "[model_providers.x]\nhttp_headers = { Authorization = \"Bearer abc\" }\n",
+        ] {
+            assert_eq!(codex_config_for_a_new_account(secret), None, "{secret}");
+        }
+
+        // A comment that mentions a token is not one.
+        let commented = "# put your api_key here\nmodel = \"gpt-5\"\n";
+        assert!(codex_config_for_a_new_account(commented).is_some());
+        assert_eq!(codex_config_for_a_new_account("  \n"), None);
+    }
+
+    #[test]
+    fn nothing_of_their_own_means_nothing_to_write() {
+        // Somebody whose settings hold only what Beacon put there gets a new
+        // account with no settings file at all, rather than an empty object.
+        assert_eq!(
+            settings_for_a_new_account(r#"{"hooks": {}, "statusLine": {}}"#),
+            None
+        );
+        assert_eq!(settings_for_a_new_account("{}"), None);
+
+        // And a file this cannot read is left where it is. It is still theirs,
+        // and the account works without it.
+        assert_eq!(settings_for_a_new_account("not json at all"), None);
+        assert_eq!(settings_for_a_new_account("[1, 2, 3]"), None);
+    }
+
+    #[test]
+    fn each_agent_keeps_its_preferences_where_it_keeps_them() {
+        assert_eq!(settings_file(AgentKind::Claude), "settings.json");
+        assert_eq!(settings_file(AgentKind::Codex), "config.toml");
     }
 
     /// These are the agents' own variables. Beacon inventing a name here

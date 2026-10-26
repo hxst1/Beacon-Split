@@ -54,27 +54,69 @@ pub fn add_account(
     Ok(state.beacon().snapshot())
 }
 
-/// Installs into a new home whatever is installed in the machine's own.
+/// Gives a new account what the machine's own already had.
+///
+/// Two things, and the difference between them matters. The **preferences**
+/// are copied: they are the person's, they were not written for one account,
+/// and not copying them is how a setting somebody turned off came back on in
+/// an account Beacon made for them. The **credential is never copied**: the
+/// login is a different file in both agents, and what in the preferences can
+/// still carry one — an `apiKeyHelper`, a key in `env`, a bearer token in
+/// Codex's providers — is left behind.
+///
+/// What Beacon installs into another application's configuration is installed
+/// here too, not copied: the code that does it knows what this build's hook
+/// command is, and a copied one would name the right path today and the wrong
+/// one after Beacon moved. Where it was never installed, nothing is installed
+/// here either.
 fn carry_over(agent: AgentKind, profile: &Profile) -> Result<(), beacon_core::error::CoreError> {
     let own = beacon_core::account::home_or_default(agent, None);
+    let file = beacon_core::account::settings_file(agent);
 
     match agent {
         AgentKind::Claude => {
+            // Read before written, and only written where there was something
+            // to write. A home with no settings of its own is left with none.
+            if let Ok(theirs) = std::fs::read_to_string(own.join(file))
+                && let Some(carried) = beacon_core::account::settings_for_a_new_account(&theirs)
+            {
+                let at = profile.home.join(file);
+                std::fs::write(&at, carried)
+                    .map_err(|err| beacon_core::error::CoreError::io(&at, err))?;
+            }
+
             let command = super::hook_command();
             let command = std::path::Path::new(&command);
-            let theirs = profile.home.join("settings.json");
+            let own_settings = own.join(file);
+            let theirs = profile.home.join(file);
 
-            if claude_hooks::status_at(&own.join("settings.json"), command)?
+            if claude_hooks::status_at(&own_settings, command)?
                 == claude_hooks::HookStatus::Installed
             {
                 claude_hooks::install_at(&theirs, command)?;
             }
-            if claude_hooks::status_line_installed_at(&own.join("settings.json"))? {
+            if claude_hooks::status_line_installed_at(&own_settings)? {
                 let line = super::status_line_command();
                 claude_hooks::install_status_line_at(&theirs, std::path::Path::new(&line))?;
             }
         }
         AgentKind::Codex => {
+            // Codex keeps its login in `auth.json`, but its configuration can
+            // still name a credential — a bearer token, a header, a token in a
+            // server's environment. A file that shows one is not copied.
+            if let Ok(theirs) = std::fs::read_to_string(own.join(file)) {
+                match beacon_core::account::codex_config_for_a_new_account(&theirs) {
+                    Some(carried) => {
+                        let at = profile.home.join(file);
+                        std::fs::write(&at, carried)
+                            .map_err(|err| beacon_core::error::CoreError::io(&at, err))?;
+                    }
+                    None => tracing::info!(
+                        "not copying Codex's config.toml into the new account: it holds what looks like a credential"
+                    ),
+                }
+            }
+
             // Codex keeps a hash of every hook it has been shown and runs none
             // it has not, so the last step is the user's in Codex's own
             // `/hooks` — here as it was for the first account.

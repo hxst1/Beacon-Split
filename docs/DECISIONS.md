@@ -2479,12 +2479,33 @@ decision being made on somebody's behalf; it is the decision they already made,
 applied to a second directory, and without it the new account silently has no
 amber tab.
 
-Everything else is left alone on purpose. Copying somebody's settings,
-`CLAUDE.md` and MCP servers into a second account reads as helpful and is a
-guess: those files name paths, hold keys and were written for one account, and
-an application that duplicates them unasked is one that has to be undone by
-hand. The menu says a new account starts empty, which is both true and the
-thing to know.
+**The preferences come across too, and that is a correction.** This originally
+said that copying somebody's settings into a second account "reads as helpful
+and is a guess: those files name paths, hold keys and were written for one
+account". That is true of the MCP servers, which live in another file, and
+false of the preferences, which is what the file mostly is. What the original
+decision cost was concrete and arrived within days: `remoteControlAtStartup`
+turned off on purpose, a second account added, and Claude Code starting with
+remote control on in it, because the new home had never heard of the
+preference.
+
+So the agent's settings file is copied whole, less the entries Beacon installs
+itself — those are installed by the code that knows what this build's hook
+command is, and a copied one would name the right path today and the wrong one
+after Beacon moved. Whole, and not a chosen list of preferences to keep: that
+would be a table of guesses about another program's schema, wrong the moment a
+key is added, which is what ADR-068 exists to refuse. The file is theirs and it
+comes across as theirs.
+
+The credential is still never copied. Both agents keep their login in a
+different file — `.credentials.json` or the keychain, `auth.json` — but the
+preferences can carry one too, and those are left behind: Claude Code's
+`apiKeyHelper` and its AWS and telemetry helpers, any `env` variable whose name
+looks like a secret (`*KEY*`, `*TOKEN*`, `*SECRET*`, …), and a Codex
+`config.toml` that shows a bearer token, an `Authorization` header or a
+secret-looking key is not copied at all. A second account is a second
+credential; a copied key would go on paying with the first one, which is the
+mistake this feature exists to stop.
 
 The sign-in watcher asks one `claude auth status` for every panel waiting on a
 sign-in screen, which is right as long as they are all on one account. When

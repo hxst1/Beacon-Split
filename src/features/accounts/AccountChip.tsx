@@ -149,7 +149,7 @@ export function AccountChip({ agent }: { agent: AgentKind }): React.ReactElement
               </div>
               {added.length === 0 ? (
                 <div className={styles['note']}>
-                  A new one starts empty and signed out. Run{' '}
+                  A new one takes your settings with it and is signed out. Run{' '}
                   <code>{agent === 'claude' ? 'claude' : 'codex login'}</code> in this project's
                   terminal once it is selected, and it signs in there.
                 </div>
