@@ -21,6 +21,32 @@ use crate::transport::LocalStream;
 /// machine with a heavy `.zshrc` is not instant.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// How long a swap keeps trying to greet the daemon that replaces the old one,
+/// and how long it waits between tries. The old daemon is closing in
+/// milliseconds; this is room, not an expectation.
+const REPLACE_TIMEOUT: Duration = Duration::from_secs(5);
+const REPLACE_RETRY: Duration = Duration::from_millis(50);
+
+/// The two ways a request fails because the connection did, rather than
+/// because the daemon refused it: the write breaks, or the reader sees the
+/// stream end before the answer. Named once so `lost_the_connection` can tell
+/// them from everything else by identity, not by guessing at wording.
+const UNREACHABLE: &str = "could not reach the session daemon";
+const WENT_AWAY: &str = "the daemon went away";
+
+/// Whether a request failed because the connection did.
+///
+/// Only that is worth retrying during a swap. A daemon that answered — with an
+/// error, or with something this build does not understand — has said what it
+/// will say again, and asking a hundred more times only hides it for longer.
+fn lost_the_connection(error: &CoreError) -> bool {
+    match error {
+        CoreError::Session { context, .. } => *context == UNREACHABLE,
+        CoreError::Invalid(message) => message == WENT_AWAY,
+        _ => false,
+    }
+}
+
 /// How long to wait for a freshly started daemon to begin listening.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -141,7 +167,7 @@ impl DaemonClient {
             our_build = env!("CARGO_PKG_VERSION"),
             "replacing a daemon that is not this one"
         );
-        client.shared.replace()?;
+        let replacement = client.shared.replace(greeting.pid)?;
 
         // The daemon that took its place was started from the binary beside
         // this one, and is normally this version. When it is not, that binary
@@ -151,7 +177,6 @@ impl DaemonClient {
         // this protocol to a daemon that does not speak it, and replacing it
         // again would only start the same file again. So it is stopped, and the
         // window is told what happened and what fixes it.
-        let replacement = client.hello()?;
         if replacement.version != PROTOCOL_VERSION || !ours(&replacement) {
             tracing::error!(
                 theirs = replacement.version,
@@ -161,6 +186,10 @@ impl DaemonClient {
                 binary = %client.shared.binary.display(),
                 "the daemon on disk is from another version"
             );
+            // On its way out, so the reader stays quiet about the connection
+            // this closes and does not reconnect — which would start the same
+            // old binary again.
+            client.shared.stopped.store(true, Ordering::SeqCst);
             let _ = client.request(Request::Shutdown {});
             return Err(CoreError::invalid(format!(
                 "the session daemon at {} is from another version of Beacon ({}, and this window \
@@ -183,12 +212,7 @@ impl DaemonClient {
     }
 
     fn hello(&self) -> Result<crate::protocol::Greeting> {
-        match self.request(Request::Hello {
-            version: PROTOCOL_VERSION,
-        })? {
-            Reply::Greeting(greeting) => Ok(greeting),
-            _ => Err(CoreError::invalid("the daemon did not introduce itself")),
-        }
+        self.shared.hello()
     }
 
     // ---- the same surface the session manager offers -----------------------
@@ -500,20 +524,75 @@ impl Shared {
     /// For an upgrade: the daemon still listening is the one the previous
     /// version left behind, and swapping it is the expected thing to happen,
     /// not a failure to report.
-    fn replace(self: &Arc<Self>) -> Result<()> {
+    ///
+    /// Returns the replacement's greeting: greeting it is part of the swap, and
+    /// has to happen while a dropped connection is still an expected one.
+    fn replace(self: &Arc<Self>, replaced_pid: u32) -> Result<crate::protocol::Greeting> {
         self.replacing.store(true, Ordering::SeqCst);
 
         // Answered, or cut off mid-answer when the daemon goes first. Either
-        // is a success here; what matters is that it is no longer listening.
+        // is a success here.
         let _ = self.request(Request::Shutdown {});
 
         // The reader thread may not have noticed the end yet, and a stream
         // nobody can write to would make `open` decide there was nothing to do.
         self.forget_connection();
 
-        let result = self.open();
+        let result = self.greet_the_replacement(replaced_pid);
         self.replacing.store(false, Ordering::SeqCst);
         result
+    }
+
+    /// Connects to whatever now listens and asks it what it is.
+    ///
+    /// The daemon being replaced answers `Shutdown` and only then stops
+    /// listening, so for a moment the socket still accepts connections. The
+    /// first window of 0.10.3 landed on one, greeted the dying daemon, and
+    /// opened on "Broken pipe" until it was started again. On its way out that
+    /// daemon can do either of two things with a new connection: cut it, or —
+    /// if it has not got that far — answer it as itself. Both mean "not
+    /// replaced yet", and both are tried again on a fresh connection; by then
+    /// nothing listens and `open` starts the new daemon.
+    ///
+    /// Nothing else is retried. Starting a daemon is not: a binary that will
+    /// not start does not get better by being started again. Nor is a daemon
+    /// that answered with an error: it would only say it again.
+    fn greet_the_replacement(
+        self: &Arc<Self>,
+        replaced_pid: u32,
+    ) -> Result<crate::protocol::Greeting> {
+        let deadline = Instant::now() + REPLACE_TIMEOUT;
+        loop {
+            self.open()?;
+            let greeted = self.hello();
+            let not_yet = match &greeted {
+                Ok(greeting) => greeting.pid == replaced_pid,
+                Err(error) => lost_the_connection(error),
+            };
+            if !not_yet {
+                return greeted;
+            }
+            if Instant::now() >= deadline {
+                return match greeted {
+                    Ok(_) => Err(CoreError::invalid(
+                        "the session daemon being replaced did not stop when asked",
+                    )),
+                    Err(error) => Err(error),
+                };
+            }
+            tracing::debug!("the old daemon was still closing; trying again");
+            self.forget_connection();
+            std::thread::sleep(REPLACE_RETRY);
+        }
+    }
+
+    fn hello(self: &Arc<Self>) -> Result<crate::protocol::Greeting> {
+        match self.request(Request::Hello {
+            version: PROTOCOL_VERSION,
+        })? {
+            Reply::Greeting(greeting) => Ok(greeting),
+            _ => Err(CoreError::invalid("the daemon did not introduce itself")),
+        }
     }
 
     /// Drops the current connection and retires its reader.
@@ -598,7 +677,7 @@ impl Shared {
 
             // Wake anything still waiting rather than leaving it to time out.
             for (_, waiting) in self.pending.lock_or_recover().drain() {
-                let _ = waiting.send(Outcome::Err("the daemon went away".into()));
+                let _ = waiting.send(Outcome::Err(WENT_AWAY.into()));
             }
             quiet
         };
@@ -678,7 +757,7 @@ impl Shared {
                 .and_then(|_| stream.flush())
                 .map_err(|err| {
                     self.pending.lock_or_recover().remove(&id);
-                    CoreError::session("could not reach the session daemon", err)
+                    CoreError::session(UNREACHABLE, err)
                 })?;
         }
 
