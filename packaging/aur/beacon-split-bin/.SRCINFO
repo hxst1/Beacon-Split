@@ -1,6 +1,6 @@
 pkgbase = beacon-split-bin
 	pkgdesc = An agent-first development workspace: Claude Code, Codex, a terminal, files and Git in one window
-	pkgver = 0.9.3
+	pkgver = 0.10.2
 	pkgrel = 1
 	url = https://github.com/hxst1/Beacon-Split
 	arch = x86_64
@@ -20,12 +20,12 @@ pkgbase = beacon-split-bin
 	optdepends = ttf-jetbrains-mono-nerd: Nerd Font icons in the terminal
 	provides = beacon-split
 	conflicts = beacon-split
-	noextract = beacon-split-0.9.3.deb
+	noextract = beacon-split-0.10.2.deb
 	options = !strip
 	options = !debug
-	source = beacon-split-0.9.3.deb::https://github.com/hxst1/Beacon-Split/releases/download/v0.9.3/Beacon.Split_0.9.3_amd64.deb
-	source = LICENSE-0.9.3::https://raw.githubusercontent.com/hxst1/Beacon-Split/v0.9.3/LICENSE
-	sha256sums = 2454e6d0ae59358faa347bea1fd0e002580cee944696928d6f8dd2c86f5f0435
+	source = beacon-split-0.10.2.deb::https://github.com/hxst1/Beacon-Split/releases/download/v0.10.2/Beacon.Split_0.10.2_amd64.deb
+	source = LICENSE-0.10.2::https://raw.githubusercontent.com/hxst1/Beacon-Split/v0.10.2/LICENSE
+	sha256sums = e1ef26af3f42e8a20e88df6e7e4df0a7a503635eb5cf5564456bb598ef54801d
 	sha256sums = 0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0
 
 pkgname = beacon-split-bin
