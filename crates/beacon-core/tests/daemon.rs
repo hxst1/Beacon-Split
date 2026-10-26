@@ -763,15 +763,18 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
     // and hangs up when asked to stop, the second is the daemon that replaced
     // it — this protocol and this build. From the client's side that is
     // exactly an upgrade.
+    // Each its own process, as a real swap is: the replacement is told apart
+    // from the daemon it replaces by its pid.
     let greetings = [
-        (beacon_core::protocol::PROTOCOL_VERSION - 1, None),
+        (beacon_core::protocol::PROTOCOL_VERSION - 1, None, 100),
         (
             beacon_core::protocol::PROTOCOL_VERSION,
             Some(env!("CARGO_PKG_VERSION")),
+            200,
         ),
     ];
     let stand_in = std::thread::spawn(move || {
-        for (version, build) in greetings {
+        for (version, build, pid) in greetings {
             let Some(stream) = next_connection(&listener) else {
                 return;
             };
@@ -794,7 +797,7 @@ fn a_daemon_from_another_version_is_replaced_without_a_word() {
                     "ok": {
                         "result": "greeting",
                         "version": version,
-                        "pid": 1,
+                        "pid": pid,
                         "sessions": 0,
                         "build": build,
                     },
@@ -848,14 +851,15 @@ fn a_daemon_of_the_same_protocol_but_another_build_is_replaced() {
     // Both speak this protocol. The first is last release's build — exactly
     // what is left running after an update — and the second is this one.
     let greetings = [
-        (beacon_core::protocol::PROTOCOL_VERSION, Some("0.0.1")),
+        (beacon_core::protocol::PROTOCOL_VERSION, Some("0.0.1"), 100),
         (
             beacon_core::protocol::PROTOCOL_VERSION,
             Some(env!("CARGO_PKG_VERSION")),
+            200,
         ),
     ];
     let stand_in = std::thread::spawn(move || {
-        for (version, build) in greetings {
+        for (version, build, pid) in greetings {
             let Some(stream) = next_connection(&listener) else {
                 return;
             };
@@ -872,7 +876,7 @@ fn a_daemon_of_the_same_protocol_but_another_build_is_replaced() {
                     "ok": {
                         "result": "greeting",
                         "version": version,
-                        "pid": 1,
+                        "pid": pid,
                         "sessions": 0,
                         "build": build,
                     },
@@ -901,6 +905,273 @@ fn a_daemon_of_the_same_protocol_but_another_build_is_replaced() {
     drop(stand_in);
 }
 
+/// The daemon being replaced can still take a connection while it closes.
+///
+/// It answers `Shutdown` and only then stops listening, so for a moment the
+/// socket accepts a connection that is about to be cut. The first window of
+/// 0.10.3 landed on exactly that: it greeted the dying daemon, the write broke,
+/// and it opened on "could not reach the session daemon: Broken pipe" until it
+/// was started again. A swap has to get past that moment, not report it.
+#[test]
+fn a_daemon_still_closing_does_not_fail_the_swap() {
+    use beacon_core::transport::LocalListener;
+    use std::io::{BufRead, BufReader, Write};
+
+    let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
+    let socket = private_socket(dir.path());
+    let listener = LocalListener::bind(&socket).expect("the stand-in should bind");
+
+    let stand_in = std::thread::spawn(move || {
+        // The old build, until it is asked to stop.
+        let greet = |stream: beacon_core::transport::LocalStream, build: &str, pid: u32| {
+            let mut writer = stream.try_clone().expect("a writable half");
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else {
+                    continue;
+                };
+                if message["method"] == "shutdown" {
+                    break;
+                }
+                let reply = serde_json::json!({
+                    "id": message["id"].as_u64().unwrap_or_default(),
+                    "ok": {
+                        "result": "greeting",
+                        "version": beacon_core::protocol::PROTOCOL_VERSION,
+                        "pid": pid,
+                        "sessions": 0,
+                        "build": build,
+                    },
+                });
+                let _ = writeln!(writer, "{reply}");
+                let _ = writer.flush();
+            }
+        };
+        let Some(old) = next_connection(&listener) else {
+            return;
+        };
+        greet(old, "0.0.1", 100);
+
+        // Closing: one more connection is accepted and cut without a word.
+        if let Some(dying) = next_connection(&listener) {
+            drop(dying);
+        }
+
+        // And then the daemon that took its place.
+        while let Some(new) = next_connection(&listener) {
+            greet(new, env!("CARGO_PKG_VERSION"), 200);
+        }
+    });
+
+    let recorder = Arc::new(Recorder::default());
+    let client = DaemonClient::connect_at(
+        &daemon_binary(),
+        &socket,
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    )
+    .expect("a daemon still closing should not have failed the swap");
+
+    // A reader thread reports a lost connection on its own time.
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        *recorder.disconnects.lock().unwrap(),
+        0,
+        "a planned swap was reported to the window as a daemon lost"
+    );
+
+    drop(client);
+    drop(stand_in);
+}
+
+/// Answers a stand-in daemon's requests: a greeting as `pid` and `build`, or
+/// `err` for every request when given one. Returns when asked to stop.
+fn serve_stand_in(
+    stream: beacon_core::transport::LocalStream,
+    pid: u32,
+    build: &str,
+    err: Option<&str>,
+) {
+    use std::io::{BufRead, BufReader, Write};
+    let mut writer = stream.try_clone().expect("a writable half");
+    for line in BufReader::new(stream).lines().map_while(Result::ok) {
+        let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        if message["method"] == "shutdown" {
+            break;
+        }
+        let id = message["id"].as_u64().unwrap_or_default();
+        let reply = match err {
+            Some(err) => serde_json::json!({ "id": id, "err": err }),
+            None => serde_json::json!({
+                "id": id,
+                "ok": {
+                    "result": "greeting",
+                    "version": beacon_core::protocol::PROTOCOL_VERSION,
+                    "pid": pid,
+                    "sessions": 0,
+                    "build": build,
+                },
+            }),
+        };
+        let _ = writeln!(writer, "{reply}");
+        let _ = writer.flush();
+    }
+}
+
+/// On its way out, the old daemon can answer a new connection as itself.
+///
+/// If it has not got as far as closing, the greeting is a perfectly good one —
+/// from the daemon being replaced. Taken as the replacement, it would be
+/// refused as "another version" and the window told to reinstall.
+#[test]
+fn the_old_daemon_answering_on_its_way_out_is_not_the_replacement() {
+    use beacon_core::transport::LocalListener;
+
+    let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
+    let socket = private_socket(dir.path());
+    let listener = LocalListener::bind(&socket).expect("the stand-in should bind");
+
+    let stand_in = std::thread::spawn(move || {
+        let Some(old) = next_connection(&listener) else {
+            return;
+        };
+        serve_stand_in(old, 100, "0.0.1", None);
+
+        // Still the old daemon, answering one more connection before it goes.
+        if let Some(lingering) = next_connection(&listener) {
+            use std::io::{BufRead, BufReader, Write};
+            let mut writer = lingering.try_clone().expect("a writable half");
+            if let Some(Ok(line)) = BufReader::new(lingering).lines().next() {
+                let message: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
+                let reply = serde_json::json!({
+                    "id": message["id"].as_u64().unwrap_or_default(),
+                    "ok": {
+                        "result": "greeting",
+                        "version": beacon_core::protocol::PROTOCOL_VERSION,
+                        "pid": 100,
+                        "sessions": 0,
+                        "build": "0.0.1",
+                    },
+                });
+                let _ = writeln!(writer, "{reply}");
+                let _ = writer.flush();
+            }
+        }
+
+        while let Some(new) = next_connection(&listener) {
+            serve_stand_in(new, 200, env!("CARGO_PKG_VERSION"), None);
+        }
+    });
+
+    let recorder = Arc::new(Recorder::default());
+    let client = DaemonClient::connect_at(
+        &daemon_binary(),
+        &socket,
+        Arc::clone(&recorder) as Arc<dyn DaemonEvents>,
+    )
+    .expect("the old daemon's last answer should not have been taken for the replacement");
+
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(*recorder.disconnects.lock().unwrap(), 0);
+
+    drop(client);
+    drop(stand_in);
+}
+
+/// A replacement that answered with an error has said what it will say again.
+///
+/// Only a lost connection is worth another try. Retrying an answer would hold
+/// the window for the whole swap budget and then report the same thing.
+#[test]
+fn a_replacement_that_answers_with_an_error_is_not_asked_again() {
+    use beacon_core::transport::LocalListener;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
+    let socket = private_socket(dir.path());
+    let listener = LocalListener::bind(&socket).expect("the stand-in should bind");
+
+    let connections = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&connections);
+    let stand_in = std::thread::spawn(move || {
+        let Some(old) = next_connection(&listener) else {
+            return;
+        };
+        counted.fetch_add(1, Ordering::SeqCst);
+        serve_stand_in(old, 100, "0.0.1", None);
+        while let Some(new) = next_connection(&listener) {
+            counted.fetch_add(1, Ordering::SeqCst);
+            serve_stand_in(new, 200, env!("CARGO_PKG_VERSION"), Some("not today"));
+        }
+    });
+
+    let started = Instant::now();
+    let refused = DaemonClient::connect_at(
+        &daemon_binary(),
+        &socket,
+        Arc::new(Recorder::default()) as Arc<dyn DaemonEvents>,
+    )
+    .err()
+    .expect("a replacement that refuses the greeting cannot be attached to");
+
+    assert!(refused.to_string().contains("not today"), "said: {refused}");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "took {:?}",
+        started.elapsed()
+    );
+    assert_eq!(
+        connections.load(Ordering::SeqCst),
+        2,
+        "the replacement was asked again"
+    );
+
+    drop(stand_in);
+}
+
+/// A replacement that never holds a connection gives up, and says why.
+#[test]
+fn a_swap_that_never_finds_a_replacement_gives_up() {
+    use beacon_core::transport::LocalListener;
+
+    let dir = tempfile::tempdir().unwrap();
+    let _stops = StopsTheDaemon(private_socket(dir.path()));
+    let socket = private_socket(dir.path());
+    let listener = LocalListener::bind(&socket).expect("the stand-in should bind");
+
+    let stand_in = std::thread::spawn(move || {
+        let Some(old) = next_connection(&listener) else {
+            return;
+        };
+        serve_stand_in(old, 100, "0.0.1", None);
+        // Every connection after that is accepted and cut.
+        while let Some(cut) = next_connection(&listener) {
+            drop(cut);
+        }
+    });
+
+    let started = Instant::now();
+    let refused = DaemonClient::connect_at(
+        &daemon_binary(),
+        &socket,
+        Arc::new(Recorder::default()) as Arc<dyn DaemonEvents>,
+    )
+    .err()
+    .expect("a swap with no replacement cannot succeed");
+
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "a swap kept trying for {:?}",
+        started.elapsed()
+    );
+    assert!(!refused.to_string().is_empty());
+
+    drop(stand_in);
+}
+
 /// The replacement is from the old version too: the binary on disk was never
 /// updated, because Windows will not overwrite a program that is running.
 ///
@@ -922,7 +1193,7 @@ fn a_replacement_daemon_from_the_old_version_is_reported_not_used() {
     let stand_in = std::thread::spawn(move || {
         // The daemon found running, then the one started in its place — from
         // the same old file.
-        for _ in 0..2 {
+        for pid in [100, 101] {
             let Some(stream) = next_connection(&listener) else {
                 return;
             };
@@ -937,7 +1208,7 @@ fn a_replacement_daemon_from_the_old_version_is_reported_not_used() {
                 }
                 let reply = serde_json::json!({
                     "id": message["id"].as_u64().unwrap_or_default(),
-                    "ok": { "result": "greeting", "version": old, "pid": 1, "sessions": 0 },
+                    "ok": { "result": "greeting", "version": old, "pid": pid, "sessions": 0 },
                 });
                 let _ = writeln!(writer, "{reply}");
                 let _ = writer.flush();
@@ -957,6 +1228,15 @@ fn a_replacement_daemon_from_the_old_version_is_reported_not_used() {
     let said = refused.to_string();
     assert!(said.contains("another version"), "said: {said}");
     assert!(said.contains("install it again"), "said: {said}");
+
+    // Stopping the stale replacement closes the connection on purpose. It is
+    // not a daemon lost, and reconnecting would only start the same old file.
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        *recorder.disconnects.lock().unwrap(),
+        0,
+        "the window was told a daemon was lost when it was stopped on purpose"
+    );
 
     // Both the one found and the one started in its place were told to stop.
     for which in ["found", "started"] {
