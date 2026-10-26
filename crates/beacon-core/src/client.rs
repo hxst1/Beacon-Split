@@ -27,12 +27,16 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const REPLACE_TIMEOUT: Duration = Duration::from_secs(5);
 const REPLACE_RETRY: Duration = Duration::from_millis(50);
 
-/// The two ways a request fails because the connection did, rather than
-/// because the daemon refused it: the write breaks, or the reader sees the
-/// stream end before the answer. Named once so `lost_the_connection` can tell
-/// them from everything else by identity, not by guessing at wording.
+/// The three ways a request fails because the connection did, rather than
+/// because the daemon refused it: the write breaks, the reader sees the stream
+/// end before the answer, or the reader saw it end first and there was no
+/// connection left to write to. Which of them a cut connection shows up as is
+/// a matter of timing — the last is what macOS tended to produce. Named once
+/// so `lost_the_connection` can tell them from everything else by identity,
+/// not by guessing at wording.
 const UNREACHABLE: &str = "could not reach the session daemon";
 const WENT_AWAY: &str = "the daemon went away";
+const NOT_CONNECTED: &str = "not connected to the session daemon; still trying";
 
 /// Whether a request failed because the connection did.
 ///
@@ -42,7 +46,7 @@ const WENT_AWAY: &str = "the daemon went away";
 fn lost_the_connection(error: &CoreError) -> bool {
     match error {
         CoreError::Session { context, .. } => *context == UNREACHABLE,
-        CoreError::Invalid(message) => message == WENT_AWAY,
+        CoreError::Invalid(message) => message == WENT_AWAY || message == NOT_CONNECTED,
         _ => false,
     }
 }
@@ -746,9 +750,7 @@ impl Shared {
             let mut guard = self.stream.lock_or_recover();
             let Some(stream) = guard.as_mut() else {
                 self.pending.lock_or_recover().remove(&id);
-                return Err(CoreError::invalid(
-                    "not connected to the session daemon; still trying",
-                ));
+                return Err(CoreError::invalid(NOT_CONNECTED));
             };
 
             stream
@@ -1071,6 +1073,31 @@ impl<T> LockOrRecover<T> for Mutex<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every shape a cut connection takes is retried during a swap; nothing
+    /// else is.
+    ///
+    /// Which of the three a dying daemon produces is timing. Linux CI only ever
+    /// saw the first two; macOS produced the third — the reader had already
+    /// dropped the connection — and the swap gave up on it.
+    #[test]
+    fn a_cut_connection_is_recognised_whichever_way_it_shows() {
+        assert!(lost_the_connection(&CoreError::session(
+            UNREACHABLE,
+            "Broken pipe"
+        )));
+        assert!(lost_the_connection(&CoreError::invalid(WENT_AWAY)));
+        assert!(lost_the_connection(&CoreError::invalid(NOT_CONNECTED)));
+
+        assert!(!lost_the_connection(&CoreError::invalid("not today")));
+        assert!(!lost_the_connection(&CoreError::invalid(
+            "the session daemon did not answer"
+        )));
+        assert!(!lost_the_connection(&CoreError::session(
+            "could not start the session daemon",
+            "denied"
+        )));
+    }
 
     /// The rule that cost a release.
     ///
