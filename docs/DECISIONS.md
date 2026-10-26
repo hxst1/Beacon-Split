@@ -2513,3 +2513,36 @@ here that means starting the session under the machine's own account while the
 window's header names another. Nothing waits and nothing errors; the work just
 goes to the wrong subscription, which is the exact mistake this feature exists
 to prevent, so the daemon is replaced once on upgrade instead.
+
+## ADR-100: From WebKitGTK 2.54, NVIDIA keeps the DMA-BUF renderer
+
+**Context.** After an Arch update to WebKitGTK 2.54 (and NVIDIA 615.78),
+Beacon's window flashed empty several times a second: for a frame only the
+region that had just changed — a tab's pulsing status dot, the terminal cursor,
+the scrollbar — was drawn, and the rest of the transparent window showed the
+desktop. Parts that nothing repainted could stay blank for good; the title bar
+did once every animation in it was stopped.
+
+It was the shared-memory path ADR-096 switched to. A plain WebKitGTK 2.54
+window, no Tauri involved, with `WEBKIT_DISABLE_DMABUF_RENDERER=1` and a single
+pulsing dot showed the same: 16–25 frames in 60 empty, and a large static block
+on the page almost never drawn. With the variable at `0` it drew every frame,
+and Beacon itself went from 13–28 empty frames in 80 to none, focused or not,
+with no `Error 71`. Ruled out on the way: the compositor's blur and damage
+tracking, XWayland, WebKit's accelerated compositing, CPU Skia, and WebKit's
+`UseDamagingInformationForCompositing`/`UnifyDamagedRegions` features.
+
+**Decision.** `graphics::prepare` turns DMA-BUF off on NVIDIA only when the
+loaded WebKitGTK is older than 2.54, read from `webkit_get_major_version` and
+`webkit_get_minor_version`. A value the user set is still left alone, as
+ADR-096 says.
+
+**Why.** The version is what changed between a machine that needed the switch
+and one the switch breaks, and it is known before GTK starts — the moment the
+variable has to be set. Rendering through DMA-BUF also spares the copy per
+frame ADR-096 accepted.
+
+**Consequence.** Whether 2.54 or NVIDIA's 615.78 fixed the `Error 71` is not
+known: both arrived in the same update. A machine on 2.54 with an older NVIDIA
+driver that still closes the window can set `WEBKIT_DISABLE_DMABUF_RENDERER=1`,
+which wins over this check.

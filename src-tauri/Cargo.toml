@@ -61,6 +61,11 @@ features = [
   "UNError",
 ]
 
+# The WebKitGTK version, which decides whether the webview needs its DMA-BUF
+# renderer turned off on NVIDIA. Already in the tree through Tauri. See ADR-100.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2"
+
 # The Windows build number, which the terminal needs to know how the
 # pseudo-console behaves on resize. Already in the tree through Tauri.
 [target.'cfg(windows)'.dependencies]
