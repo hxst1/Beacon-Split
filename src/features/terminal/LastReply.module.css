@@ -1,55 +1,74 @@
 /*
- * The last reply: a note floating over the top of the terminal, on the same
- * surface and blur as Beacon's other floating panels. The accent is only a
- * hairline, and the text is a step quieter than the terminal's, so it reads as
- * a note beside the work rather than competing with it.
+ * The last reply: a quiet chip in the panel header, beside the other chips, and
+ * the reply itself in a popover when asked for. Nothing covers the terminal.
+ * The dot is the only thing that changes when a turn ends, and it goes once the
+ * reply has been opened — enough to notice, not enough to interrupt.
  */
-.reply {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  left: 8px;
-  z-index: 1;
+.chip {
   display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 8px 8px 8px 12px;
-  border: 1px solid color-mix(in oklab, var(--accent) 24%, transparent);
-  border-radius: var(--radius-sm);
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.chip:hover,
+.chip[aria-expanded='true'] {
   background: var(--surface-2);
-  backdrop-filter: var(--blur-float);
   color: var(--fg-2);
-  font-size: var(--text-sm);
-  line-height: 1.45;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fg-4);
+  transition: background var(--dur-2) var(--ease);
+}
+
+.chip[data-unread='true'] .dot {
+  background: var(--accent);
+}
+
+.chip[data-unread='true'] {
+  color: var(--fg-2);
+}
+
+/* Wide enough to read prose, short enough to stay a popover; longer replies
+   scroll inside it. */
+.reply {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(560px, 70vw);
 }
 
 .text {
-  flex: 1;
-  min-width: 0;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 6px 8px;
+  color: var(--fg-1);
+  font-size: var(--text-sm);
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
 }
 
-/* Open, it scrolls inside a third of the panel rather than covering all of it. */
-.reply[data-open='true'] .text {
-  display: block;
-  max-height: 33vh;
-  overflow: auto;
-}
-
 .actions {
   display: flex;
-  flex: none;
+  justify-content: flex-end;
   gap: 2px;
+  padding: 0 2px 2px;
 }
 
 .action {
-  padding: 2px 6px;
+  padding: 2px 8px;
   border: 0;
   border-radius: var(--radius-xs);
   background: transparent;

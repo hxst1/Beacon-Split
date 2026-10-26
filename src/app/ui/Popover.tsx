@@ -9,6 +9,8 @@ interface PopoverProps {
   children: React.ReactNode
   /** Which edge of the anchor the panel lines up with. */
   align?: 'start' | 'end'
+  /** A list of choices by default; `dialog` for something to read. */
+  role?: 'menu' | 'dialog'
 }
 
 /**
@@ -29,6 +31,7 @@ export function Popover({
   onClose,
   children,
   align = 'start',
+  role = 'menu',
 }: PopoverProps): React.ReactElement {
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -55,7 +58,7 @@ export function Popover({
         ref={panelRef}
         className={styles['panel']}
         style={style}
-        role="menu"
+        role={role}
         onPointerDown={(event) => event.stopPropagation()}
       >
         {children}
