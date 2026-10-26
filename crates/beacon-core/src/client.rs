@@ -865,7 +865,6 @@ fn wait_for_daemon(socket: &Path) -> Result<LocalStream> {
     }))
 }
 
-/// Where a daemon started here writes what it could not do.
 /// Whether a daemon is the one this build of Beacon ships.
 ///
 /// A daemon that does not say which build it is was built before daemons said
@@ -874,6 +873,7 @@ fn ours(greeting: &crate::protocol::Greeting) -> bool {
     greeting.build.as_deref() == Some(env!("CARGO_PKG_VERSION"))
 }
 
+/// Where a daemon started here writes what it could not do.
 fn log_path(directory: &Path) -> PathBuf {
     directory.join("daemon.log")
 }
