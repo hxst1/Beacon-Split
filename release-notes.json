@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.10.3",
+    "date": "2026-10-26",
+    "summary": "Updates now reach the session daemon, and a new account keeps your settings without your keys.",
+    "changes": [
+      "After an update, the window went on talking to the session daemon the old version had started, so every fix that lives in the daemon — most of them — reached nobody until something unrelated forced a swap. The window now replaces any daemon that is not its own build. The price is stated up front: updating ends the sessions that were running, once per update, and this one is the first where it happens.",
+      "A new account takes the settings you already had — a preference you turned off, such as Remote Control at startup, no longer comes back on in an account Beacon made for you. What could hand over a credential stays behind: Claude Code's apiKeyHelper and similar helpers, any environment variable whose name looks like a secret, and a Codex config.toml that holds a token is not copied at all. A second account is a second credential."
+    ]
+  },
+  {
     "version": "0.10.2",
     "date": "2026-10-26",
     "summary": "On Linux with an NVIDIA card the window no longer flashes empty, and Claude's last reply no longer covers the terminal.",
