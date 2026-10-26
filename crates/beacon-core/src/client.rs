@@ -112,7 +112,7 @@ impl DaemonClient {
         client.shared.open()?;
 
         let greeting = client.hello()?;
-        if greeting.version == PROTOCOL_VERSION {
+        if greeting.version == PROTOCOL_VERSION && ours(&greeting) {
             tracing::info!(
                 pid = greeting.pid,
                 sessions = greeting.sessions,
@@ -124,13 +124,22 @@ impl DaemonClient {
         // A daemon left over from another version would answer in a shape we do
         // not understand, and a half-understood session is worse than a new one.
         //
-        // This is the first thing that happens after an upgrade that moved the
-        // protocol, so it has to be quiet: the swap is expected, and a window
-        // that has not finished opening should not be told the daemon was lost.
+        // Or from another build of this same protocol, which is the case that
+        // cost a release. The daemon outlives the window by design, and an
+        // update that did not move the protocol left the new window talking to
+        // the old daemon — so a fix that lives in the daemon, which is most of
+        // them, reached nobody. Sessions ending once on an upgrade is the
+        // price of the fix in that upgrade arriving at all.
+        //
+        // This is the first thing that happens after an upgrade, so it has to
+        // be quiet: the swap is expected, and a window that has not finished
+        // opening should not be told the daemon was lost.
         tracing::info!(
             theirs = greeting.version,
             ours = PROTOCOL_VERSION,
-            "replacing a daemon speaking a different protocol"
+            their_build = greeting.build.as_deref().unwrap_or("older than this"),
+            our_build = env!("CARGO_PKG_VERSION"),
+            "replacing a daemon that is not this one"
         );
         client.shared.replace()?;
 
@@ -143,21 +152,27 @@ impl DaemonClient {
         // again would only start the same file again. So it is stopped, and the
         // window is told what happened and what fixes it.
         let replacement = client.hello()?;
-        if replacement.version != PROTOCOL_VERSION {
+        if replacement.version != PROTOCOL_VERSION || !ours(&replacement) {
             tracing::error!(
                 theirs = replacement.version,
                 ours = PROTOCOL_VERSION,
+                their_build = replacement.build.as_deref().unwrap_or("older than this"),
+                our_build = env!("CARGO_PKG_VERSION"),
                 binary = %client.shared.binary.display(),
                 "the daemon on disk is from another version"
             );
             let _ = client.request(Request::Shutdown {});
             return Err(CoreError::invalid(format!(
-                "the session daemon at {} is from another version of Beacon (protocol {}, this \
-                 window speaks {}), so it was not replaced when Beacon was updated. Close \
-                 Beacon and install it again.",
+                "the session daemon at {} is from another version of Beacon ({}, and this window \
+                 is {}), so it was not replaced when Beacon was updated. Close Beacon and \
+                 install it again.",
                 client.shared.binary.display(),
-                replacement.version,
-                PROTOCOL_VERSION
+                replacement
+                    .build
+                    .as_deref()
+                    .map(|build| format!("build {build}"))
+                    .unwrap_or_else(|| format!("protocol {}", replacement.version)),
+                env!("CARGO_PKG_VERSION"),
             )));
         }
         Ok(client)
@@ -850,6 +865,14 @@ fn wait_for_daemon(socket: &Path) -> Result<LocalStream> {
     }))
 }
 
+/// Whether a daemon is the one this build of Beacon ships.
+///
+/// A daemon that does not say which build it is was built before daemons said
+/// so, which answers the question: it is not this one.
+fn ours(greeting: &crate::protocol::Greeting) -> bool {
+    greeting.build.as_deref() == Some(env!("CARGO_PKG_VERSION"))
+}
+
 /// Where a daemon started here writes what it could not do.
 fn log_path(directory: &Path) -> PathBuf {
     directory.join("daemon.log")
@@ -969,6 +992,31 @@ impl<T> LockOrRecover<T> for Mutex<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The rule that cost a release.
+    ///
+    /// A daemon outlives the window, so an update that did not move the
+    /// protocol left the new window talking to the daemon the old one had
+    /// started — and every fix that lives in the daemon arrived nowhere. It
+    /// was not theoretical: 0.10.1 fixed switching accounts in the daemon, and
+    /// on an updated machine the bug was still there, served by a process from
+    /// before the update.
+    #[test]
+    fn a_daemon_from_another_build_is_not_this_one() {
+        let greeting = |build: Option<&str>| crate::protocol::Greeting {
+            version: PROTOCOL_VERSION,
+            pid: 1,
+            sessions: 0,
+            build: build.map(str::to_string),
+        };
+
+        assert!(ours(&greeting(Some(env!("CARGO_PKG_VERSION")))));
+        assert!(!ours(&greeting(Some("0.9.9"))));
+
+        // A daemon too old to say what it is, is not this one: daemons started
+        // saying so in the build that started asking.
+        assert!(!ours(&greeting(None)));
+    }
 
     struct Ignored;
 
