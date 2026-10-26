@@ -2546,3 +2546,27 @@ frame ADR-096 accepted.
 known: both arrived in the same update. A machine on 2.54 with an older NVIDIA
 driver that still closes the window can set `WEBKIT_DISABLE_DMABUF_RENDERER=1`,
 which wins over this check.
+
+## ADR-101: The last reply is a chip in the header, not a strip over the terminal
+
+**Context.** ADR-081 floated the last reply over the top of the Claude panel's
+terminal, folded to three lines, whenever a turn ended. Floating kept the PTY
+from resizing, but it covered the terminal's top rows every single time, wanted
+or not — and the reply is wanted after a long turn, not after every one. In use
+it read as a notification that would not go away by itself.
+
+**Decision.** The reply lives behind a `Last reply` chip in the Claude panel's
+header, beside the workstream chip, shown only while there is one. A dot on the
+chip is lit until the reply is opened. Pressing it opens a popover with the
+whole reply, scrolling past half the window's height, and Copy and Dismiss.
+`Popover` takes a `role` for this, `dialog` rather than `menu`. Where the reply
+comes from, and when it goes, is ADR-081 unchanged.
+
+**Why.** It keeps what ADR-081 was for — the answer, found without scrolling
+for it — and stops spending the terminal's top rows on it. Nothing over the
+terminal also means nothing to resize it, so the reason the strip floated no
+longer applies.
+
+**Consequence.** The reply is one click further away than it was. The dot is
+the only notice that a turn ended with something said; the tab's status dot
+already says the turn ended.

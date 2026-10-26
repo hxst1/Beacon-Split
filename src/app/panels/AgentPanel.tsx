@@ -96,6 +96,8 @@ export function AgentPanel({
             <>
               <AgentActivity projectId={project.id} />
               <WorkstreamChip workspaceId={workspaceId} projectId={project.id} />
+              {/* Fed by Claude Code's Stop hook. */}
+              <LastReply projectId={project.id} />
             </>
           ) : null}
           {canSwap ? (
@@ -126,19 +128,15 @@ export function AgentPanel({
       {missing ? (
         <MissingTool requirement={missing} />
       ) : (
-        <div className={styles['agentBody']}>
-          {/* Fed by Claude Code's Stop hook; Codex has nothing reporting yet. */}
-          {agent === 'claude' ? <LastReply projectId={project.id} /> : null}
-          <div className={styles['agentTerminal']}>
-            <TerminalView
-              key={`${project.id}:${spec.kind}:${epoch}:${attachEpoch}`}
-              workspaceId={workspaceId}
-              projectId={project.id}
-              kind={spec.kind}
-              slot={0}
-              autoFocus={autoFocus}
-            />
-          </div>
+        <div className={styles['agentTerminal']}>
+          <TerminalView
+            key={`${project.id}:${spec.kind}:${epoch}:${attachEpoch}`}
+            workspaceId={workspaceId}
+            projectId={project.id}
+            kind={spec.kind}
+            slot={0}
+            autoFocus={autoFocus}
+          />
         </div>
       )}
     </Panel>
